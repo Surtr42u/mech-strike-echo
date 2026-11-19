@@ -900,7 +900,6 @@ function pad2(n){ return (n < 10 ? '0' : '') + n; }
 const ATLAS_GRID = {
   hero: { cw:32, ch:32, cols:16, prefix:'h', count:736 },   // suit*32 + dir*4 + frame
   mon:  { cw:40, ch:40, cols:12, prefix:'m', count:44 },    // kind*4 + frame
-  boss: { cw:96, ch:96, cols:5,  prefix:'b', count:10 },    // kind*2 + frame
   gun:  { cw:44, ch:22, cols:7,  prefix:'g', count:28 },
   giant:{ cw:96, ch:96, cols:2,  prefix:'giant', count:4 }
 };
@@ -1119,12 +1118,6 @@ SPRM.load = function(){
     for(let k = 0; k < MON_ORDER.length; k++){
       for(let f = 0; f < 4; f++){
         named['m_' + MON_ORDER[k] + '_' + f] = SPRM.frames['m' + (k * 4 + f)];
-      }
-    }
-    const BOSS_KEYS = ['crusher','hive','frost','molten','void'];
-    for(let k = 0; k < BOSS_KEYS.length; k++){
-      for(let f = 0; f < 2; f++){
-        named['b_' + BOSS_KEYS[k] + '_' + f] = SPRM.frames['b' + (k * 2 + f)];
       }
     }
     for(let k = 0; k < GUN_ORDER.length; k++){
@@ -5664,10 +5657,12 @@ function startBossAttack(b, ph){
   const def = BOSS_PHASES[b.kind];
   if(def && def.ai === 'crusher'){ crusherAttack(b, ph || def.phases[0]); return; }
   const pool = (ph && ph.acts) || BOSS_ACT[b.kind];
-  const fn = ACT_FN[pool[b.idx % pool.length]];
+  const action = pool[b.idx % pool.length];
+  const fn = ACT_FN[action];
   b.idx++;
   b.act = fn ? fn(b) : null;
   if(!b.act){ b.atkCd = 1; return; }
+  b.act.visual = action;
   if(ph && ph.cdMul) b.act.cd = (b.act.cd || 1.3) * ph.cdMul;
 }
 
@@ -5678,10 +5673,12 @@ function crusherAttack(b, ph){
     addZone(G.p.x, G.p.y, ph.zone || 46, b.dmg * .85, 1.0);
     G.rings.push({ x:b.x, y:b.y, r:6, max:60, life:.3, maxLife:.3, col:'#ff6a4a', w:2 });
     SFX.heavy();
+    b.ventAt = b.t;
     b.atkCd = ph.every || 1.5;
     return;
   }
   b.act = phaseCharge(b, ph);
+  b.act.visual = 'charge';
 }
 
 function phaseCharge(b, ph){
@@ -8364,317 +8361,8 @@ function drawEnemy(e){
   }
 }
 
-/* ── 首领精灵渲染：图集 96×96，脚底线 y=92 ── */
-function drawBossSprite(b, sx, sy){
-  const def = BOSSES[b.kind];
-  const floating = def.floating || b.kind === 'hive' || b.kind === 'void';
-  const hover = floating ? Math.sin(G.t * 1.8) * 4 : 0;
-  const ph = b.ph || 0;
-  const sc = clamp(b.r * 2.30 / 86, .55, 2.6);
-  const dw = 96 * sc, dh = 96 * sc;
-  const dx = sx - dw / 2;
-  const dy = sy - 92 * sc + hover;
-  const fade = b.dead ? Math.max(0, 1 - (b.deadT || 0) / .8) : 1;
-  const fi = (b.flash > 0 || (b.actT || 0) > 0) ? 1 : 0;
-  const name = 'b_' + (def.sprite || b.kind) + '_' + fi;
-
-  /* ① 阶段光环：血越少越亮，第三阶段转红 */
-  const k = 1 - clamp(b.hp / b.maxHp, 0, 1);
-  const auraCol = ph >= 2 ? '#ff5a3a' : (def ? def.col : '#ffffff');
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  const ag = ctx.createRadialGradient(sx, sy, 0, sx, sy, b.r * 2.6);
-  ag.addColorStop(0, hexA(auraCol, .16 + k * .16));
-  ag.addColorStop(.55, hexA(auraCol, .06 + k * .06));
-  ag.addColorStop(1, hexA(auraCol, 0));
-  ctx.fillStyle = ag;
-  ctx.beginPath(); ctx.ellipse(sx, sy, b.r * 2.6, b.r * 1.5, 0, 0, TAU); ctx.fill();
-  ctx.restore();
-
-  /* ② 接触阴影 */
-  drawAO(sx, sy + 2, b.r * 1.7, (floating ? .22 : .44) * fade, .38);
-
-  ctx.save();
-  ctx.globalAlpha = fade;
-  if(b.face < 0){ ctx.translate(sx * 2, 0); ctx.scale(-1, 1); }
-  drawFrame(name, dx, dy, sc);
-  if(def.sprite){
-    const tint = SPRM.tintOf(name, def.col);
-    if(tint){
-      ctx.save();
-      ctx.globalAlpha = fade * .27;
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.drawImage(tint, dx, dy, dw, dh);
-      ctx.restore();
-    }
-  }
-  rimLight(name, dx, dy, dw, dh, auraCol, .16);
-
-  if(b.flash > 0){
-    const m = SPRM.whiteOf(name);
-    if(m){
-      /* 首领体积大，受击频繁（无人机/灼烧这类小额伤害会连续触发），
-         整只蒙白会糊成一团白块。改成加性提亮 + 低上限，读作"被打热了" */
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = fade * Math.min(.32, b.flash * 5.5);
-      ctx.drawImage(m, dx, dy, dw, dh);
-      ctx.restore();
-    }
-  }
-  if(ph >= 2){
-    const m = SPRM.tintOf(name, '#ff5a3a');
-    if(m){
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = fade * (.06 + .06 * Math.sin(G.t * 6));
-      ctx.drawImage(m, dx, dy, dw, dh);
-      ctx.restore();
-    }
-  }
-  ctx.restore();
-  ctx.globalAlpha = 1;
-
-  drawGuardDetails(ctx, b, sx, sy + hover, fade);
-
-  /* ③ 核心呼吸光 */
-  const pulse = .6 + .4 * Math.sin(G.t * 4.2);
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  ctx.globalAlpha = .18 * pulse;
-  ctx.fillStyle = auraCol;
-  ctx.beginPath();
-  ctx.ellipse(sx, sy - (floating ? dh * .48 : dh * .40), b.r * .55, b.r * .3, 0, 0, TAU);
-  ctx.fill();
-  ctx.restore();
-  ctx.globalAlpha = 1;
-}
-
 function drawBoss(b){
-  const sx = Math.round(SX(b.x));
-  const sy = Math.round(SY(b.y));
-  const def = BOSSES[b.kind];
-  const skin = def.sprite || b.kind;
-  const floating = def.floating || b.kind === 'hive' || b.kind === 'void';
-  const hover = floating ? Math.sin(G.t * 1.8) * 4 : 0;
-
-  /* 图集就绪后走精灵渲染（旧的矢量首领保留为兜底） */
-  if(SPRM.ready && SPRM.frames['b_' + skin + '_0']){
-    drawBossSprite(b, sx, sy);
-    return;
-  }
-
-  drawShadow(sx, sy, b.r * (floating ? 1.05 : 1.2), floating ? .26 : .42);
-
-  ctx.save();
-  ctx.translate(sx, sy + hover);
-  if(b.face < 0) ctx.scale(-1, 1);
-  const R = function(x, y, w, h, c){ ctx.fillStyle = c; ctx.fillRect(x, y, w, h); };
-  const dark = shade(def.col, -.55), mid = shade(def.col, -.2), lite = shade(def.col, .35);
-
-  if(skin === 'crusher'){
-    // 深色描边
-    R(-28, -36, 56, 27, '#10151c');
-    // 履带
-    R(-30, -12, 60, 12, '#22262c');
-    for(let i=0;i<7;i++) R(-28 + i * 8, -12, 4, 12, '#3a4048');
-    // 车体
-    R(-26, -34, 52, 23, mid);
-    R(-26, -34, 52, 5, lite);
-    R(-26, -16, 52, 3, dark);
-    // 炮塔
-    R(-13, -47, 26, 15, mid);
-    R(-13, -47, 26, 4, lite);
-    R(13, -43, 24, 7, dark);
-    R(13, -43, 24, 2, mid);
-    R(35, -45, 4, 11, '#1e242c');
-    // 核心
-    const p2 = .6 + Math.sin(G.t * 6) * .4;
-    ctx.fillStyle = 'rgba(255,150,70,' + p2.toFixed(2) + ')';
-    ctx.fillRect(-6, -42, 12, 6);
-    R(-3, -41, 6, 4, '#ffe0b0');
-    // 前铲
-    R(24, -22, 14, 12, dark);
-  } else if(skin === 'hive'){
-    // 四个旋翼
-    ctx.strokeStyle = 'rgba(120,230,255,.42)';
-    ctx.lineWidth = 2;
-    for(let i=0;i<4;i++){
-      const a = G.t * 15 + i * Math.PI / 2;
-      const hx = -40 + i * 27;
-      ctx.beginPath();
-      ctx.ellipse(hx, -58, 12, 3, 0, a, a + Math.PI); ctx.stroke();
-      ctx.fillStyle = '#7fb0c4';
-      ctx.beginPath(); ctx.arc(hx, -58, 2, 0, TAU); ctx.fill();
-    }
-    R(-46, -56, 92, 4, '#18323f');
-    // 机翼
-    R(-46, -44, 92, 7, dark);
-    R(-44, -40, 88, 9, mid);
-    R(-44, -40, 88, 3, lite);
-    // 主体
-    R(-24, -54, 48, 22, mid);
-    R(-24, -54, 48, 6, lite);
-    R(-24, -36, 48, 4, dark);
-    R(-18, -49, 36, 2, dark);
-    // 核心
-    const p2 = .55 + Math.sin(G.t * 7) * .45;
-    ctx.fillStyle = 'rgba(90,220,255,' + (p2 * .5).toFixed(2) + ')';
-    ctx.fillRect(-14, -52, 28, 15);
-    ctx.fillStyle = 'rgba(90,220,255,' + p2.toFixed(2) + ')';
-    ctx.fillRect(-10, -50, 20, 11);
-    R(-5, -48, 10, 6, '#e8fbff');
-    // 侧炮
-    R(24, -47, 14, 8, dark);
-    R(34, -45, 7, 4, '#5e8496');
-    R(-38, -47, 14, 8, dark);
-    R(-45, -45, 7, 4, '#5e8496');
-    // 挂架与蜂刺
-    R(-17, -32, 6, 7, dark);
-    R(11, -32, 6, 7, dark);
-    R(-4, -32, 8, 11, dark);
-    R(-2, -22, 4, 7, lite);
-  } else if(b.kind === 'frost'){
-    // 尾巴
-    R(-42, -26, 14, 6, mid);
-    ctx.fillStyle = '#d8f6ff';
-    ctx.beginPath();
-    ctx.moveTo(-42, -27); ctx.lineTo(-52, -31); ctx.lineTo(-42, -20);
-    ctx.closePath(); ctx.fill();
-    // 四足
-    R(-28, -16, 8, 16, dark); R(-15, -13, 7, 13, dark);
-    R(10, -14, 8, 14, dark); R(22, -17, 7, 17, mid);
-    R(-31, -3, 12, 3, '#16232b'); R(19, -3, 12, 3, '#16232b');
-    R(-30, -8, 3, 5, '#cfeaf5'); R(26, -8, 3, 5, '#cfeaf5');
-    // 躯干（阶梯轮廓，读成兽体而不是方块）
-    R(-28, -36, 50, 7, mid);
-    R(-32, -30, 60, 14, mid);
-    R(-26, -17, 48, 6, mid);
-    R(-32, -30, 60, 3, lite);
-    R(-32, -17, 60, 2, dark);
-    R(-26, -36, 46, 2, lite);
-    // 背刺
-    for(let i=0;i<5;i++){
-      const x = -22 + i * 11;
-      ctx.fillStyle = '#d8f6ff';
-      ctx.beginPath();
-      ctx.moveTo(x, -36);
-      ctx.lineTo(x + 4, -49 - (i % 2) * 5);
-      ctx.lineTo(x + 9, -36);
-      ctx.closePath(); ctx.fill();
-      ctx.fillStyle = 'rgba(140,220,245,.75)';
-      ctx.beginPath();
-      ctx.moveTo(x + 4, -36);
-      ctx.lineTo(x + 4, -47 - (i % 2) * 5);
-      ctx.lineTo(x + 1, -36);
-      ctx.closePath(); ctx.fill();
-    }
-    // 头 / 下颚
-    R(20, -42, 17, 12, mid);
-    R(20, -42, 17, 3, lite);
-    R(30, -33, 10, 6, mid);
-    R(33, -36, 3, 5, '#e8fbff');
-    R(29, -31, 8, 2, '#16232b');
-    // 角（前倾尖角）
-    ctx.fillStyle = '#eafbff';
-    ctx.beginPath(); ctx.moveTo(22, -42); ctx.lineTo(27, -56); ctx.lineTo(31, -42); ctx.closePath(); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(30, -42); ctx.lineTo(34, -52); ctx.lineTo(38, -42); ctx.closePath(); ctx.fill();
-    // 眼
-    const p2 = .6 + Math.sin(G.t * 8) * .4;
-    ctx.fillStyle = 'rgba(120,230,255,' + p2.toFixed(2) + ')';
-    ctx.fillRect(25, -39, 8, 4);
-  } else if(b.kind === 'molten'){
-    // 腿
-    R(-20, -14, 8, 14, dark); R(10, -14, 8, 14, dark);
-    R(-22, -4, 12, 4, '#1e1a18'); R(8, -4, 12, 4, '#1e1a18');
-    // 躯干
-    R(-22, -44, 44, 31, mid);
-    R(-22, -44, 44, 6, lite);
-    R(-22, -16, 44, 3, dark);
-    // 熔炉口
-    const p2 = .55 + Math.sin(G.t * 5) * .45;
-    ctx.fillStyle = 'rgba(255,90,30,' + p2.toFixed(2) + ')';
-    ctx.fillRect(-12, -38, 24, 18);
-    R(-8, -35, 16, 12, '#ff9a3c');
-    R(-4, -32, 8, 6, '#fff0c0');
-    // 裂纹
-    ctx.fillStyle = 'rgba(255,140,60,.7)';
-    ctx.fillRect(-20, -26, 6, 2);
-    ctx.fillRect(14, -22, 7, 2);
-    // 烟囱
-    R(-30, -50, 10, 14, dark);
-    R(-30, -50, 10, 3, mid);
-    // 臂
-    R(20, -42, 12, 22, dark);
-    R(24, -22, 8, 8, '#5a4a3a');
-  } else {
-    // void：巨眼
-    ctx.strokeStyle = 'rgba(200,130,255,.32)';
-    ctx.lineWidth = 2;
-    for(let i=0;i<3;i++){
-      const a = G.t * (.6 + i * .3);
-      ctx.beginPath();
-      ctx.ellipse(0, -30, 40 + i * 6, 18 + i * 3, a, 0, Math.PI * 1.4);
-      ctx.stroke();
-    }
-    // 触须
-    for(let i=0;i<6;i++){
-      const a = G.t * 1.2 + i / 6 * TAU;
-      const bx = Math.cos(a) * 24, by = -14 + Math.sin(a) * 8;
-      ctx.strokeStyle = dark;
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.moveTo(bx, by);
-      ctx.quadraticCurveTo(bx * 1.7, by + 16, bx * 1.4 + Math.sin(a * 3) * 6, by + 30);
-      ctx.stroke();
-    }
-    // 眼球：椭圆本体 + 深色外圈 + 脉动虹膜
-    ctx.fillStyle = '#120a1e';
-    ctx.beginPath(); ctx.ellipse(0, -34, 29, 23, 0, 0, TAU); ctx.fill();
-    ctx.fillStyle = mid;
-    ctx.beginPath(); ctx.ellipse(0, -34, 26, 20, 0, 0, TAU); ctx.fill();
-    ctx.fillStyle = lite;
-    ctx.beginPath(); ctx.ellipse(-7, -41, 11, 6, 0, 0, TAU); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,.25)';
-    ctx.beginPath(); ctx.ellipse(-9, -43, 6, 3, 0, 0, TAU); ctx.fill();
-    ctx.fillStyle = '#180c26';
-    ctx.beginPath(); ctx.ellipse(0, -33, 14, 11.5, 0, 0, TAU); ctx.fill();
-    const p2 = .55 + Math.sin(G.t * 6) * .45;
-    ctx.fillStyle = 'rgba(224,150,255,' + (.55 + p2 * .45).toFixed(2) + ')';
-    ctx.beginPath(); ctx.ellipse(0, -33, 10, 8.5, 0, 0, TAU); ctx.fill();
-    ctx.fillStyle = '#fff4ff';
-    ctx.beginPath(); ctx.ellipse(0, -33, 4.5, 4, 0, 0, TAU); ctx.fill();
-    // 眼睑
-    ctx.strokeStyle = 'rgba(20,10,32,.85)';
-    ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.ellipse(0, -34, 26, 20, 0, Math.PI * 1.08, Math.PI * 1.92); ctx.stroke();
-  }
-
-  if(b.flash > 0){
-    /* 受击高光改成加法混合，避免白色方块糊住整只 Boss */
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = Math.min(.30, b.flash * 3.2);
-    ctx.fillStyle = '#ffd9c0';
-    ctx.fillRect(-b.r - 4, -b.h - 6, b.r * 2 + 8, b.h + 8);
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.globalAlpha = 1;
-  }
-  /* 出手预警：冲锋/弹幕前 0.6 秒以 6Hz 闪红 */
-  if(b.tele && !b.dead){
-    const f = .35 + .35 * Math.sin(G.t * TAU * 6);
-    ctx.globalAlpha = clamp(f, .12, .7);
-    ctx.fillStyle = '#ff3c3c';
-    ctx.fillRect(-b.r * 1.15, -b.h * .96, b.r * 2.3, b.h * .96);
-    ctx.globalAlpha = 1;
-    ctx.strokeStyle = 'rgba(255,80,70,' + clamp(f + .1, .2, .9).toFixed(2) + ')';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.ellipse(0, -b.h * .34, b.r * 1.25, b.r * .80, 0, 0, TAU);
-    ctx.stroke();
-  }
-  ctx.restore();
-
-  drawGuardDetails(ctx, b, sx, sy + hover, b.dead ? Math.max(0, 1 - b.deadT / .8) : 1);
+  BossModels.draw(ctx, b, Math.round(SX(b.x)), Math.round(SY(b.y)), QLEVEL, G.t, drawAO);
 }
 
 function drawOrb(o){
@@ -9645,7 +9333,7 @@ window.__dbg = {
   banner:banner, resurrect:playerDown, ACT_FN:ACT_FN, BOSS_ACT:BOSS_ACT,
   SPR:SPR, SPRM:SPRM, drawHero:drawHero, drawPlayer:drawPlayer,
   MON_THEME:MON_THEME, MON_H:MON_H, MUZ:MUZ, GUN_ORDER:GUN_ORDER,
-  hitFX:hitFX, addDissolve:addDissolve, addBurn:addBurn, drawBossSprite:drawBossSprite,
+  hitFX:hitFX, addDissolve:addDissolve, addBurn:addBurn, drawBoss:drawBoss,
   ITEMS:ITEMS, IT:IT, dropItem:dropItem, dropLoot:dropLoot, takeItem:takeItem,
   useItem:useItem, applyItem:applyItem, spawnCrate:spawnCrate, hitCrate:hitCrate,
   updatePicks:updatePicks, updateCrates:updateCrates, bagRect:bagRect, bagHit:bagHit,

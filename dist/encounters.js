@@ -6,8 +6,8 @@ const MID_BOSSES = {
   2: { wave:5, kind:'prism', score:480 }
 };
 const GUARD_BOSSES = {
-  bulwark: { n:'铁壁哨卫', t:'战区守卫 · 离开震击圈，侧向躲开冲撞', hp:1050, r:30, h:52, spd:105, dmg:18, col:'#ffd067', sprite:'crusher' },
-  prism: { n:'棱镜枢机', t:'战区守卫 · 在光束之间寻找空位', hp:3200, r:28, h:50, spd:94, dmg:22, col:'#9df4df', sprite:'hive', floating:true }
+  bulwark: { n:'铁壁哨卫', t:'战区守卫 · 离开震击圈，侧向躲开冲撞', hp:1050, r:30, h:52, spd:105, dmg:18, col:'#ffd067' },
+  prism: { n:'棱镜枢机', t:'战区守卫 · 在光束之间寻找空位', hp:3200, r:28, h:50, spd:94, dmg:22, col:'#9df4df' }
 };
 const GUARD_PHASES = {
   bulwark: { phases:[
@@ -298,37 +298,6 @@ function drawEncounterWave(g, h){
   g.globalAlpha = .84;
   g.lineWidth = 2;
   g.stroke();
-  g.restore();
-}
-
-function drawGuardDetails(g, b, x, y, fade=1){
-  if(!GUARD_BOSSES[b.kind] || fade <= 0) return;
-  g.save();
-  g.globalAlpha = fade;
-  g.translate(x, y);
-  const p = b.ph > 0;
-  if(b.kind === 'bulwark'){
-    g.scale(b.face, 1);
-    g.fillStyle = '#252821';
-    g.strokeStyle = '#ffe288';
-    g.lineWidth = 2;
-    g.beginPath();
-    g.moveTo(-20, -38); g.lineTo(5, -42); g.lineTo(28, -26); g.lineTo(18, -8); g.lineTo(-12, -12);
-    g.closePath(); g.fill(); g.stroke();
-    g.fillStyle = p ? '#ff7952' : '#d5b850';
-    for(let i=0;i<3;i++) g.fillRect(-10 + i * 8, -33 + i * 3, 4, 8);
-  } else {
-    g.lineWidth = 2;
-    for(let i=0;i<3;i++){
-      const phase = G.t * (p ? 1.8 : .92) + TAU * i / 3;
-      const dx = Math.cos(phase) * 31, dy = Math.sin(phase) * 14 - 30;
-      g.fillStyle = '#163746';
-      g.strokeStyle = p ? '#b9fff1' : '#6ae3ce';
-      g.beginPath();
-      g.moveTo(dx, dy - 9); g.lineTo(dx + 6, dy); g.lineTo(dx, dy + 9); g.lineTo(dx - 6, dy);
-      g.closePath(); g.fill(); g.stroke();
-    }
-  }
   g.restore();
 }
 
