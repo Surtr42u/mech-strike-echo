@@ -94,7 +94,7 @@ const SKILL_DEFS = [
   { id:'multi', n:'多重弹', ic:'⋔', c:'#ff9ad5', max:4,
     d:l=>'每次额外射出 ' + l + ' 发', ap:(s,l)=>{ s.extra += l; } },
   { id:'pierce', n:'穿透弹', ic:'➤', c:'#9dffc8', max:4,
-    d:l=>'可穿透 ' + l + ' 个敌人', ap:(s,l)=>{ s.pierce += l; } },
+    d:l=>'可穿透 ' + l + ' 个敌人' + WeaponLinks.talentHint('pierce'), ap:(s,l)=>{ s.pierce += l; } },
   { id:'crit', n:'致命', ic:'✧', c:'#ffe58a', max:5,
     d:l=>'暴击率 +' + (9*l) + ' 个百分点，上限 95%', ap:(s,l)=>{ s.crit += .09*l; } },
   { id:'speed', n:'疾行', ic:'≡', c:'#a8e6ff', max:4,
@@ -112,7 +112,7 @@ const SKILL_DEFS = [
   { id:'thorns', n:'尖刺', ic:'✹', c:'#ffa08a', max:3,
     d:l=>'接触反伤 ' + (10*l) + ' 点', ap:(s,l)=>{ s.thorns += 10*l; } },
   { id:'burn', n:'燃烧弹', ic:'☄', c:'#ff8f5c', max:4,
-    d:l=>'命中附加灼烧 ' + (3.2*l).toFixed(1) + '/秒', ap:(s,l)=>{ s.burn += l; } },
+    d:l=>'命中附加灼烧 ' + (3.2*l).toFixed(1) + '/秒' + WeaponLinks.talentHint('burn'), ap:(s,l)=>{ s.burn += l; } },
   { id:'freeze', n:'冻结弹', ic:'❄', c:'#9fe8ff', max:4,
     d:l=>'命中基础减速 ' + Math.round(100 * Math.min(PROJECTILE_EFFECTS.slowLimit,PROJECTILE_EFFECTS.slowPerLevel*l)) + '%', ap:(s,l)=>{ s.freeze += l; } },
   { id:'blast', n:'爆裂弹', ic:'✱', c:'#ffc46a', max:4,
@@ -192,7 +192,7 @@ const WEAPONS = [
     sk:{ n:'推进冲击', ic:'»', cd:11, t:'向前突进，在落点释放近身冲击波' } },
 
   { id:'sniper', class:'precise', n:'磁轨炮', ic:'⊹', c:'#c8a0ff', price:1000, tag:'远程',
-    desc:'直线高速重弹，可贯穿 3 次。每次贯穿后伤害递减',
+    desc:'直线高速重弹，可贯穿 3 次。每次贯穿后伤害递减。' + WeaponLinks.weaponHint('sniper'),
     dmg:33, rate:1.0, spd:920, count:1, spread:.008, pierce:3, crit:.16, br:2.4, life:1.6,
     sk:{ n:'贯穿射线', ic:'✦', cd:16, t:'朝瞄准方向射出必定暴击的贯穿光束' } },
 
@@ -228,7 +228,7 @@ const WEAPONS = [
     sk:{ n:'枪管过热', ic:'✺', cd:14, t:'5 秒射速 ×2.8、穿透 +2' } },
 
   { id:'flamer', class:'elemental', n:'火焰喷射', ic:'≈', c:'#ff7a3c', price:1400, tag:'近战', reach:250,
-    desc:'短程持续喷火，贯穿并点燃命中的敌人',
+    desc:'短程持续喷火，贯穿并点燃命中的敌人。' + WeaponLinks.weaponHint('flamer'),
     dmg:3.2, rate:.05, spd:330, count:1, spread:.30, pierce:4, crit:.03, br:5.5, life:.36,
     sk:{ n:'烈焰吐息', ic:'✷', cd:12, t:'前方火墙，命中点燃 3 秒' } },
 
@@ -3031,6 +3031,7 @@ function newRun(){
   G.buff.rad = G.buff.luck = G.buff.weak = 0;
   G.waveEliteBoost = 0; G._event = null;
   G.selfBurnT = 0;
+  G.emberSpreadAt = -Infinity;
   G.wbuff.focus = 0; G.wbuff.heat = 0;
   G.cbuff.rate = G.cbuff.spd = G.cbuff.dmg = G.cbuff.armor = G.cbuff.extra = 0;
   G.weapon = ownWep(PROF.weapon) ? PROF.weapon : 'rifle';
@@ -3347,6 +3348,8 @@ function fire(target){
   p.shotAngle = ang;
 
   const n = w.count + s.extra;
+  const railFork=w.id==='sniper' && WeaponLinks.railEnabled();
+  const emberSeed=w.id==='flamer' && WeaponLinks.emberEnabled();
   const step = (w.count > 1 ? w.spread : .075) * s.spreadMul;
   const sp = w.spd * (oved ? 1.1 : 1) * s.bspdMul;
   for(let i=0;i<n;i++){
@@ -3364,6 +3367,7 @@ function fire(target){
       hits:[], life:(w.life + s.lifeAdd) * s.gunRangeMul, crit:Math.random() < s.crit,
       r:w.br * s.bigMul, over:oved, w:w.id, boom:!!w.boom, fuse:!!w.boom,
       homing:w.id === 'micromissile', turn:w.id === 'micromissile' ? 5 : 0,
+      railFork:railFork && i===Math.floor(n/2), emberSeed,
       splitDamage:w.id==='micromissile' && i===0 && s.barrage>0 ? s.dmg * weakM * .45 * s.barragePower : 0
     };
     if(w.boom) lobProjectile(bullet, t);
@@ -3379,7 +3383,7 @@ function fire(target){
       vx:Math.cos(a) * sp, vy:Math.sin(a) * sp,
       dmg:s.dmg * .8 * weakM * s.barragePower, pierce:w.pierce + s.pierce, hits:[], life:w.life * .9 * s.gunRangeMul,
       crit:Math.random() < s.crit * .7, r:w.br * s.bigMul * .8,
-      over:oved, w:w.id, boom:false, barrage:true
+      over:oved, w:w.id, boom:false, barrage:true, emberSeed
     });
   }
   for(let i=0;i<(w.id === 'shotgun' ? 6 : 3);i++){
@@ -3660,6 +3664,8 @@ function weaponSkill(){
   } else if(w.id === 'flamer'){
     /* 烈焰吐息：扇形火墙 + 点燃 */
     const a0 = aimAngle(p, 420);
+    const emberSeed=WeaponLinks.emberEnabled();
+    const source=emberSeed ? WeaponLinks.flameSource : null;
     for(let i=0;i<38;i++){
       const a = a0 + rnd(-.55, .55);
       const sp = rnd(230, 400);
@@ -3668,7 +3674,7 @@ function weaponSkill(){
         vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
         dmg: scaleSkill(G.st.dmg * 1.15), pierce: 3, hits: [], life: 200 / sp,
         crit: false, r: 5.5 + rnd(0, 2),
-        over: false, w: 'flamer', boom: false
+        over: false, w: 'flamer', boom: false, emberSeed
       });
     }
     for(let i=0;i<G.enemies.length;i++){
@@ -3676,9 +3682,9 @@ function weaponSkill(){
       if(e.dead) continue;
       let d = Math.atan2(e.y - p.y, e.x - p.x) - a0;
       d = Math.atan2(Math.sin(d), Math.cos(d));
-      if(Math.abs(d) < .8 && dst(p.x, p.y, e.x, e.y) < 250) setBurn(e, 3.2, scaleSkill(9));
+      if(Math.abs(d) < .8 && dst(p.x, p.y, e.x, e.y) < 250) setBurn(e,3.2,scaleSkill(9),source);
     }
-    if(G.boss && !G.boss.dead && dst(p.x, p.y, G.boss.x, G.boss.y) < 270) setBurn(G.boss, 3.2, scaleSkill(26));
+    if(G.boss && !G.boss.dead && dst(p.x, p.y, G.boss.x, G.boss.y) < 270) setBurn(G.boss,3.2,scaleSkill(26),source);
     addFlash(p.x + Math.cos(a0) * 60, p.y + Math.sin(a0) * 60, 170, '#ff7a3c', .6);
     G.shake = 7;
     banner(w.sk.n, w.sk.t, 1.0);
@@ -3857,10 +3863,9 @@ function updateWeapon(dt){
 }
 
 /* ══════════ 角色必杀（E）══════════ */
-function setBurn(unit, dur, dps){
+function setBurn(unit,dur,dps,source=null){
   if(!unit || unit.dead) return;
-  unit.burnT = Math.max(unit.burnT || 0, dur);
-  unit.burnDps = Math.max(unit.burnDps || 0, dps * G.st.burnMul);
+  WeaponLinks.applyBurn(unit,dur,dps*G.st.burnMul,source);
 }
 
 const CSK = {
@@ -4344,11 +4349,11 @@ function applyDamage(e, dmg, crit, hx, hy, opt){
       life: .55, max: .55, col: r.crit ? '#ffe58a' : '#ffffff', vy: -40, big: r.crit
     });
   }
-  if(e.hp <= 0) killEnemy(e,source === 'player');
+  if(e.hp <= 0) killEnemy(e,source === 'player',opt?.emberSeed);
   else SFX.hit(true);
 }
 
-function killEnemy(e, playerKill = true){
+function killEnemy(e, playerKill = true, emberSeed = false){
   if(e.dead) return;
   e.dead = true;
   e.deadT = 0;
@@ -4358,6 +4363,7 @@ function killEnemy(e, playerKill = true){
     boom(e.x, e.y, false);
     return;
   }
+  if(emberSeed) WeaponLinks.spreadEmbers(e);
   G.kills++;
   G.score += Math.round(e.xp * 14);
   G.combo++; G.comboT = 2.2;
@@ -4692,8 +4698,7 @@ function applyItem(id){
 
 function poison(unit, dur, dps){
   if(!unit || unit.dead) return;
-  unit.burnT = Math.max(unit.burnT || 0, dur);
-  unit.burnDps = Math.max(unit.burnDps || 0, dps);
+  WeaponLinks.applyBurn(unit,dur,dps,'venom');
   unit.venom = true;
 }
 
@@ -5208,13 +5213,12 @@ function updateEnemies(dt){
     if(e.slowT > 0) e.slowT -= dt;
     if(e.stun > 0) e.stun -= dt;
     if(e.burnT > 0){
-      e.burnT -= dt;
-      e.hp -= e.burnDps * dt;
+      const emberSeed=WeaponLinks.tickBurn(e,dt);
       if(Math.random() < dt * 8){
         G.parts.push({ x:e.x + rnd(-5,5), y:e.y - rnd(2,14), vx:rnd(-10,10), vy:-rnd(20,50),
           life:.4, max:.4, col: e.venom ? '#a8e05a' : '#ff8f5c', r:1.5 });
       }
-      if(e.hp <= 0){ killEnemy(e); continue; }
+      if(e.hp <= 0){ killEnemy(e,true,emberSeed); continue; }
     }
 
     const dx = p.x - e.x, dy = p.y - e.y;
@@ -5522,8 +5526,7 @@ function updateBoss(dt){
   if(b.slowT > 0) b.slowT -= dt;
   if(b.stun > 0){ b.stun -= dt; return; }
   if(b.burnT > 0){
-    b.burnT -= dt;
-    b.hp -= b.burnDps * dt;
+    WeaponLinks.tickBurn(b,dt);
     if(Math.random() < dt * 10){
       G.parts.push({ x:b.x + rnd(-18,18), y:b.y - rnd(0,22), vx:rnd(-8,8), vy:-rnd(15,40),
         life:.45, max:.45, col: b.venom ? '#a8e05a' : '#ff8f5c', r:2 });

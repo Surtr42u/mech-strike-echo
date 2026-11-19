@@ -126,8 +126,8 @@ class ProjectileField {
     let nearest = null;
     let best = range * range;
     this.query(x, y, x, y, range, p => {
-      if(accept && !accept(p.e)) return;
       const px = p.x + p.dx * time, py = p.y + p.dy * time;
+      if(accept && !accept(p.e,px,py)) return;
       const distance = d2(x, y, px, py);
       if(distance < best){
         best = distance;
@@ -149,7 +149,7 @@ function projectileDuration(b, step){
 function sweepProjectile(field, b, x0, y0, x1, y1, start, end, contacts, duration=0){
   contacts.length = 0;
   field.query(x0, y0, x1, y1, b.r, p => {
-    if(p.e===b.splitOrigin || b.hits.includes(p.e) || (p.e === G.boss && b.bossHit)) return;
+    if(p.e===b.splitOrigin || b.hits.includes(p.e) || b.railTargets?.includes(p.e) || (p.e === G.boss && b.bossHit)) return;
     const dx0 = x0 - p.x - p.dx * start, dy0 = y0 - p.y - p.dy * start;
     const dx1 = x1 - p.x - p.dx * end, dy1 = y1 - p.y - p.dy * end;
     const radius = b.r + p.e.r;
@@ -160,7 +160,7 @@ function sweepProjectile(field, b, x0, y0, x1, y1, start, end, contacts, duratio
   if(contacts.length > 1) contacts.sort((a, b) => a.t - b.t);
   for(const contact of contacts){
     const e = contact.e;
-    if(!projectileTargetActive(e) || (e === G.boss && b.bossHit)) continue;
+    if(!projectileTargetActive(e) || b.railTargets?.includes(e) || (e === G.boss && b.bossHit)) continue;
     b.x = lerp(x0, x1, contact.t);
     b.y = lerp(y0, y1, contact.t);
     b.hits.push(e);
@@ -308,12 +308,14 @@ function onBulletHit(b, e, field, time, altitude){
   const s = G.st;
   hitFX(b.x, altitude === undefined ? b.y - 4 : b.y, Math.atan2(b.vy, b.vx),
     b.boom ? '#ffb060' : '#ffe6c0', !!b.boom, altitude);
-  hitProjectileTarget(b, e, b.dmg, b.crit, b.x, b.y, { pct:b.pct || 0, pierceIndex:b.hits.length - 1 });
+  hitProjectileTarget(b,e,b.dmg,b.crit,b.x,b.y,{pct:b.pct || 0,pierceIndex:b.hits.length-1,emberSeed:b.emberSeed});
+  if(b.railFork) WeaponLinks.splitRail(b,field,time);
 
   const xu = s.elemMul > 1 && Math.random() < (s.elemMul - 1) ? s.elemMul : 1;
   if(b.boom) projectileExplosion(b, field, time, e, altitude);
   if(b.splitDamage) splitMissile(b, e, field, time, altitude);
-  if(b.w === 'flamer'){ setBurn(e, 2.6, 6 * xu); }
+  const flameSource=b.emberSeed ? WeaponLinks.flameSource : null;
+  if(b.w === 'flamer'){ setBurn(e,2.6,6*xu,flameSource); }
   else if(b.w === 'acid'){ setBurn(e, 3.0, 5 * xu); projectileSplash(b, field, time, 26, b.dmg * .38, e); }
   else if(b.w === 'frost'){
     e.slowT = Math.max(e.slowT || 0, 1.6 * xu);
@@ -324,7 +326,7 @@ function onBulletHit(b, e, field, time, altitude){
     G.rings.push({ x:b.x, y:b.y, r:6, max:radius, life:.26, maxLife:.26, col:'#c08cff', w:2 });
   }
   const effects = PROJECTILE_EFFECTS;
-  if(s.burn > 0) setBurn(e,effects.burnSeconds,effects.burnPerLevel * s.burn * xu);
+  if(s.burn > 0) setBurn(e,effects.burnSeconds,effects.burnPerLevel*s.burn*xu,flameSource);
   if(s.freeze > 0){
     e.slowT = effects.slowSeconds;
     e.slowAmt = Math.min(effects.slowLimit,effects.slowPerLevel * s.freeze * xu);
