@@ -4,6 +4,10 @@
 const PROJECTILE_CELL = 64;
 const HOMING_STEP = 1 / 60;
 const SUBMUNITION_LIFE = .86;
+const PROJECTILE_EFFECTS = {
+  burnSeconds:2.4, burnPerLevel:3.2, slowSeconds:1.3, slowPerLevel:.22, slowLimit:.78,
+  blastBaseRadius:22, blastRadiusPerLevel:6, blastShare:.42
+};
 
 function projectileContact(x0, y0, x1, y1, radius){
   const c = x0 * x0 + y0 * y0 - radius * radius;
@@ -319,11 +323,15 @@ function onBulletHit(b, e, field, time, altitude){
     projectileSplash(b, field, time, radius, b.dmg * .55, e);
     G.rings.push({ x:b.x, y:b.y, r:6, max:radius, life:.26, maxLife:.26, col:'#c08cff', w:2 });
   }
-  if(s.burn > 0) setBurn(e, 2.4, 3.2 * s.burn * xu);
-  if(s.freeze > 0){ e.slowT = 1.3; e.slowAmt = Math.min(.78, .22 * s.freeze * xu); }
+  const effects = PROJECTILE_EFFECTS;
+  if(s.burn > 0) setBurn(e,effects.burnSeconds,effects.burnPerLevel * s.burn * xu);
+  if(s.freeze > 0){
+    e.slowT = effects.slowSeconds;
+    e.slowAmt = Math.min(effects.slowLimit,effects.slowPerLevel * s.freeze * xu);
+  }
   if(s.blast > 0){
-    const radius = (22 + 6 * s.blast) * s.boomMul;
-    projectileSplash(b, field, time, radius, b.dmg * .42, e);
+    const radius = (effects.blastBaseRadius + effects.blastRadiusPerLevel * s.blast) * s.boomMul;
+    projectileSplash(b,field,time,radius,b.dmg * effects.blastShare,e);
     G.rings.push({ x:b.x, y:b.y, r:4, max:radius, life:.24, maxLife:.24, col:'#ffc46a', w:2 });
   }
   if(s.chain > 0 || (b.w === 'arc' && !b.barrage)) projectileChain(b, e, field, time);

@@ -11,6 +11,8 @@ const HEXES = (function(){
   const reactor = { power:38, seconds:8, refund:40, lockedDamage:32 };
   const link = { power:34, percent:45, interval:2.6 };
   const guard = { hp:30, layers:3, interval:7 };
+  const thermal = { levels:2, multiplier:1.35 };
+  const freezeLevels = 2, armorBonus = .22;
   const goldRetention = 80, prismRetention = 90;
   const cards = {
     relay: { tier:'silver', n:'速射中继', ic:'»', d:'主武器射速 +14%。', apply:s => { s.rateMul *= 1.14; } },
@@ -24,7 +26,7 @@ const HEXES = (function(){
 
     stipend: { tier:'gold', n:'军费补助', ic:'▤', d:'立即获得 600 补给站积分，每局至多领取一次。', enter:() => grantPoints(600,'军费补助') },
     tank: { tier:'gold', n:'坦克引擎', ic:'▣',
-      d:`生命上限 +${tank.hp}，减伤 +${tank.armor} 个百分点。每击破 ${tank.kills} 名普通或精英敌人，上限再 +${tank.stackHp}、体型 +${tank.stackSize}%，最多 ${tank.limit} 层。`,
+      d:`生命上限 +${tank.hp}，减伤 +${tank.armor} 个百分点。每击破 ${tank.kills} 名普通或精英敌人，上限再 +${tank.stackHp}、体型 +${tank.stackSize}%。叠满 ${tank.limit} 层共 +${tank.hp+tank.limit*tank.stackHp} 上限、+${tank.limit*tank.stackSize}% 体型。`,
       risk:`移动速度 -${tank.slow}%，体型越大越难躲开攻击。`,
       apply:(s,state) => {
         const stacks = tankStacks(state);
@@ -34,9 +36,23 @@ const HEXES = (function(){
         s.spdMul *= 1 - tank.slow / 100;
       } },
     scatter: { tier:'gold', n:'散射扩编', ic:'≋', d:'每次发射额外 +2 枚散射弹，散射弹伤害 +18%。', apply:s => { s.barrageExtra += 2; s.barragePower *= 1.18; } },
-    thermal: { tier:'gold', n:'热蚀涂层', ic:'☄', d:'弹丸命中附加两级灼烧，弹丸与主动技能施加的灼烧伤害 +35%。', apply:s => { s.burn += 2; s.burnMul *= 1.35; } },
-    fieldArmor: { tier:'gold', n:'偏转装甲', ic:'⛨', d:'减伤 +22 个百分点，共用常规减伤上限。', apply:s => { s.armor += .22; } },
-    freeze: { tier:'gold', n:'冷凝弹', ic:'❄', d:'弹丸命中减速，叠加两级冻结效果。', apply:s => { s.freeze += 2; } },
+    thermal: { tier:'gold', n:'热蚀涂层', ic:'☄',
+      get d(){
+        const { burnPerLevel, burnSeconds } = PROJECTILE_EFFECTS;
+        const dps = (burnPerLevel * thermal.levels * thermal.multiplier).toFixed(2);
+        return `弹丸附加灼烧，单独生效每秒 ${dps} 伤害、持续 ${burnSeconds} 秒。弹丸与主动技能的灼烧伤害 +${Math.round((thermal.multiplier-1)*100)}%。`;
+      },
+      apply:s => { s.burn += thermal.levels; s.burnMul *= thermal.multiplier; } },
+    fieldArmor: { tier:'gold', n:'偏转装甲', ic:'⛨',
+      get d(){ return `减伤 +${Math.round(armorBonus*100)} 个百分点，常规减伤上限 ${Math.round(ARMOR_LIMIT*100)}%。`; },
+      apply:s => { s.armor += armorBonus; } },
+    freeze: { tier:'gold', n:'冷凝弹', ic:'❄',
+      get d(){
+        const { slowSeconds, slowPerLevel, slowLimit } = PROJECTILE_EFFECTS;
+        const percent = 100 * slowPerLevel * freezeLevels;
+        return `弹丸命中减速 ${Math.round(percent)}%，持续 ${slowSeconds} 秒。元素共鸣强化命中为 ${Math.round(percent*ELEMENTAL_HIT_BOOST)}%，叠加上限 ${Math.round(slowLimit*100)}%。`;
+      },
+      apply:s => { s.freeze += freezeLevels; } },
     overdrive: { tier:'gold', n:'战术超频', ic:'⟫', d:'技能强度 +20%，武器技能与角色必杀冷却时间 -14%。', apply:s => { s.skillPower *= 1.20; s.skillCooldown *= .86; } },
     breach: { tier:'gold', n:'破阵信标', ic:'➤', d:`主武器穿透 +2。每穿过一名敌人后，至少保留上一击的 ${goldRetention}% 伤害。`,
       apply:s => { s.pierce += 2; s.pierceRetention = Math.max(s.pierceRetention,goldRetention / 100); } },
@@ -56,7 +72,12 @@ const HEXES = (function(){
       apply:s => { s.bodyScale += .30; s.dmgPct += .36; s.maxHp += 35; } },
     mystic: { tier:'prism', n:'秘术冲拳', ic:'✷',
       d:`攻击或技能造成有效伤害时，武器技能与角色必杀各返还 ${punch.refund} 秒冷却，最多每 ${punch.interval} 秒触发一次。` },
-    shock: { tier:'prism', n:'风暴电容', ic:'⌁', d:'弹丸命中多传导 2 次链电，并附加爆裂。', apply:s => { s.chain += 2; s.blast++; } },
+    shock: { tier:'prism', n:'风暴电容', ic:'⌁',
+      get d(){
+        const { blastBaseRadius, blastRadiusPerLevel, blastShare } = PROJECTILE_EFFECTS;
+        return `弹丸命中多传导 2 次链电，附加爆裂。初始半径 ${blastBaseRadius+blastRadiusPerLevel}，对附近敌人造成 ${Math.round(blastShare*100)}% 弹丸基础伤害。`;
+      },
+      apply:s => { s.chain += 2; s.blast++; } },
     arsenal: { tier:'prism', n:'自主武库', ic:'◉', d:'新增 2 台环绕机炮，每 7 秒部署额外 1 座哨戒炮。', apply:s => { s.drone += 2; s.turret++; } },
     unstable: { tier:'prism', n:'不稳定火控', ic:'◆', d:'伤害 +48%。', risk:'受到伤害 +20%。', apply:s => { s.dmgPct += .48; s.dmgTaken += .20; } },
     overclock: { tier:'prism', n:'洪流协议', ic:'≋', d:'主武器射速 +42%，弹丸体积 +30%。', apply:s => { s.rateMul *= 1.42; s.bigMul *= 1.30; } },

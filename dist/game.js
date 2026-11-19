@@ -2930,6 +2930,8 @@ const joy = { active:false, id:-1, bx:0, by:0, nx:0, ny:0, mag:0 };
    dmg    : 固定伤害（武器基础 + 技能的加法伤害）
    dmgPct : 所有百分比伤害加成（角色被动 / 武器共鸣 / 临时 buff），最后一次性乘算
    其余 Mul/Add 字段供武器类别共鸣使用 */
+const ARMOR_LIMIT = .62;
+const ELEMENTAL_HIT_BOOST = 1.25;
 function baseStats(){
   const w = WEP();
   return {
@@ -2959,7 +2961,7 @@ const RESONANCE = {
   precise:   { n:'精准共鸣', c:'#c8a0ff', t:'暴击伤害 2.5×，暴击率 -5%',
                fn:function(s){ s.critMul = Math.max(s.critMul, 2.5); s.crit -= .05; } },
   elemental: { n:'元素共鸣', c:'#ff9a4c', t:'元素触发率 +25%，直接伤害 -8%',
-               fn:function(s){ s.elemMul *= 1.25; s.dmgPct -= .08; } },
+               fn:function(s){ s.elemMul *= ELEMENTAL_HIT_BOOST; s.dmgPct -= .08; } },
   tech:      { n:'科技共鸣', c:'#b9f2ff', t:'穿透 +1，弹速 -10%',
                fn:function(s){ s.pierce += 1; s.bspdMul *= .90; } }
 };
@@ -4416,7 +4418,7 @@ function hurtPlayer(dmg){
     SFX.hit();
     return;
   }
-  const red = 1 - clamp(G.st.armor, 0, .62);
+  const red = 1 - clamp(G.st.armor, 0, ARMOR_LIMIT);
   p.hp -= dmg * red * (1 + (G.st.dmgTaken || 0));
   p.inv = .75;
   p.hurtT = .3;
