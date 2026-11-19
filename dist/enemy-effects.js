@@ -15,6 +15,8 @@ const EnemyEffects = (() => {
     shock:['#ffc482',.35], phase:['#c5aeff',.23]
   };
   const burstLimit = 42;
+  const compactShots = new Map();
+  const stampRadius = 8, stampX = 46, stampY = 12;
   const events = Array.from({length:burstLimit},()=>({at:-Infinity}));
   let cursor = 0;
 
@@ -113,6 +115,35 @@ const EnemyEffects = (() => {
       g.beginPath(); g.ellipse(x,y+BULLET_H,r*.8,Math.max(1,r*.34),0,0,TAU); g.fill();
     }
     g.translate(x,y); g.rotate(angle);
+    if(!detail){
+      // Dense volleys share a small projectile sprite. Position, angle and radius stay per bullet.
+      const stamp = compactShot(type,accent);
+      const scale = r/stampRadius;
+      g.globalAlpha = 1;
+      g.drawImage(stamp,-stampX*scale,-stampY*scale,stamp.width*scale,stamp.height*scale);
+    } else {
+      const spin = type === 'glyph' ? G.t*4+b.x*.01 : G.t*7+b.x*.024;
+      paintShot(g,type,p,accent,r,tail,true,spin);
+    }
+    g.restore();
+  }
+
+  function compactShot(type,accent){
+    const key = type+'|'+accent;
+    let stamp = compactShots.get(key);
+    if(stamp) return stamp;
+    stamp = document.createElement('canvas');
+    stamp.width = 60; stamp.height = 24;
+    const g = stamp.getContext('2d');
+    g.translate(stampX,stampY);
+    const p = profiles[type];
+    paintShot(g,type,p,accent,stampRadius,stampRadius*p.tail*.7,false,0);
+    if(compactShots.size>=64) compactShots.delete(compactShots.keys().next().value);
+    compactShots.set(key,stamp);
+    return stamp;
+  }
+
+  function paintShot(g,type,p,accent,r,tail,detail,spin){
     g.strokeStyle = p.edge;
     g.globalAlpha = .76;g.lineWidth = Math.max(1.3,r*.56);
     g.beginPath();g.moveTo(-tail*.80,0);g.lineTo(0,0);g.stroke();
@@ -130,7 +161,7 @@ const EnemyEffects = (() => {
     if(type === 'needle' || type === 'slug' || type === 'drone'){
       g.beginPath(); g.moveTo(r,0); g.lineTo(-r*.2,-r*.82); g.lineTo(-r,0); g.lineTo(-r*.2,r*.82); g.closePath();
     } else if(type === 'glyph'){
-      g.rotate(reducedEffects ? 0 : G.t*4+b.x*.01);
+      g.rotate(spin);
       diamond(g,0,0,r,1,.94);
     } else {
       g.beginPath(); g.arc(0,0,r,0,TAU);
@@ -146,12 +177,10 @@ const EnemyEffects = (() => {
     } else {
       g.beginPath(); g.arc(r*.12,-r*.18,Math.max(.70,r*.34),0,TAU); g.fill();
       if(type === 'seeker' || type === 'fuse'){
-        const spin = reducedEffects ? 0 : G.t*7+b.x*.024;
         g.strokeStyle = accent; g.lineWidth = .9;
         g.beginPath(); g.arc(0,0,r+1.5,spin,spin+1.3); g.stroke();
       }
     }
-    g.restore();
   }
 
   function fixedRing(g,r,color,fill){
