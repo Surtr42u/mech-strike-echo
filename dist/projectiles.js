@@ -3,6 +3,7 @@
 /* Projectile coordinates and radii are in the arena plane. */
 const PROJECTILE_CELL = 64;
 const HOMING_STEP = 1 / 60;
+const SUBMUNITION_LIFE = .86;
 
 function projectileContact(x0, y0, x1, y1, radius){
   const c = x0 * x0 + y0 * y0 - radius * radius;
@@ -27,6 +28,7 @@ function lobProjectile(b, target){
 }
 
 function projectileAltitude(b, life = b.life){
+  if(b.splitAltitude !== undefined) return lerp(b.splitAltitude,BULLET_H,clamp((SUBMUNITION_LIFE-life)/.2,0,1));
   if(!b.arc) return BULLET_H;
   const t = clamp(life - b.landAt, 0, b.arc) / b.arc;
   const progress = 1 - t;
@@ -143,12 +145,12 @@ function projectileDuration(b, step){
 function sweepProjectile(field, b, x0, y0, x1, y1, start, end, contacts, duration=0){
   contacts.length = 0;
   field.query(x0, y0, x1, y1, b.r, p => {
-    if(b.hits.includes(p.e) || (p.e === G.boss && b.bossHit)) return;
+    if(p.e===b.splitOrigin || b.hits.includes(p.e) || (p.e === G.boss && b.bossHit)) return;
     const dx0 = x0 - p.x - p.dx * start, dy0 = y0 - p.y - p.dy * start;
     const dx1 = x1 - p.x - p.dx * end, dy1 = y1 - p.y - p.dy * end;
     const radius = b.r + p.e.r;
     let t = projectileContact(dx0, dy0, dx1, dy1, radius);
-    if(t !== null && b.arc) t = aerialContact(b, p.e, t, duration, dx0, dy0, dx1, dy1, radius);
+    if(t !== null && (b.arc || b.splitAltitude!==undefined)) t = aerialContact(b, p.e, t, duration, dx0, dy0, dx1, dy1, radius);
     if(t !== null) contacts.push({ e:p.e, t:t });
   });
   if(contacts.length > 1) contacts.sort((a, b) => a.t - b.t);
@@ -158,7 +160,7 @@ function sweepProjectile(field, b, x0, y0, x1, y1, start, end, contacts, duratio
     b.x = lerp(x0, x1, contact.t);
     b.y = lerp(y0, y1, contact.t);
     b.hits.push(e);
-    const altitude = b.arc ? projectileAltitude(b, b.life - duration * contact.t) : undefined;
+    const altitude = b.arc || b.splitAltitude!==undefined ? projectileAltitude(b, b.life - duration * contact.t) : undefined;
     onBulletHit(b, e, field, lerp(start, end, contact.t), altitude);
     if(b.pierce <= 0) return false;
     b.pierce--;
@@ -180,7 +182,8 @@ function advancePlayerProjectile(b, dt, field, contacts){
     const step = b.homing ? Math.min(dt - elapsed, HOMING_STEP) : dt;
     const start = dt ? elapsed / dt : 0;
     if(b.homing){
-      const target = field.nearest(b.x, b.y, 300, start);
+      const target = field.nearest(b.x, b.y, 300, start,
+        b.seekTarget ? unit => unit===b.seekTarget : undefined);
       if(target){
         const current = Math.atan2(b.vy, b.vx);
         const aim = Math.atan2(target.y - b.y, target.x - b.x);
@@ -262,6 +265,24 @@ function projectileExplosion(b, field, time, skip, altitude){
   if(!skip) addBurn(b.x, b.y, 26);
 }
 
+function splitMissile(parent, hit, field, time, altitude){
+  const damage=parent.splitDamage;
+  parent.splitDamage=0;
+  let first=null;
+  for(let index=0;index<2;index++){
+    const target=field.nearest(parent.x,parent.y,210,time,unit=>unit!==hit && unit!==first);
+    if(!target) break;
+    first=target.e;
+    const angle=Math.atan2(target.y-parent.y,target.x-parent.x)+(index===0?-.27:.27);
+    G.bullets.push({
+      x:parent.x,y:parent.y,vx:Math.cos(angle)*385,vy:Math.sin(angle)*385,
+      dmg:damage,pierce:0,hits:[],r:2.35,life:SUBMUNITION_LIFE,crit:false,
+      w:'micromissile',barrage:true,homing:true,turn:9,seekTarget:target.e,splitOrigin:hit,
+      splitAltitude:altitude ?? BULLET_H
+    });
+  }
+}
+
 function projectileChain(b, e, field, time){
   const isArc = b.w === 'arc' && !b.barrage;
   const jumps = G.st.chain + (isArc ? 2 : 0);
@@ -287,6 +308,7 @@ function onBulletHit(b, e, field, time, altitude){
 
   const xu = s.elemMul > 1 && Math.random() < (s.elemMul - 1) ? s.elemMul : 1;
   if(b.boom) projectileExplosion(b, field, time, e, altitude);
+  if(b.splitDamage) splitMissile(b, e, field, time, altitude);
   if(b.w === 'flamer'){ setBurn(e, 2.6, 6 * s.burnMul * xu); }
   else if(b.w === 'acid'){ setBurn(e, 3.0, 5 * s.burnMul * xu); projectileSplash(b, field, time, 26, b.dmg * .38, e); }
   else if(b.w === 'frost'){

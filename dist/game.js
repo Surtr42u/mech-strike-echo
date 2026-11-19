@@ -128,7 +128,7 @@ const SKILL_DEFS = [
   { id:'boom', n:'回旋刃', ic:'✦', c:'#9dffd8', max:3,
     d:l=>'投出回旋刃 ×' + l, ap:(s,l)=>{ s.boom += l; } },
   { id:'barrage', n:'弹幕风暴', ic:'≋', c:'#ff9d5c', max:3,
-    d:l=>'每次射击额外 +' + (l*2) + ' 发子弹（散射）', ap:(s,l)=>{ s.barrage += l; } },
+    d:l=>'每次射击额外 +' + (l*2) + ' 发散射弹' + (G.weapon==='micromissile'?'；导弹直击后分导追敌':''), ap:(s,l)=>{ s.barrage += l; } },
   { id:'gigantism', n:'巨力', ic:'▦', c:'#ff6a8a', max:99,
     d:l=>'子弹体积 +' + (12*l) + '%（易命中）', ap:(s,l)=>{ s.bigMul += .12*l; } },
   { id:'fleet', n:'疾风', ic:'»', c:'#8effc0', max:99,
@@ -299,7 +299,7 @@ const WEAPONS = [
     sk:{ n:'极寒喷发', ic:'❅', cd:16, t:'半径 190 冻结并碎冰', g:'nova' } },
 
   { id:'micromissile', class:'heavy', n:'微型导弹', ic:'◉', c:'#ffa070', price:2700, tag:'爆裂',
-    desc:'弹头在飞行中追踪敌人，命中或燃尽时爆炸',
+    desc:'追踪弹头命中或落地爆炸。持有「弹幕风暴」后，主弹直击可分出两枚小导弹，各追一个附近目标。',
     dmg:10, rate:.55, spd:380, count:1, spread:.05, pierce:0, crit:.04, br:4.4, life:1.4, boom:true,
     sk:{ n:'齐射饱和', ic:'✹', cd:13, t:'齐射 8 枚追踪导弹，爆炸波及附近敌人', g:'salvo', count:8 } },
 
@@ -3350,7 +3350,8 @@ function fire(target){
       pierce:w.pierce + s.pierce + (focus ? 2 : 0) + (heat ? 2 : 0),
       hits:[], life:(w.life + s.lifeAdd) * s.gunRangeMul, crit:Math.random() < s.crit,
       r:w.br * s.bigMul, over:oved, w:w.id, boom:!!w.boom, fuse:!!w.boom,
-      homing:w.id === 'micromissile', turn:w.id === 'micromissile' ? 5 : 0
+      homing:w.id === 'micromissile', turn:w.id === 'micromissile' ? 5 : 0,
+      splitDamage:w.id==='micromissile' && i===0 && s.barrage>0 ? s.dmg * weakM * .45 * s.barragePower : 0
     };
     if(w.boom) lobProjectile(bullet, t);
     G.bullets.push(bullet);
@@ -8824,8 +8825,8 @@ function drawBulletBody(b, col){
     ctx.globalCompositeOperation = 'source-over';
 
   } else if(id === 'micromissile' && b.homing){
-    bTrail(br * 6, br * 2.6, '#ff6e38', .72);
-    ctx.fillStyle = '#ff864d';
+    bTrail(br * 6, br * 2.6, b.seekTarget?'#5ddbb5':'#ff6e38', .72);
+    ctx.fillStyle = b.seekTarget?'#95f3d4':'#ff864d';
     ctx.beginPath();
     ctx.moveTo(-br * 3, -br * 1.35);
     ctx.lineTo(0, -br * .50);
