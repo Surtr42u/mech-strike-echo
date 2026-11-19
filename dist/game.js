@@ -3029,6 +3029,7 @@ function newRun(tower = false){
   TALENTS.reset();
   CampaignStory.reset();
   StageEvents.reset();
+  TreasureSites.reset();
   G.energy = 0; G.revives = 1;
   G.mechId = PROF.mech;
   resetMech();
@@ -3107,6 +3108,7 @@ function setScene(i){
   if(G.p){ G.p.x = ARENA.w/2; G.p.y = ARENA.h/2 + 40; G.cam.x = G.p.x; G.cam.y = G.p.y; }
   if(!TOWER.active()) CampaignStory.begin(i);
   StageEvents.begin(i);
+  TreasureSites.prepare();
 }
 
 function waveDuration(w){ return CampaignBalance.at(G.stage,w).duration; }

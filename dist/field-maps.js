@@ -129,6 +129,7 @@ const FieldMaps = (() => {
     clearRails(G.p,playerRadius(9));
     for(const crate of G.crates) clearRails(crate,18);
     if(exchange) reformWaveEnemies(floorId());
+    TreasureSites.prepare();
   }
 
   function returnForEncounter(){
@@ -271,9 +272,8 @@ const FieldMaps = (() => {
     return null;
   }
   function interact() {
-    if(!field) return SectorClimate.activate();
     const use=nearby();
-    if(!use) return field.mine && !field.inside && SectorClimate.activate();
+    if(!use) return (!underground() && SectorClimate.activate()) || TreasureSites.interact();
     if(use.action==='power') {
       field.power=true; G.shield++; G.shieldFx=.8;
       banner('地表电闸已合上','获得一层护盾 · 东侧升降机已供电',1.45);
@@ -300,6 +300,16 @@ const FieldMaps = (() => {
     return true;
   }
   function paintHud() {
+    paintFieldHud();
+    const button=byId('fieldInteract');
+    if(!button.hidden) return;
+    const treasure=TreasureSites.nearby();
+    if(!treasure) return;
+    button.hidden=false;
+    putText(button,'R  打开'+TreasureSites.label(treasure));
+  }
+
+  function paintFieldHud() {
     if(G.p && G.mode === 'play') drawMap(byId('miniFieldMap'),false);
     const markers=SectorClimate.mapMarkers();
     const mineLabel = mineBelow() ? '冻晶矿井' : null;
@@ -345,6 +355,7 @@ const FieldMaps = (() => {
     ctx.fillStyle=lit?color:'#bdcbc9';ctx.fillText(label,0,-18);ctx.restore();
   }
   function draw() {
+    TreasureSites.draw(ctx);
     CampaignStory.drawBeacon();
     const portal = CampaignStory.visiblePortal();
     if(portal) drawEdgeGuide(portal,portal.color);
@@ -455,6 +466,8 @@ const FieldMaps = (() => {
     if(G.boss && !G.boss.dead) mark(G.boss,'#ff8573',size,'首领');
     const route=CampaignStory.visiblePortal() || CampaignStory.beacon();
     if(route) mark(route,route.color,size,route.name);
+    const treasure=TreasureSites.marker();
+    if(treasure) mark(treasure,treasure.color,size,treasure.name);
     g.lineWidth=detail?2:1;
     g.strokeStyle='#192122';g.fillStyle='#fff7da';
     g.beginPath();g.arc(x(G.p.x),y(G.p.y),detail?4:2.1,0,TAU);g.fill();g.stroke();

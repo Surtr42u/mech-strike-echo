@@ -120,7 +120,7 @@ const CampaignStory = (() => {
   }
 
   function clear(boss){
-    state.defeated = FieldMaps.safePoint(boss.x,boss.y,26);
+    state.defeated = TreasureSites.clearOfChest(FieldMaps.safePoint(boss.x,boss.y,26));
     openRoute();
     transmit(state.repaired ? state.sector.ready : state.sector.fallback);
   }

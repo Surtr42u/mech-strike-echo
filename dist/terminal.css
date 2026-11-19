@@ -336,6 +336,7 @@ button.wallet:hover{background:#3b3023;border-color:#a37c4e}
 .field-map-legend span:nth-child(2)::before{color:#f2c96e}
 .field-map-legend span:nth-child(3)::before{color:#d48d80}
 .field-map-legend span:nth-child(4)::before{color:#b7f0c6}
+.field-map-legend span:nth-child(5)::before{color:#f0c883}
 .wave-panel .field-transmission{display:block;color:#ecd8a9;font:600 .69rem/1.38 var(--sans);border-top:1px solid #b8a47649;margin:5px 0 0;padding-top:4px}
 .field-transmission[hidden]{display:none!important}
 #hudFieldGear,#fieldGearLog{color:#b3e3c1}
