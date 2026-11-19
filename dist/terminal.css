@@ -91,7 +91,6 @@ button.wallet:hover{background:#3b3023;border-color:#a37c4e}
 .section-bar h2>i{width:4px;height:15px;background:var(--amber)}
 .section-bar small,.record-heading small,.outfit-text em{font-size:.72rem;font-style:normal;color:#96a19a;letter-spacing:.09em;font-weight:500}
 .section-bar small{padding-left:2px}.rule{height:1px;background:var(--line);flex:1}
-.section-index{height:6px;width:27px;transform:skewX(-26deg);background:repeating-linear-gradient(90deg,#606c63 0 3px,transparent 3px 6px)}
 .loadout-grid{display:grid;grid-template-columns:1fr 1fr .85fr;gap:14px}
 .outfit-card,.record-card{min-width:0;min-height:98px;border:1px solid #394440;background:linear-gradient(110deg,#212a28,#192021 85%)}
 .outfit-card{padding:12px;display:flex;align-items:center;gap:16px;text-align:left;position:relative;transition:border-color .17s,background .17s}
@@ -133,6 +132,21 @@ button.wallet:hover{background:#3b3023;border-color:#a37c4e}
 .shop-detail h3{font-size:1.55rem;font-weight:800;margin:3px 0 4px}.detail-tag{font:.74rem var(--mono);letter-spacing:.09em;color:var(--pale)}
 .shop-detail>p,.shop-detail dd{font-size:.91rem;line-height:1.6;color:#c0c9c1}.shop-detail dl,.controls-list{margin:14px 0}
 .shop-detail dl>div{padding:9px 0;border-top:1px solid var(--line)}.shop-detail dt{color:#efd7af;font-size:.84rem;font-weight:700}.shop-detail dd{margin:3px 0 0;font-size:.86rem}.wide{width:100%}
+.loadout-modules{min-height:44px;max-width:60%;display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid #47574e;background:#1a2322;font-size:.8rem}
+.loadout-modules:hover{border-color:var(--pale)}.loadout-modules span{white-space:nowrap}.loadout-modules b{font-size:.73rem;color:var(--mint);text-align:left}
+.module-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+.module-item{padding:clamp(9px,1.25vw,18px);min-height:108px;gap:3px}
+.module-symbol{font-size:1.22rem;color:var(--pale);line-height:1.1;margin:0 3px 4px}
+.module-item small:last-child{margin-top:auto}
+.growth-comparison{display:grid;grid-template-columns:minmax(0,1.25fr) repeat(2,minmax(0,1fr));gap:8px;align-items:center;margin:14px 0 10px;padding:10px 0;border-block:1px solid var(--line)}
+.growth-comparison span{display:grid;gap:2px}.growth-stat-name{font-size:.82rem;color:#c0c9c1}
+.growth-comparison small,.weapon-grade>small{font-size:.72rem;color:var(--muted)}
+.growth-comparison strong{font-size:.92rem;color:var(--text)}.growth-comparison span:nth-child(3) strong{color:var(--mint)}
+.growth-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.shop-detail .growth-actions button,.shop-detail .weapon-grade button{min-height:44px;padding:7px 9px;font-size:.83rem;letter-spacing:0}
+.growth-actions .secondary:disabled{color:var(--muted);background:#1b2322;border-color:var(--line)}
+.weapon-grade{margin-top:13px}.weapon-grade h4{margin:0;font-size:.86rem;color:var(--pale)}.weapon-grade .growth-comparison{margin-top:5px}
+#hudGrowth{color:var(--pale);flex-basis:100%}
 /* In-game and system dialogs */
 .veil{display:flex;align-items:center;justify-content:center;padding:18px max(16px,var(--safe-r)) max(16px,var(--safe-b)) max(16px,var(--safe-l));background:#07100ed9;overflow:auto}
 .menu-sheet,.terminal-dialog{border:1px solid #566154;border-top:3px solid var(--amber);padding:clamp(20px,3vw,38px);background:linear-gradient(130deg,#222c29,#171e1e 80%);color:var(--text);box-shadow:0 24px 70px #0007}
@@ -229,4 +243,13 @@ button.wallet:hover{background:#3b3023;border-color:#a37c4e}
   .vitals{padding:4px 8px}.pilot-id img{width:19px;height:19px}.wave-panel{padding:4px 9px}.skill-chip{height:27px;min-width:27px}
 }
 @media(pointer:coarse){.launch kbd,.ability kbd{display:none}.bag-button{min-width:44px;height:38px}.corner-controls button{width:42px;height:42px}}
+@media(max-width:620px) and (orientation:portrait){
+  .shop-heading .segmented button{min-height:44px;padding-inline:8px;white-space:nowrap}
+  .module-item{min-height:76px}.module-symbol{font-size:1.05rem;margin-bottom:1px}
+  .growth-comparison{margin:8px 0;padding:6px 0}
+}
+@media(max-width:360px){
+  .shop-heading{align-items:flex-start;flex-direction:column;gap:4px}
+  .section-bar h2 small{display:none}
+}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important}}

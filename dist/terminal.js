@@ -51,21 +51,27 @@ function thumbnail(kind, id) {
   return thumbCache.get(key);
 }
 function updateLoadout() {
-  const pilot = SKIN(), weapon = WEP();
+  const pilot = SKINS[PROF.skin], weapon = WP[PROF.weapon];
   byId('pilotName').textContent = pilot.name;
   byId('pilotMove').textContent = '必杀 · ' + pilot.act.n;
   byId('weaponName').textContent = weapon.n;
-  byId('weaponMove').textContent = '主动 · ' + weapon.sk.n;
-  const pilotArt = thumbnail('skin', G.skin);
-  byId('pilotImage').src = byId('hudPortrait').src = pilotArt;
+  byId('weaponMove').textContent = 'Lv.' + weaponGrade(weapon.id) + ' · ' + weapon.sk.n;
+  const slots = PROF.growth.slots;
+  byId('moduleLoadout').textContent = slots.map(id => GROWTH_MODULES[id].name).join(' · ') || '0 / ' + GROWTH_SLOTS;
+  byId('pilotImage').src = thumbnail('skin',PROF.skin);
+  byId('hudPortrait').src = thumbnail('skin',G.skin);
   byId('weaponImage').src = thumbnail('weapon', weapon.id);
   byId('walletCount').textContent = numberFormat.format(PROF.pts);
   byId('recordBest').textContent = numberFormat.format(PROF.best);
   byId('recordRuns').textContent = numberFormat.format(PROF.runs);
-  byId('hudPilot').textContent = pilot.name;
+  byId('hudPilot').textContent = SKIN().name;
 }
-function currentStock() { return shopTab === 'skin' ? G.skin : G.weapon; }
+function currentStock() {
+  if(shopTab === 'growth') return PROF.growth.slots[0] || Object.keys(GROWTH_MODULES)[0];
+  return shopTab === 'skin' ? PROF.skin : PROF.weapon;
+}
 function stockRows() {
+  if(shopTab === 'growth') return growthRows();
   if(shopTab === 'skin') return SKINS.map((pilot,i) => ({
     id:i, name:pilot.name, category:'驾驶员', desc:pilot.desc, price:pilot.price, owned:ownSkin(i),
     skill:pilot.act.n, effect:pilot.act.t, cooldown:pilot.act.cd, passive:pilot.pas.t, passiveLabel:'角色被动'
@@ -79,6 +85,7 @@ function stockRows() {
 function showStockDetail(row) {
   const detail = byId('shopDetail');
   detail.replaceChildren();
+  if(shopTab === 'growth') { showModuleDetail(row); return; }
   const art = node('div','detail-art' + (shopTab === 'weapon' ? ' gun' : ''));
   const img = node('img'); img.alt = ''; img.src = thumbnail(shopTab,row.id); art.append(img);
   detail.append(art,node('div','detail-tag',row.category),node('h3','',row.name),node('p','',row.desc));
@@ -104,43 +111,60 @@ function showStockDetail(row) {
     byId('shopGrid').querySelector('[aria-pressed="true"]')?.focus({preventScroll:true});
   };
   detail.append(dl,equip);
+  if(shopTab === 'weapon') detail.append(weaponGradePanel(row));
 }
 function buildShop() {
   byId('shopPts').textContent = numberFormat.format(PROF.pts);
   const grid = byId('shopGrid'), rows = stockRows();
-  const offset = grid.scrollTop;
-  const equipped = currentStock();
-  byId('catalogName').textContent = shopTab === 'skin' ? '驾驶员名册' : '武器库';
-  byId('catalogCount').textContent = '已解锁 ' + rows.filter(r=>r.owned).length + ' / ' + rows.length;
+  const detail = byId('shopDetail');
+  const offset = grid.scrollTop, detailOffset = detail.scrollTop;
+  const modules = shopTab === 'growth', equipped = currentStock();
+  grid.classList.toggle('module-grid',modules);
+  byId('catalogName').textContent = modules ? '战前装配' : shopTab === 'skin' ? '驾驶员名册' : '武器库';
+  byId('catalogCount').textContent = modules ? '已装配 ' + PROF.growth.slots.length + ' / ' + GROWTH_SLOTS :
+    '已解锁 ' + rows.filter(r=>r.owned).length + ' / ' + rows.length;
   document.querySelectorAll('[data-tab]').forEach(b => {
     b.setAttribute('aria-pressed',String(b.dataset.tab === shopTab));
     b.classList.toggle('on',b.dataset.tab === shopTab);
   });
   const fragment = document.createDocumentFragment();
   for(const row of rows) {
-    const item = node('button','shop-item');
+    const item = node('button',modules ? 'shop-item module-item' : 'shop-item');
     const selected = row.id === selectedStock;
     item.setAttribute('aria-pressed',String(selected));
-    const art = node('span','catalog-image' + (shopTab === 'weapon' ? ' gun' : ''));
-    const img = node('img'); img.alt = ''; img.src = thumbnail(shopTab,row.id); art.append(img);
-    const status = row.id === equipped ? '已装配' : row.owned ? '已解锁' : numberFormat.format(row.price) + ' 积分';
-    item.append(art,node('strong','',row.name),node('small',row.id === equipped ? 'equipped' : '',status));
+    if(modules) {
+      const art = node('span','module-symbol',row.icon);
+      art.setAttribute('aria-hidden','true');
+      const status = row.equipped ? '已装配' : row.level ? '待装配' : '未升级';
+      item.append(art,node('strong','',row.name),node('small','','Lv.' + row.level + ' · ' + row.effects),
+        node('small',row.equipped ? 'equipped' : '',status));
+    } else {
+      const art = node('span','catalog-image' + (shopTab === 'weapon' ? ' gun' : ''));
+      const img = node('img'); img.alt = ''; img.src = thumbnail(shopTab,row.id); art.append(img);
+      const owned = shopTab === 'weapon' ? 'Lv.' + weaponGrade(row.id) : '已解锁';
+      const status = row.id === equipped ? (shopTab === 'weapon' ? owned + ' · 已装配' : '已装配') :
+        row.owned ? owned : numberFormat.format(row.price) + ' 积分';
+      item.append(art,node('strong','',row.name),node('small',row.id === equipped ? 'equipped' : '',status));
+    }
     item.onclick = () => {
       grid.querySelector('[aria-pressed="true"]')?.setAttribute('aria-pressed','false');
       selectedStock = row.id;
       item.setAttribute('aria-pressed','true');
       showStockDetail(row);
+      detail.scrollTop = 0;
     };
     if(selected) showStockDetail(row);
     fragment.append(item);
   }
   grid.replaceChildren(fragment);
   grid.scrollTop = offset;
+  detail.scrollTop = detailOffset;
 }
 function setShopTab(tab) {
   shopTab = tab;
   selectedStock = currentStock();
   byId('shopGrid').scrollTop = 0;
+  byId('shopDetail').scrollTop = 0;
   buildShop();
   byId('shopGrid').querySelector('[aria-pressed="true"]')?.scrollIntoView({block:'nearest'});
 }
@@ -152,7 +176,7 @@ function openShop(tab) {
   G.mode = 'shop';
   for(const id of ['ovTitle','ovPause','ovOver']) byId(id).classList.add('hide');
   byId('ovShop').classList.remove('hide');
-  setShopTab(tab === 'weapon' ? 'weapon' : 'skin');
+  setShopTab(['weapon','growth'].includes(tab) ? tab : 'skin');
   byId('btnShopX').focus({preventScroll:true});
 }
 function closeShop() {
@@ -247,6 +271,7 @@ function wireTerminal() {
   byId('btnStart').onclick = byId('btnRetry').onclick = startGame;
   byId('btnShop').onclick = byId('btnShop2').onclick = byId('wallet').onclick = byId('selectPilot').onclick = () => openShop('skin');
   byId('selectWeapon').onclick = () => openShop('weapon');
+  byId('selectModules').onclick = () => openShop('growth');
   byId('btnShopX').onclick = closeShop;
   document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => setShopTab(b.dataset.tab));
   byId('btnPause').onclick = byId('btnResume').onclick = togglePause;
@@ -318,6 +343,16 @@ function paintInstruments(force) {
   putText(instrument('hudKills'),G.kills);
   putText(instrument('hudScore'),numberFormat.format(G.score));
   putText(instrument('hudLives'),(G.shield ? '护盾 ×' + G.shield + '　' : '') + '复活 ×' + G.revives);
+  const growth = instrument('hudGrowth');
+  const grade = weaponGrade(weapon.id,G.growth);
+  if(force || growth.dataset.grade !== String(grade)) {
+    growth.dataset.grade = grade;
+    const modules = G.growth.slots.map(id => GROWTH_MODULES[id].name + ' Lv.' + G.growth.levels[id]);
+    if(grade > 1) modules.push('武器 Lv.' + grade);
+    const label = modules.join(' · ');
+    putText(growth,label);
+    growth.hidden = !label;
+  }
   instrument('hpFill').parentElement.classList.toggle('low',hp < .3);
   meterFill('hpFill',hp); meterFill('xpFill',G.xp/G.need);
   putText(instrument('hudSector'),'S' + pad2(G.stage+1) + ' / ' + SCENES[G.stage].name);

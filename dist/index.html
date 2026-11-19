@@ -9,6 +9,7 @@
   <link rel="icon" href="assets/emblem.png">
   <link rel="stylesheet" href="terminal.css">
   <script defer src="vendor/three.min.js"></script>
+  <script defer src="growth.js"></script>
   <script defer src="terminal.js"></script>
   <script defer src="game.js"></script>
 </head>
@@ -23,7 +24,7 @@
       <div class="meter hp-meter"><i id="hpFill"></i></div>
       <div class="meter xp-meter" aria-label="升级经验"><i id="xpFill"></i></div>
       <div class="vitals-meta"><span>击破 <b id="hudKills">0</b></span><span>得分 <b id="hudScore">0</b></span></div>
-      <div class="hud-status"><span id="hudLives"></span><span id="hudBuffs"></span></div>
+      <div class="hud-status"><span id="hudLives"></span><span id="hudBuffs"></span><span id="hudGrowth" class="hud-growth" hidden></span></div>
     </div>
     <div id="wavePanel" class="wave-panel combat-panel">
       <div class="hud-sector" id="hudSector"></div>
@@ -79,7 +80,7 @@
         </button>
       </section>
       <section class="loadout" id="loadout" aria-labelledby="loadoutTitle">
-        <div class="section-bar"><h2 id="loadoutTitle"><i></i>出击配置 <small>LOADOUT</small></h2><span class="rule"></span><span class="section-index" aria-hidden="true"></span></div>
+        <div class="section-bar"><h2 id="loadoutTitle"><i></i>出击配置 <small>LOADOUT</small></h2><span class="rule"></span><button class="loadout-modules" id="selectModules"><span>强化模块</span><b id="moduleLoadout">0 / 2</b></button></div>
         <div class="loadout-grid">
           <button class="outfit-card" id="selectPilot" aria-label="更换驾驶员">
             <span class="thumb pilot-thumb"><img id="pilotImage" alt=""></span>
@@ -103,7 +104,7 @@
     </header>
     <div class="supply-content">
       <div class="section-kicker"><i></i>SUPPLY DEPOT</div>
-      <div class="shop-heading"><h2>补给站</h2><div class="segmented" aria-label="装备类别"><button class="tab on" data-tab="skin">驾驶员</button><button class="tab" data-tab="weapon">主武器</button></div></div>
+      <div class="shop-heading"><h2>补给站</h2><div class="segmented" aria-label="装备类别"><button class="tab on" data-tab="skin">驾驶员</button><button class="tab" data-tab="weapon">主武器</button><button class="tab" data-tab="growth">强化模块</button></div></div>
       <div class="shop-layout">
         <div class="catalog-side"><div class="catalog-bar"><span id="catalogName">驾驶员名册</span><small id="catalogCount"></small></div><div id="shopGrid" class="shop-grid"></div></div>
         <aside id="shopDetail" class="shop-detail" aria-label="装备详情"></aside>

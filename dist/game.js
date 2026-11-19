@@ -349,13 +349,17 @@ const PROF = {
   ver:4,
   pts:GIFT_PTS, total:0, best:0, runs:0, gift:1, giftFx:1,
   skin:0, weapon:'rifle',
-  ownSkins:[0], ownWeapons:['rifle']
+  ownSkins:[0], ownWeapons:['rifle'],
+  growth:{ levels:{}, slots:[], weaponLevels:{} }
 };
+let loadedProf = null;
 function loadProf(){
   try{
     const raw = storeGet(PKEY);
     if(!raw){ PROF.gift = 1; return; }   /* 全新存档：默认值已是 5000 */
-    const o = JSON.parse(raw) || {};
+    const o = JSON.parse(raw);
+    if(!o || typeof o !== 'object' || Array.isArray(o)) return;
+    loadedProf = o;
     if(typeof o.pts === 'number') PROF.pts = Math.max(0, o.pts | 0);
     PROF.gift = o.gift ? 1 : 0;
     let giftNow = false;
@@ -375,17 +379,18 @@ function loadProf(){
       if(PROF.ownSkins.indexOf(0) < 0) PROF.ownSkins.push(0);
     }
     if(Array.isArray(o.ownWeapons)){
-      PROF.ownWeapons = o.ownWeapons.filter(function(id){ return !!WP[id]; });
+      PROF.ownWeapons = o.ownWeapons.filter(function(id){ return typeof id === 'string' && Object.hasOwn(WP,id); });
       if(PROF.ownWeapons.indexOf('rifle') < 0) PROF.ownWeapons.push('rifle');
     }
     if(!fresh && typeof o.skin === 'number' && PROF.ownSkins.indexOf(o.skin) >= 0) PROF.skin = o.skin;
     if(typeof o.weapon === 'string' && PROF.ownWeapons.indexOf(o.weapon) >= 0) PROF.weapon = o.weapon;
+    PROF.growth = readGrowth(o.growth);
     /* 全部字段迁移完再落盘，避免把未过滤的档写回去 */
     if(giftNow) saveProf();
   }catch(e){}
 }
 function saveProf(){
-  const saved = storeSet(PKEY, JSON.stringify(PROF));
+  const saved = storeSet(PKEY, JSON.stringify({...loadedProf,...PROF}));
   byId('saveStatus').textContent = saved ? '本机存档' : '仅本次会话';
 }
 function ownSkin(i){ return PROF.ownSkins.indexOf(i) >= 0; }
@@ -1773,7 +1778,7 @@ const G = {
   stage:0, wave:1, waveT:0, waveDur:0, spawnT:0,
   t:0, cam:{x:ARENA.w/2, y:ARENA.h/2},
   score:0, kills:0, xp:0, lv:1, need:10, pending:0,
-  skills:{}, slots:[],
+  skills:{}, slots:[], growth:growthSnapshot(),
   energy:0, mechT:0,
   p:null, st:null,
   bullets:[], eb:[], enemies:[], orbs:[], parts:[], texts:[], rings:[],
@@ -2917,11 +2922,12 @@ const joy = { active:false, id:-1, bx:0, by:0, nx:0, ny:0, mag:0 };
 function baseStats(){
   const w = WEP();
   return {
-    dmg:w.dmg, dmgPct:0, rateMul:1, baseRate:w.rate, extra:0, pierce:0, crit:w.crit, critMul:2,
+    dmg:weaponBaseDamage(w), dmgPct:0, rateMul:1, baseRate:w.rate, extra:0, pierce:0, crit:w.crit, critMul:2,
     spdMul:1, maxHp:100, regen:0, armor:0, magnet:1, leech:0, thorns:0,
     burn:0, freeze:0, blast:0, chain:0, shield:0,
     drone:0, turret:0, mine:0, boom:0,
     barrage:0, bigMul:1, fleet:0,
+    skillPower:1, skillCooldown:1, barragePower:1, barrageExtra:0,
     /* 共鸣与被动扩展位 */
     lifeAdd:0, spreadMul:1, bspdMul:1, boomMul:1, elemMul:1,
     burnMul:1, selfBurn:0, dmgTaken:0, noMedkit:false
@@ -2947,6 +2953,7 @@ const RESONANCE = {
 
 function recalc(){
   const s = baseStats();
+  applyGrowth(s);
   for(const id in G.skills){
     const sk = SK[id];
     if(sk) sk.ap(s, G.skills[id]);
@@ -2977,6 +2984,10 @@ function recalc(){
   }
 }
 
+/* 技能源只增幅一次，弹体溅射复用已增幅的伤害。 */
+function scaleSkill(value){ return value * (G.st?.skillPower ?? 1); }
+function abilityCooldown(seconds){ return seconds * (G.st?.skillCooldown ?? 1); }
+
 /* ── 开局 / 场景 ── */
 function newRun(){
   G.mode = 'play'; G.phase = 'wave';
@@ -2984,7 +2995,7 @@ function newRun(){
   G.t = 0; G.time = 0;
   G.score = 0; G.kills = 0; G.combo = 0; G.comboT = 0;
   G.xp = 0; G.lv = 1; G.need = 10; G.pending = 0;
-  G.skills = {}; G.slots = [];
+  G.skills = {}; G.slots = []; G.growth = growthSnapshot();
   G.energy = 0; G.mechT = 0; G.revives = 1;
   G.bullets.length = 0; G.eb.length = 0; G.enemies.length = 0;
   G.orbs.length = 0; G.parts.length = 0; G.texts.length = 0; G.rings.length = 0;
@@ -3002,8 +3013,7 @@ function newRun(){
   G.cbuff.rate = G.cbuff.spd = G.cbuff.dmg = G.cbuff.armor = G.cbuff.extra = 0;
   G.weapon = ownWep(PROF.weapon) ? PROF.weapon : 'rifle';
   G.skin = ownSkin(PROF.skin) ? PROF.skin : 0;
-  G.wcd = 0; G.wcdMax = WEP().sk.cd;
-  G.ccd = 0; G.ccdMax = (SKIN().act || {cd:1}).cd;
+  G.wcd = 0; G.ccd = 0;
   G.shield = 0; G.shieldFx = 0;
   G.picksGot = 0; G.settled = false;
   G.boss = null; G.portal = null;
@@ -3016,6 +3026,8 @@ function newRun(){
   };
   G.st = null;
   recalc();
+  G.wcdMax = abilityCooldown(WEP().sk.cd);
+  G.ccdMax = abilityCooldown(SKIN().act?.cd ?? 1);
   G.p.hp = G.p.maxHp;
   G.shield = G.st.shield || 0;
   G.cam.x = G.p.x; G.cam.y = G.p.y;
@@ -3285,7 +3297,7 @@ function fire(){
     });
   }
   /* 弹幕风暴：额外散射子弹（土豆兄弟「子弹增多」型天赋） */
-  const bn = s.barrage * 2;
+  const bn = s.barrage * 2 + s.barrageExtra;
   if(bn > 0){
     for(let i=0;i<bn;i++){
       const a = ang + rnd(-.5, .5);
@@ -3293,7 +3305,7 @@ function fire(){
       G.bullets.push({
         x: p.x + Math.cos(a) * 12, y: p.y + Math.sin(a) * 12,
         vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
-        dmg: s.dmg * .8 * weakM, pierce: s.pierce, hits: [], life: w.life * .9,
+        dmg: s.dmg * .8 * weakM * s.barragePower, pierce: s.pierce, hits: [], life: w.life * .9,
         crit: Math.random() < s.crit * .7, r: w.br * s.bigMul * .8,
         over: oved, w: w.id, boom: false, barrage: true
       });
@@ -3348,15 +3360,15 @@ function aimAngle(p, range){
 /* ── 武器技能的通用派发（第三世代军械共用，字段 sk.g） ── */
 const WSK_G = {
   focus: function(w, p){
-    G.wbuff.focus = 4;
+    G.wbuff.focus = scaleSkill(4);
     spark(p.x, p.y, 10, w.c, 120);
   },
   beam: function(w, p){
     const a = aimAngle(p, 1100);
-    const n = rayHit(p.x, p.y, a, 980, 16, w.dmg * 3.4, true);
+    const n = rayHit(p.x, p.y, a, 980, 16, scaleSkill(weaponBaseDamage(w) * 3.4), true);
     beamFX(p.x, p.y, a, 980, w.c, 5, .26);
     beamFX(p.x, p.y, a, 980, '#ffffff', 1.6, .18);
-    if(G.boss && !G.boss.dead) damageBoss(G.boss, w.dmg * 3, true, G.boss.x, G.boss.y);
+    if(G.boss && !G.boss.dead) damageBoss(G.boss, scaleSkill(weaponBaseDamage(w) * 3), true, G.boss.x, G.boss.y);
     for(let i = 0; i < 10; i++){
       G.parts.push({ x:p.x + Math.cos(a) * (30 + i * 40), y:p.y + Math.sin(a) * (30 + i * 40),
         vx:rnd(-40, 40), vy:rnd(-40, 40), life:.3, max:.3, col:w.c, r:1.8 });
@@ -3371,13 +3383,13 @@ const WSK_G = {
       if(e.dead) continue;
       if(dst(p.x, p.y, e.x, e.y) < R + e.r){
         e.slowT = 3.2; e.slowAmt = Math.max(e.slowAmt || 0, .7);
-        applyDamage(e, w.dmg * 3.2, false, e.x, e.y - 6);
-        setBurn(e, 3, 6);
+        applyDamage(e, scaleSkill(weaponBaseDamage(w) * 3.2), false, e.x, e.y - 6);
+        setBurn(e, 3, scaleSkill(6));
       }
     }
     if(G.boss && !G.boss.dead && dst(p.x, p.y, G.boss.x, G.boss.y) < R + 40){
       G.boss.slowT = 3; G.boss.slowAmt = .55;
-      damageBoss(G.boss, w.dmg * 4, false, G.boss.x, G.boss.y);
+      damageBoss(G.boss, scaleSkill(weaponBaseDamage(w) * 4), false, G.boss.x, G.boss.y);
     }
     G.haz.push({ kind:'frost', x:p.x, y:p.y, r:R, dmg:0, life:3.6, max:3.6, col:w.c, t:0 });
     G.rings.push({ x:p.x, y:p.y, r:14, max:R, life:.6, maxLife:.6, col:w.c, w:4 });
@@ -3388,7 +3400,7 @@ const WSK_G = {
       G.bullets.push({
         x:p.x + Math.cos(a) * 12, y:p.y + Math.sin(a) * 12,
         vx:Math.cos(a) * w.spd * 1.1, vy:Math.sin(a) * w.spd * 1.1,
-        dmg:G.st.dmg * 2.4, pierce:1, hits:[], life:1.6, crit:Math.random() < G.st.crit + .1,
+        dmg:scaleSkill(G.st.dmg * 2.4), pierce:1, hits:[], life:1.6, crit:Math.random() < G.st.crit + .1,
         r:w.br * 1.2, w:w.id, boom:!!w.boom, homing:true
       });
     }
@@ -3403,10 +3415,10 @@ const WSK_G = {
       used.push(nx);
       G.parts.push({ x:from.x, y:from.y, vx:0, vy:0, life:.13, max:.13, col:w.c, r:1.2,
         line:{ x2:nx.x, y2:nx.y } });
-      applyDamage(nx, G.st.dmg * 2.2, false, nx.x, nx.y - 6);
+      applyDamage(nx, scaleSkill(G.st.dmg * 2.2), false, nx.x, nx.y - 6);
       from = nx;
     }
-    if(G.boss && !G.boss.dead) damageBoss(G.boss, G.st.dmg * 4, false, G.boss.x, G.boss.y);
+    if(G.boss && !G.boss.dead) damageBoss(G.boss, scaleSkill(G.st.dmg * 4), false, G.boss.x, G.boss.y);
     G.shake = 5;
   },
   blast: function(w, p){
@@ -3416,7 +3428,7 @@ const WSK_G = {
       G.bullets.push({
         x:p.x + Math.cos(a) * 10, y:p.y + Math.sin(a) * 10,
         vx:Math.cos(a) * 460, vy:Math.sin(a) * 460,
-        dmg:G.st.dmg * 1.4, pierce:1, hits:[], life:.55,
+        dmg:scaleSkill(G.st.dmg * 1.4), pierce:1, hits:[], life:.55,
         crit:Math.random() < G.st.crit, r:w.br, w:w.id, boom:false
       });
     }
@@ -3430,8 +3442,7 @@ function weaponSkill(){
   if(G.mode !== 'play' || !G.p || G.p.hp <= 0) return false;
   if(G.wcd > 0) return false;
   const w = WEP(), p = G.p;
-  G.wcdMax = w.sk.cd;
-  G.wcd = w.sk.cd;
+  G.wcd = G.wcdMax = abilityCooldown(w.sk.cd);
   G.shake = Math.max(G.shake, 6);
   addFlash(p.x, p.y, 130, w.c, .7);
   G.rings.push({ x:p.x, y:p.y, r:6, max:70, life:.34, maxLife:.34, col:w.c, w:3 });
@@ -3445,7 +3456,7 @@ function weaponSkill(){
   }
 
   if(w.id === 'rifle'){
-    G.wbuff.focus = 4;
+    G.wbuff.focus = scaleSkill(4);
     banner(w.sk.n, w.sk.t, 1.0);
 
   } else if(w.id === 'shotgun'){
@@ -3455,7 +3466,7 @@ function weaponSkill(){
     p.x = clamp(p.x + ax * 90, 28, ARENA.w - 28);
     p.y = clamp(p.y + ay * 90, 28, ARENA.h - 28);
     p.face = ax >= 0 ? 1 : -1;
-    aoe(p.x, p.y, 82, 48, null);
+    aoe(p.x, p.y, 82, scaleSkill(48), null);
     for(let i=0;i<16;i++){
       const a2 = rnd(0, TAU), v = rnd(90, 240);
       G.parts.push({ x:p.x, y:p.y, vx:Math.cos(a2)*v, vy:Math.sin(a2)*v*.6,
@@ -3476,13 +3487,13 @@ function weaponSkill(){
       const ex = e.x - p.x, ey = e.y - p.y;
       const proj = ex * ca + ey * sa;
       if(proj < 0 || proj > len) continue;
-      if(Math.abs(-ex * sa + ey * ca) < e.r + 13) applyDamage(e, 130, true, e.x, e.y - 6);
+      if(Math.abs(-ex * sa + ey * ca) < e.r + 13) applyDamage(e, scaleSkill(130), true, e.x, e.y - 6);
     }
     if(G.boss && !G.boss.dead){
       const ex = G.boss.x - p.x, ey = G.boss.y - p.y;
       const proj = ex * ca + ey * sa;
       if(proj > 0 && proj < len && Math.abs(-ex * sa + ey * ca) < G.boss.r + 14){
-        damageBoss(G.boss, 100, true, G.boss.x, G.boss.y);
+        damageBoss(G.boss, scaleSkill(100), true, G.boss.x, G.boss.y);
       }
     }
     G.parts.push({ x:p.x, y:p.y, vx:0, vy:0, life:.24, max:.24, col:'#e0c8ff', r:1,
@@ -3502,7 +3513,7 @@ function weaponSkill(){
       G.bullets.push({
         x: p.x + Math.cos(a) * 10, y: p.y + Math.sin(a) * 10,
         vx: Math.cos(a) * 470, vy: Math.sin(a) * 470,
-        dmg: G.st.dmg * (.85 + .15 * Math.random()), pierce: 1 + G.st.pierce,
+        dmg: scaleSkill(G.st.dmg * (.85 + .15 * Math.random())), pierce: 1 + G.st.pierce,
         hits: [], life: .95, crit: Math.random() < G.st.crit, r: 2.4,
         over: G.buff.over > 0, w: 'smg', boom: false
       });
@@ -3518,7 +3529,7 @@ function weaponSkill(){
       G.bullets.push({
         x: p.x + Math.cos(a) * 12, y: p.y + Math.sin(a) * 12,
         vx: Math.cos(a) * 300, vy: Math.sin(a) * 300,
-        dmg: G.st.dmg * 1.1, pierce: 0, hits: [], life: 1.3,
+        dmg: scaleSkill(G.st.dmg * 1.1), pierce: 0, hits: [], life: 1.3,
         crit: false, r: 5, over: false, w: 'launcher', boom: true
       });
     }
@@ -3531,13 +3542,13 @@ function weaponSkill(){
       const e = G.enemies[i];
       if(e.dead) continue;
       e.stun = 2.6;
-      applyDamage(e, 28, false, e.x, e.y - 6);
+      applyDamage(e, scaleSkill(28), false, e.x, e.y - 6);
       G.parts.push({ x:p.x, y:p.y, vx:0, vy:0, life:.18, max:.18,
         col:'#b9f2ff', r:1, line:{ x2:e.x, y2:e.y } });
     }
     if(G.boss && !G.boss.dead){
       G.boss.stun = Math.max(G.boss.stun || 0, 1.5);
-      damageBoss(G.boss, 45, false, G.boss.x, G.boss.y);
+      damageBoss(G.boss, scaleSkill(45), false, G.boss.x, G.boss.y);
       G.parts.push({ x:p.x, y:p.y, vx:0, vy:0, life:.2, max:.2,
         col:'#b9f2ff', r:1, line:{ x2:G.boss.x, y2:G.boss.y } });
     }
@@ -3552,12 +3563,12 @@ function weaponSkill(){
       G.bullets.push({
         x: p.x + Math.cos(a) * 12, y: p.y + Math.sin(a) * 12,
         vx: Math.cos(a) * 680, vy: Math.sin(a) * 680,
-        dmg: G.st.dmg * 1.55, pierce: 1, hits: [], life: 1.1,
+        dmg: scaleSkill(G.st.dmg * 1.55), pierce: 1, hits: [], life: 1.1,
         crit: Math.random() < G.st.crit + .25, r: 2.2,
         over: G.buff.over > 0, w: 'pistol', boom: false
       });
     }
-    G.wbuff.focus = Math.max(G.wbuff.focus, 3.2);
+    G.wbuff.focus = Math.max(G.wbuff.focus, scaleSkill(3.2));
     G.shake = 4;
     banner(w.sk.n, w.sk.t, 1.0);
 
@@ -3568,7 +3579,7 @@ function weaponSkill(){
       G.bullets.push({
         x: p.x + Math.cos(a) * 12, y: p.y + Math.sin(a) * 12,
         vx: Math.cos(a) * 600, vy: Math.sin(a) * 600,
-        dmg: G.st.dmg * 2.1, pierce: 2, hits: [], life: 1.3,
+        dmg: scaleSkill(G.st.dmg * 2.1), pierce: 2, hits: [], life: 1.3,
         crit: Math.random() < G.st.crit, r: 3.4,
         over: false, w: 'revolver', boom: false
       });
@@ -3579,7 +3590,7 @@ function weaponSkill(){
 
   } else if(w.id === 'minigun'){
     /* 枪管过热 */
-    G.wbuff.heat = 5;
+    G.wbuff.heat = scaleSkill(5);
     for(let i=0;i<18;i++){
       const a = rnd(0, TAU), v = rnd(120, 320);
       G.parts.push({ x:p.x, y:p.y, vx:Math.cos(a)*v, vy:Math.sin(a)*v*.6,
@@ -3596,7 +3607,7 @@ function weaponSkill(){
       G.bullets.push({
         x: p.x + Math.cos(a) * 12, y: p.y + Math.sin(a) * 12,
         vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
-        dmg: G.st.dmg * 1.15, pierce: 3, hits: [], life: 200 / sp,
+        dmg: scaleSkill(G.st.dmg * 1.15), pierce: 3, hits: [], life: 200 / sp,
         crit: false, r: 5.5 + rnd(0, 2),
         over: false, w: 'flamer', boom: false
       });
@@ -3606,9 +3617,9 @@ function weaponSkill(){
       if(e.dead) continue;
       let d = Math.atan2(e.y - p.y, e.x - p.x) - a0;
       d = Math.atan2(Math.sin(d), Math.cos(d));
-      if(Math.abs(d) < .8 && dst(p.x, p.y, e.x, e.y) < 250) setBurn(e, 3.2, 9);
+      if(Math.abs(d) < .8 && dst(p.x, p.y, e.x, e.y) < 250) setBurn(e, 3.2, scaleSkill(9));
     }
-    if(G.boss && !G.boss.dead && dst(p.x, p.y, G.boss.x, G.boss.y) < 270) setBurn(G.boss, 3.2, 26);
+    if(G.boss && !G.boss.dead && dst(p.x, p.y, G.boss.x, G.boss.y) < 270) setBurn(G.boss, 3.2, scaleSkill(26));
     addFlash(p.x + Math.cos(a0) * 60, p.y + Math.sin(a0) * 60, 170, '#ff7a3c', .6);
     G.shake = 7;
     banner(w.sk.n, w.sk.t, 1.0);
@@ -3618,7 +3629,7 @@ function weaponSkill(){
     const a0 = aimAngle(p, 1000);
     for(let k=-1;k<=1;k++){
       const a = a0 + k * .26;
-      rayHit(p.x, p.y, a, 1300, 7, G.st.dmg * 3.0, k === 0);
+      rayHit(p.x, p.y, a, 1300, 7, scaleSkill(G.st.dmg * 3.0), k === 0);
       beamFX(p.x, p.y, a, 1300, '#7ef0ff', 1.7, .26);
       beamFX(p.x, p.y, a, 1300, '#eaffff', .8, .18);
     }
@@ -3642,7 +3653,7 @@ function weaponSkill(){
     G.rings.push({ x:cx, y:cy, r:200, max:26, life:.32, maxLife:.32, col:'#c08cff', w:3 });
     G.rings.push({ x:cx, y:cy, r:150, max:40, life:.28, maxLife:.28, col:'#e0c8ff', w:2 });
     G.jobs.push({ t:.26, fn:function(){
-      aoe(cx, cy, 160, G.st ? G.st.dmg * 3.6 : 90, null);
+      aoe(cx, cy, 160, scaleSkill(G.st ? G.st.dmg * 3.6 : 90), null);
       explodeFX(cx, cy, 150);
       addFlash(cx, cy, 240, '#c08cff', .75);
       G.rings.push({ x:cx, y:cy, r:14, max:170, life:.44, maxLife:.44, col:'#e0c8ff', w:5 });
@@ -3657,13 +3668,13 @@ function weaponSkill(){
       if(e.dead) continue;
       e.stun = Math.max(e.stun || 0, 3.2);
       e.slowT = 3.2; e.slowAmt = .6;
-      applyDamage(e, G.st.dmg * 2.4, false, e.x, e.y - 6);
+      applyDamage(e, scaleSkill(G.st.dmg * 2.4), false, e.x, e.y - 6);
       G.parts.push({ x:e.x, y:e.y - 8, vx:0, vy:0, life:.2, max:.2, col:'#9fe8ff', r:1 });
     }
     if(G.boss && !G.boss.dead){
       G.boss.stun = Math.max(G.boss.stun || 0, 1.6);
       G.boss.slowT = 3.2; G.boss.slowAmt = .45;
-      damageBoss(G.boss, G.st.dmg * 8, false, G.boss.x, G.boss.y);
+      damageBoss(G.boss, scaleSkill(G.st.dmg * 8), false, G.boss.x, G.boss.y);
     }
     G.rings.push({ x:p.x, y:p.y, r:20, max:VW * .95, life:.55, maxLife:.55, col:'#9fe8ff', w:5 });
     G.rings.push({ x:p.x, y:p.y, r:10, max:VW * .8, life:.42, maxLife:.42, col:'#eaffff', w:2 });
@@ -3673,7 +3684,7 @@ function weaponSkill(){
   } else if(w.id === 'rail'){
     /* 轨道炮击：全屏贯穿 */
     const a0 = aimAngle(p, 1400);
-    const hits = rayHit(p.x, p.y, a0, 1600, 9, G.st.dmg * 4.4, true);
+    const hits = rayHit(p.x, p.y, a0, 1600, 9, scaleSkill(G.st.dmg * 4.4), true);
     beamFX(p.x, p.y, a0, 1600, '#bfe6ff', 2.4, .3);
     beamFX(p.x, p.y, a0, 1600, '#ffffff', 1.0, .2);
     addFlash(p.x + Math.cos(a0) * 40, p.y + Math.sin(a0) * 40, 200, '#bfe6ff', .7);
@@ -3699,7 +3710,7 @@ function weaponSkill(){
       const tx = clamp(cx + Math.cos(aa) * rr, 44, ARENA.w - 44);
       const ty = clamp(cy + Math.sin(aa) * rr, 44, ARENA.h - 44);
       G.jobs.push({ t: .05 + i * .055, fn: function(){
-        aoe(tx, ty, 48, G.st ? G.st.dmg * 2.0 : 40, null);
+        aoe(tx, ty, 48, scaleSkill(G.st ? G.st.dmg * 2.0 : 40), null);
         G.rings.push({ x:tx, y:ty, r:6, max:48, life:.3, maxLife:.3, col:'#8ef0c0', w:2 });
         G.parts.push({ x:tx, y:ty - 90, vx:0, vy:520, life:.16, max:.16, col:'#c8ffe4', r:1,
           line:{ x2:tx, y2:ty } });
@@ -3721,7 +3732,7 @@ function weaponSkill(){
         G.bullets.push({
           x: ox + nx * i * 13, y: oy + ny * i * 13,
           vx: Math.cos(a0) * 700, vy: Math.sin(a0) * 700,
-          dmg: G.st.dmg * .95, pierce: 3, hits: [], life: .8,
+          dmg: scaleSkill(G.st.dmg * .95), pierce: 3, hits: [], life: .8,
           crit: false, r: 1.7, over: false, w: 'nailgun', boom: false
         });
       }
@@ -3741,7 +3752,7 @@ function weaponSkill(){
       const ty = clamp(p.y + Math.sin(a) * rr, 46, ARENA.h - 46);
       for(let j=0;j<5;j++){
         G.jobs.push({ t: .05 + j * .42, fn: function(){
-          aoe(tx, ty, 58, G.st ? G.st.dmg * 1.6 : 30, null);
+          aoe(tx, ty, 58, scaleSkill(G.st ? G.st.dmg * 1.6 : 30), null);
           G.rings.push({ x:tx, y:ty, r:8, max:58, life:.34, maxLife:.34, col:'#a8e05a', w:2 });
           for(let q=0;q<5;q++){
             const aa2 = rnd(0, TAU), v2 = rnd(20, 70);
@@ -3763,7 +3774,7 @@ function weaponSkill(){
       G.bullets.push({
         x: p.x + Math.cos(a) * 14, y: p.y + Math.sin(a) * 14,
         vx: Math.cos(a) * 240, vy: Math.sin(a) * 240,
-        dmg: G.st.dmg * 1.7, pierce: 99, hits: [], life: 2.2,
+        dmg: scaleSkill(G.st.dmg * 1.7), pierce: 99, hits: [], life: 2.2,
         crit: Math.random() < G.st.crit, r: 8, homing: true,
         over: false, w: 'orbgun', boom: false
       });
@@ -3796,7 +3807,7 @@ function setBurn(unit, dur, dps){
 const CSK = {
   /* 青柠雪 · 雪融：治疗 + 净化弹幕 + 无敌 */
   lime: function(p){
-    heal(p.maxHp * .3);
+    heal(scaleSkill(p.maxHp * .3));
     G.eb.length = 0;
     p.inv = Math.max(p.inv, 2.4);
     G.shield = Math.min(4, G.shield + 1);
@@ -3818,7 +3829,7 @@ const CSK = {
     p.y = clamp(p.y + Math.sin(a) * 96, 34, ARENA.h - 26);
     p.face = Math.cos(a) >= 0 ? 1 : -1;
     p.inv = Math.max(p.inv, 1.1);
-    aoe(p.x, p.y, 72, 62, null);
+    aoe(p.x, p.y, 72, scaleSkill(62), null);
     explodeFX(p.x, p.y, 56);
     G.shake = 7;
   },
@@ -3839,12 +3850,12 @@ const CSK = {
           const ex = e.x - q.x, ey = e.y - q.y;
           const proj = ex * ca + ey * sa;
           if(proj < -8 || proj > 98) continue;
-          if(Math.abs(-ex * sa + ey * ca) < e.r + 26) applyDamage(e, 52, true, e.x, e.y - 6);
+          if(Math.abs(-ex * sa + ey * ca) < e.r + 26) applyDamage(e, scaleSkill(52), true, e.x, e.y - 6);
         }
         if(G.boss && !G.boss.dead){
           const ex = G.boss.x - q.x, ey = G.boss.y - q.y;
           if(ex * ca + ey * sa > -8 && Math.abs(-ex * sa + ey * ca) < 62){
-            damageBoss(G.boss, 48, true, G.boss.x, G.boss.y);
+            damageBoss(G.boss, scaleSkill(48), true, G.boss.x, G.boss.y);
           }
         }
         for(let j = 0; j < 3; j++){
@@ -3867,12 +3878,12 @@ const CSK = {
       if(e.dead) continue;
       if(dst(p.x, p.y, e.x, e.y) < R + e.r){
         e.slowT = 4.2; e.slowAmt = Math.max(e.slowAmt || 0, .68);
-        applyDamage(e, 34, false, e.x, e.y - 6);
+        applyDamage(e, scaleSkill(34), false, e.x, e.y - 6);
       }
     }
     if(G.boss && !G.boss.dead && dst(p.x, p.y, G.boss.x, G.boss.y) < R + 44){
       G.boss.slowT = 3.6; G.boss.slowAmt = .55;
-      damageBoss(G.boss, 70, false, G.boss.x, G.boss.y);
+      damageBoss(G.boss, scaleSkill(70), false, G.boss.x, G.boss.y);
     }
     G.haz.push({ kind:'frost', x:p.x, y:p.y, r:R, dmg:0, life:4.6, max:4.6, col:'#9fe8ff', t:0 });
     G.rings.push({ x:p.x, y:p.y, r:16, max:R, life:.65, maxLife:.65, col:'#9fe8ff', w:5 });
@@ -3880,8 +3891,8 @@ const CSK = {
 
   /* 花铃 · 花开：治疗 + 攻速爆发 */
   bloom: function(p){
-    heal(p.maxHp * .25);
-    G.cbuff.rate = 6;
+    heal(scaleSkill(p.maxHp * .25));
+    G.cbuff.rate = scaleSkill(6);
     recalc();
     for(let i = 0; i < 18; i++){
       const a = rnd(0, TAU), v = rnd(40, 130);
@@ -3914,7 +3925,7 @@ const CSK = {
         q.x = clamp(q.x + Math.cos(a) * 62, 30, ARENA.w - 30);
         q.y = clamp(q.y + Math.sin(a) * 62, 34, ARENA.h - 26);
         q.inv = Math.max(q.inv, .3);
-        aoe(q.x, q.y, 46, 38, null);
+        aoe(q.x, q.y, 46, scaleSkill(38), null);
         G.rings.push({ x:q.x, y:q.y, r:6, max:46, life:.28, maxLife:.28, col:'#ffb8d8', w:2.5 });
         spark(q.x, q.y, 8, '#ffb8d8', 100);
         G.shake = Math.max(G.shake, 3);
@@ -3930,13 +3941,13 @@ const CSK = {
       G.bullets.push({
         x:p.x + Math.cos(a) * 10, y:p.y + Math.sin(a) * 10,
         vx:Math.cos(a) * 430, vy:Math.sin(a) * 430,
-        dmg:G.st.dmg * (.9 + .2 * Math.random()), pierce:1, hits:[], life:.9,
+        dmg:scaleSkill(G.st.dmg * (.9 + .2 * Math.random())), pierce:1, hits:[], life:.9,
         crit:Math.random() < G.st.crit, r:2.6, over:false, w:'smg', boom:false
       });
     }
     for(let i = 0; i < G.enemies.length; i++){
       const e = G.enemies[i];
-      if(!e.dead && dst(p.x, p.y, e.x, e.y) < 120) setBurn(e, 3, 9);
+      if(!e.dead && dst(p.x, p.y, e.x, e.y) < 120) setBurn(e, 3, scaleSkill(9));
     }
     G.rings.push({ x:p.x, y:p.y, r:12, max:66, life:.3, maxLife:.3, col:'#ff8a5c', w:3 });
   },
@@ -3945,7 +3956,7 @@ const CSK = {
   rose: function(p){
     G.shield = Math.min(4, G.shield + 2);
     G.shieldFx = .8;
-    G.cbuff.armor = 6;
+    G.cbuff.armor = scaleSkill(6);
     recalc();
     G.rings.push({ x:p.x, y:p.y, r:10, max:68, life:.5, maxLife:.5, col:'#ffcf5a', w:4 });
     floatText(p.x, p.y - 26, '血盾 +2 · 护甲↑', '#ffcf5a', true);
@@ -3953,10 +3964,10 @@ const CSK = {
 
   /* 砂岚 · 弹幕压制：射速 + 弹数 */
   sable: function(p){
-    G.cbuff.rate = 8;
-    G.cbuff.extra = 8;
+    G.cbuff.rate = scaleSkill(8);
+    G.cbuff.extra = scaleSkill(8);
     recalc();
-    floatText(p.x, p.y - 26, '弹幕压制 8s', '#ffc861', true);
+    floatText(p.x, p.y - 26, '弹幕压制', '#ffc861', true);
     G.rings.push({ x:p.x, y:p.y, r:8, max:56, life:.35, maxLife:.35, col:'#ffc861', w:3 });
   },
 
@@ -3969,7 +3980,7 @@ const CSK = {
       G.bullets.push({
         x:p.x + Math.cos(a) * 12, y:p.y + Math.sin(a) * 12,
         vx:Math.cos(a) * 600, vy:Math.sin(a) * 600,
-        dmg:G.st.dmg * 1.6, pierce:3, hits:[], life:1.0,
+        dmg:scaleSkill(G.st.dmg * 1.6), pierce:3, hits:[], life:1.0,
         crit:Math.random() < G.st.crit, r:3.4, over:false, w:'sniper', boom:false
       });
     }
@@ -3978,13 +3989,13 @@ const CSK = {
 
   /* 栗夜 · 时滞：全场减速 + 自身加速 */
   night: function(p){
-    G.buff.stasis = 4;
+    G.buff.stasis = scaleSkill(4);
     for(let i = 0; i < G.enemies.length; i++){
       const e = G.enemies[i];
-      if(!e.dead){ e.slowT = 4; e.slowAmt = Math.max(e.slowAmt || 0, .75); }
+      if(!e.dead){ e.slowT = G.buff.stasis; e.slowAmt = Math.max(e.slowAmt || 0, .75); }
     }
-    if(G.boss && !G.boss.dead){ G.boss.slowT = 4; G.boss.slowAmt = .6; }
-    G.cbuff.spd = 4;
+    if(G.boss && !G.boss.dead){ G.boss.slowT = G.buff.stasis; G.boss.slowAmt = .6; }
+    G.cbuff.spd = scaleSkill(4);
     recalc();
     G.rings.push({ x:p.x, y:p.y, r:20, max:Math.max(VW, VH) * 1.2, life:.7, maxLife:.7, col:'#b388ff', w:3 });
   },
@@ -4004,14 +4015,14 @@ const CSK = {
       G.parts.push({ x:e.x, y:e.y, vx:0, vy:0, life:.16, max:.16, col:'#9fd0ff', r:1,
         line:{ x2:p.x, y2:p.y } });
     }
-    aoe(p.x, p.y, 92, 50, null);
+    aoe(p.x, p.y, 92, scaleSkill(50), null);
     G.rings.push({ x:p.x, y:p.y, r:14, max:R, life:.55, maxLife:.55, col:'#9fd0ff', w:4 });
   },
 
   /* 橙火 · 焚场：全场点燃 */
   ember: function(p){
-    for(let i = 0; i < G.enemies.length; i++) setBurn(G.enemies[i], 8, 16);
-    if(G.boss && !G.boss.dead) setBurn(G.boss, 8, 22);
+    for(let i = 0; i < G.enemies.length; i++) setBurn(G.enemies[i], 8, scaleSkill(16));
+    if(G.boss && !G.boss.dead) setBurn(G.boss, 8, scaleSkill(22));
     G.flash = Math.max(G.flash, .26);
     G.rings.push({ x:p.x, y:p.y, r:16, max:Math.max(VW, VH) * 1.3, life:.7, maxLife:.7, col:'#ff9a4c', w:4 });
   },
@@ -4022,7 +4033,7 @@ const CSK = {
     p.x = clamp(p.x + Math.cos(a) * 84, 30, ARENA.w - 30);
     p.y = clamp(p.y + Math.sin(a) * 84, 34, ARENA.h - 26);
     p.inv = Math.max(p.inv, .6);
-    aoe(p.x, p.y, 76, 46, null);
+    aoe(p.x, p.y, 76, scaleSkill(46), null);
     G.shield = Math.min(5, G.shield + 1);
     G.shieldFx = .8;
     G.rings.push({ x:p.x, y:p.y, r:8, max:78, life:.34, maxLife:.34, col:'#ffb066', w:4 });
@@ -4032,7 +4043,7 @@ const CSK = {
 
   neon: function(p){
     p.inv = Math.max(p.inv, 2.2);
-    G.wbuff.focus = 3;
+    G.wbuff.focus = scaleSkill(3);
     for(let i = 0; i < 5; i++){
       G.jobs.push({ t: i * .08, fn: function(){
         if(!G.p) return;
@@ -4045,21 +4056,21 @@ const CSK = {
   rimesuit: function(p){
     G.shield = Math.min(6, G.shield + 2);
     G.shieldFx = 1;
-    G.haz.push({ kind:'frost', x:p.x, y:p.y, r:150, dmg:0, life:4.2, max:4.2, col:'#d8f8ff', t:0 });
+    G.haz.push({ kind:'frost', x:p.x, y:p.y, r:150, dmg:0, life:scaleSkill(4.2), max:scaleSkill(4.2), col:'#d8f8ff', t:0 });
     for(let i = 0; i < G.enemies.length; i++){
       const e = G.enemies[i];
       if(!e.dead && dst(p.x, p.y, e.x, e.y) < 150){
-        e.slowT = 3; e.slowAmt = Math.max(e.slowAmt || 0, .7);
+        e.slowT = scaleSkill(3); e.slowAmt = Math.max(e.slowAmt || 0, .7);
       }
     }
     G.rings.push({ x:p.x, y:p.y, r:12, max:150, life:.55, maxLife:.55, col:'#d8f8ff', w:4 });
   },
 
   magma: function(p){
-    aoe(p.x, p.y, 130, 90, null);
+    aoe(p.x, p.y, 130, scaleSkill(90), null);
     explodeFX(p.x, p.y, 130);
-    for(let i = 0; i < G.enemies.length; i++) setBurn(G.enemies[i], 5, 14);
-    if(G.boss && !G.boss.dead) setBurn(G.boss, 5, 18);
+    for(let i = 0; i < G.enemies.length; i++) setBurn(G.enemies[i], 5, scaleSkill(14));
+    if(G.boss && !G.boss.dead) setBurn(G.boss, 5, scaleSkill(18));
     addBurn(p.x, p.y, 60);
     G.shake = 10;
   },
@@ -4076,17 +4087,17 @@ const CSK = {
         line:{ x2:p.x, y2:p.y } });
       e.x += (p.x - e.x) * k;
       e.y += (p.y - e.y) * k;
-      applyDamage(e, 26, false, e.x, e.y - 6);
+      applyDamage(e, scaleSkill(26), false, e.x, e.y - 6);
     }
     G.rings.push({ x:p.x, y:p.y, r:14, max:R, life:.5, maxLife:.5, col:'#c77dff', w:4 });
   },
 
   cipher: function(p){
     G.eb.length = 0;
-    p.inv = Math.max(p.inv, 1.6);
+    p.inv = Math.max(p.inv, scaleSkill(1.6));
     for(let i = 0; i < G.enemies.length; i++){
       const e = G.enemies[i];
-      if(!e.dead){ e.slowT = 3; e.slowAmt = Math.max(e.slowAmt || 0, .6); }
+      if(!e.dead){ e.slowT = scaleSkill(3); e.slowAmt = Math.max(e.slowAmt || 0, .6); }
     }
     G.rings.push({ x:p.x, y:p.y, r:10, max:Math.max(VW, VH) * .9, life:.45, maxLife:.45, col:'#8fe3ff', w:3 });
     G.flash = Math.max(G.flash, .18);
@@ -4101,7 +4112,7 @@ const CSK = {
       used.push(nx);
       G.parts.push({ x:from.x, y:from.y, vx:0, vy:0, life:.14, max:.14, col:'#ffe14a', r:1.4,
         line:{ x2:nx.x, y2:nx.y } });
-      applyDamage(nx, 46, true, nx.x, nx.y - 6);
+      applyDamage(nx, scaleSkill(46), true, nx.x, nx.y - 6);
       from = nx; cur = nx;
     }
     if(cur) G.shake = 5;
@@ -4112,11 +4123,11 @@ const CSK = {
     for(let i = 0; i < G.enemies.length; i++){
       const e = G.enemies[i];
       if(!e.dead && dst(p.x, p.y, e.x, e.y) < 150){
-        applyDamage(e, 18, false, e.x, e.y - 6);
-        setBurn(e, 5, 10);
+        applyDamage(e, scaleSkill(18), false, e.x, e.y - 6);
+        setBurn(e, 5, scaleSkill(10));
       }
     }
-    if(G.boss && !G.boss.dead && dst(p.x, p.y, G.boss.x, G.boss.y) < 190) setBurn(G.boss, 5, 12);
+    if(G.boss && !G.boss.dead && dst(p.x, p.y, G.boss.x, G.boss.y) < 190) setBurn(G.boss, 5, scaleSkill(12));
     for(let i = 0; i < 26; i++){
       const a = rnd(0, TAU), v = rnd(20, 90);
       G.parts.push({ x:p.x + Math.cos(a) * rnd(0, 100), y:p.y + Math.sin(a) * rnd(0, 60),
@@ -4130,7 +4141,7 @@ const CSK = {
     const tx = t ? t.x : p.x, ty = t ? t.y : p.y - 40;
     G.jobs.push({ t: .12, fn: function(){
       if(G.mode !== 'play') return;
-      aoe(tx, ty, 180, 160, null);
+      aoe(tx, ty, 180, scaleSkill(160), null);
       explodeFX(tx, ty, 180);
       addFlash(tx, ty, 320, '#ffe9a0', .9);
       G.shake = Math.max(G.shake, 12);
@@ -4151,7 +4162,7 @@ const CSK = {
     p.x = clamp(p.x + Math.cos(a) * 150, 30, ARENA.w - 30);
     p.y = clamp(p.y + Math.sin(a) * 150, 34, ARENA.h - 26);
     p.inv = Math.max(p.inv, .8);
-    aoe(p.x, p.y, 60, 40, null);
+    aoe(p.x, p.y, 60, scaleSkill(40), null);
     G.rings.push({ x:p.x, y:p.y, r:6, max:64, life:.3, maxLife:.3, col:'#7ef0ff', w:3 });
   }
 
@@ -4164,8 +4175,7 @@ function charSkill(){
   if(G.ccd > 0) return false;
   const p = G.p, fn = CSK[sk.id];
   if(!fn) return false;
-  G.ccdMax = sk.act.cd;
-  G.ccd = sk.act.cd;
+  G.ccd = G.ccdMax = abilityCooldown(sk.act.cd);
   G.shake = Math.max(G.shake, 5);
   addFlash(p.x, p.y, 108, sk.flow, .55);
   G.rings.push({ x:p.x, y:p.y, r:6, max:64, life:.32, maxLife:.32, col:sk.flow, w:3 });
@@ -6237,7 +6247,7 @@ const EVENTS = [
       const cur = G.weapon;
       let nid = cur;
       for(let k=0;k<20 && nid === cur;k++) nid = pick(ids);
-      G.weapon = nid; G.wcd = 0; recalc();
+      G.weapon = nid; recalcGun();
       floatText(G.p.x, G.p.y, '武器更换为 ' + WEP().n, '#8fe3ff', true);
     } },
   { n:'辐射风暴', ic:'☢', c:'#a8e05a', good:false,
@@ -9832,7 +9842,7 @@ function pickSkin(i){
     return;
   }
   /* 换人立刻生效：必杀冷却 + 被动重算 */
-  G.ccdMax = (sk.act || { cd:1 }).cd;
+  G.ccdMax = abilityCooldown(sk.act?.cd ?? 1);
   if(G.ccd > G.ccdMax) G.ccd = 0;
   if(G.st) recalc();
   if(G.p) G.p.hp = Math.min(G.p.hp, G.p.maxHp);
@@ -9856,7 +9866,7 @@ function pickWep(id){
 
 function recalcGun(){
   G.wcd = 0;
-  G.wcdMax = WEP().sk.cd;
+  G.wcdMax = abilityCooldown(WEP().sk.cd);
   if(G.st) recalc();
 }
 
