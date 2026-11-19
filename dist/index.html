@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#101516">
+  <meta name="description" content="机甲突袭 · 回响。选择驾驶员与武器，穿越五个战区，在十波敌潮后迎击首领。">
+  <title>机甲突袭 · 回响</title>
+  <link rel="icon" href="assets/emblem.png">
+  <link rel="stylesheet" href="terminal.css">
+  <script defer src="vendor/three.min.js"></script>
+  <script defer src="terminal.js"></script>
+  <script defer src="game.js"></script>
+</head>
+<body>
+<main id="wrap">
+  <canvas id="cv" aria-label="战斗画面。使用方向键或 WASD 移动，自动瞄准射击。"></canvas>
+  <section id="combat" class="combat-ui" aria-label="战斗仪表">
+    <div class="readouts">
+    <div class="vitals combat-panel">
+      <div class="pilot-id"><img id="hudPortrait" alt=""><strong id="hudPilot"></strong><span id="hudLevel"></span></div>
+      <div class="hp-numbers"><b>生命</b><strong id="hudHP"></strong></div>
+      <div class="meter hp-meter"><i id="hpFill"></i></div>
+      <div class="meter xp-meter" aria-label="升级经验"><i id="xpFill"></i></div>
+      <div class="vitals-meta"><span>击破 <b id="hudKills">0</b></span><span>得分 <b id="hudScore">0</b></span></div>
+      <div class="hud-status"><span id="hudLives"></span><span id="hudBuffs"></span></div>
+    </div>
+    <div id="wavePanel" class="wave-panel combat-panel">
+      <div class="hud-sector" id="hudSector"></div>
+      <strong id="waveName"></strong><small id="waveDetail"></small>
+      <div class="meter wave-meter"><i id="waveFill"></i></div>
+      <b id="comboText"></b>
+    </div>
+    </div>
+    <div class="corner-controls">
+      <button id="btnMute" class="icon-button sound-toggle" aria-label="关闭音效" title="关闭音效"><canvas class="icon" data-icon="sound"></canvas></button>
+      <button id="btnPause" class="icon-button" aria-label="暂停战斗" title="暂停战斗（P）"><canvas class="icon" data-icon="pause"></canvas></button>
+    </div>
+    <div id="skillRack" class="skill-rack" aria-label="已装配强化"></div>
+    <div id="actionDock">
+      <div class="bag-row"><button class="bag-button" data-bag="0"></button><button class="bag-button" data-bag="1"></button></div>
+      <div class="ability-row">
+        <button id="charAction" class="ability"><kbd>E</kbd><b class="ability-value"></b><span class="ability-name"></span></button>
+        <button id="weaponAction" class="ability"><kbd>Q</kbd><b class="ability-value"></b><span class="ability-name"></span></button>
+        <button id="btnMech" class="ability mech"><kbd>F</kbd><b class="ability-value"></b><span class="ability-name">机甲充能</span></button>
+      </div>
+    </div>
+  </section>
+  <div id="joyBase" aria-hidden="true"><div id="joyKnob"></div></div>
+  <div id="banner" role="status"><strong id="banA"></strong><span id="banB"></span></div>
+
+  <section class="ov lobby" id="ovTitle" aria-label="作战大厅">
+    <header class="topbar">
+      <div class="brand"><span class="emblem" aria-hidden="true"><i></i><i></i><i></i></span><strong>ECHO</strong><span class="brand-divider"></span><span class="brand-context">作战终端</span></div>
+      <div class="header-actions">
+        <button class="manual-link" id="openManual"><canvas class="icon" data-icon="manual"></canvas><span>作战手册</span></button>
+        <button class="wallet" id="wallet" title="前往补给站"><canvas class="icon" data-icon="credit"></canvas><b id="walletCount">—</b><small>积分</small></button>
+        <span class="header-divider"></span>
+        <button class="icon-button sound-toggle" id="btnSound" aria-label="关闭音效" title="关闭音效"><canvas class="icon" data-icon="sound"></canvas></button>
+        <button class="icon-button" id="openSettings" aria-label="系统设置" title="系统设置"><canvas class="icon" data-icon="settings"></canvas></button>
+      </div>
+    </header>
+    <div class="lobby-main">
+      <section class="hero" aria-labelledby="gameTitle">
+        <div class="hero-image" aria-hidden="true"></div>
+        <span class="frame-corner tl" aria-hidden="true"></span><span class="frame-corner br" aria-hidden="true"></span>
+        <div class="hero-copy">
+          <div class="campaign-tag"><i aria-hidden="true"></i>单人生存战役<span></span><small>ROGUELIKE</small></div>
+          <h1 id="gameTitle"><span>机甲突袭</span><span class="echo-title">回响<i aria-hidden="true"></i></span></h1>
+          <div class="english-title" lang="en">MECH STRIKE <em>/</em> ECHO</div>
+          <p class="brief">迎击十波敌潮，突破五个战区。<br>拾取经验强化武装，蓄满能量化身光之巨人。</p>
+          <div class="hero-actions">
+            <button class="primary launch" id="btnStart" disabled><canvas class="icon" data-icon="play"></canvas>开始出击<kbd>ENTER</kbd></button>
+            <button class="secondary" id="btnShop"><canvas class="icon" data-icon="supply"></canvas>补给站</button>
+          </div>
+        </div>
+        <button class="zone-label" id="openRoute" aria-label="查看五个战区的路线">
+          <canvas class="icon" data-icon="target"></canvas><span><small>SECTOR 01 <i>/</i> 05</small><b>落日废土</b></span>
+        </button>
+      </section>
+      <section class="loadout" id="loadout" aria-labelledby="loadoutTitle">
+        <div class="section-bar"><h2 id="loadoutTitle"><i></i>出击配置 <small>LOADOUT</small></h2><span class="rule"></span><span class="section-index" aria-hidden="true"></span></div>
+        <div class="loadout-grid">
+          <button class="outfit-card" id="selectPilot" aria-label="更换驾驶员">
+            <span class="thumb pilot-thumb"><img id="pilotImage" alt=""></span>
+            <span class="outfit-text"><small>驾驶员 <em>/ PILOT</em></small><strong id="pilotName">青柠雪</strong><span id="pilotMove"></span></span><canvas class="icon card-edit" data-icon="swap"></canvas>
+          </button>
+          <button class="outfit-card" id="selectWeapon" aria-label="更换主武器">
+            <span class="thumb weapon-thumb"><img id="weaponImage" alt=""></span>
+            <span class="outfit-text"><small>主武器 <em>/ WEAPON</em></small><strong id="weaponName">突击步枪</strong><span id="weaponMove"></span></span><canvas class="icon card-edit" data-icon="swap"></canvas>
+          </button>
+          <div class="record-card"><div class="record-heading"><canvas class="icon" data-icon="chart"></canvas><span>作战记录</span><small>RECORD</small></div><div class="records"><span><b id="recordBest">0</b><small>最高得分</small></span><i></i><span><b id="recordRuns">0</b><small>出击次数</small></span></div></div>
+        </div>
+      </section>
+    </div>
+    <footer class="footer"><div id="titleHint"><kbd>WASD</kbd> 移动 <i></i><span>自动射击</span><i></i><kbd>P</kbd> 暂停</div><span class="save-state"><canvas class="icon" data-icon="save"></canvas><span id="saveStatus">本机存档</span></span></footer>
+  </section>
+
+  <section class="ov supply-screen hide" id="ovShop" aria-label="补给站">
+    <header class="topbar">
+      <div class="brand"><span class="emblem" aria-hidden="true"><i></i><i></i><i></i></span><strong>ECHO</strong><span class="brand-divider"></span><span class="brand-context">补给站</span></div>
+      <div class="header-actions"><span class="wallet"><canvas class="icon" data-icon="credit"></canvas><b id="shopPts"></b><small>积分</small></span><button class="secondary small" id="btnShopX">返回 <kbd>ESC</kbd></button></div>
+    </header>
+    <div class="supply-content">
+      <div class="section-kicker"><i></i>SUPPLY DEPOT</div>
+      <div class="shop-heading"><h2>补给站</h2><div class="segmented" aria-label="装备类别"><button class="tab on" data-tab="skin">驾驶员</button><button class="tab" data-tab="weapon">主武器</button></div></div>
+      <div class="shop-layout">
+        <div class="catalog-side"><div class="catalog-bar"><span id="catalogName">驾驶员名册</span><small id="catalogCount"></small></div><div id="shopGrid" class="shop-grid"></div></div>
+        <aside id="shopDetail" class="shop-detail" aria-label="装备详情"></aside>
+      </div>
+    </div>
+  </section>
+
+  <section class="ov veil hide" id="ovLevel" role="dialog" aria-modal="true" aria-labelledby="levelTitle">
+    <div class="menu-sheet level-sheet"><div class="section-kicker"><i></i>LEVEL UP</div><div class="sheet-head"><h2 id="levelTitle">选择强化</h2><span class="lv-num" id="lvNum"></span></div>
+    <p class="sheet-note">重复选择同一技能可叠加升级。</p><div class="cards" id="cards"></div><div class="slot-count" id="lvSlots"></div></div>
+  </section>
+  <section class="ov veil hide" id="ovEvent" role="dialog" aria-modal="true" aria-label="战场事件">
+    <div class="menu-sheet centered"><div class="section-kicker"><i></i>战场事件</div><div id="evtBox"></div><button class="primary" id="btnEvt">确认事件</button></div>
+  </section>
+  <section class="ov veil hide" id="ovPause" role="dialog" aria-modal="true" aria-labelledby="pauseHeading">
+    <div class="menu-sheet"><div class="section-kicker"><i></i>PAUSED</div><h2 id="pauseHeading">战斗暂停</h2><p id="pauseProgress" class="sheet-note"></p>
+      <button class="primary wide" id="btnResume"><canvas class="icon" data-icon="play"></canvas>继续战斗<kbd>P</kbd></button>
+      <div class="pause-tools"><button class="secondary" id="pauseManual">作战手册</button><button class="secondary" id="pauseSettings">系统设置</button></div>
+      <button class="text-button quit" id="btnQuit">撤离战区，结算积分</button>
+    </div>
+  </section>
+  <section class="ov veil hide" id="ovOver" role="dialog" aria-modal="true" aria-labelledby="overTitle">
+    <div class="menu-sheet report-sheet"><div class="section-kicker"><i></i><span id="overTag">行动报告</span></div><h2 id="overTitle">行动结束</h2><div class="stats" id="overStats"></div>
+      <button class="primary wide" id="btnRetry"><canvas class="icon" data-icon="play"></canvas>再次出击</button><div class="pause-tools"><button class="secondary" id="btnHome">返回大厅</button><button class="secondary" id="btnShop2">前往补给站</button></div>
+    </div>
+  </section>
+</main>
+<dialog id="manualDialog" class="terminal-dialog">
+  <div class="dialog-head"><div><div class="section-kicker"><i></i>FIELD MANUAL</div><h2>作战手册</h2></div><button class="icon-button dialog-close" aria-label="关闭作战手册"><canvas class="icon" data-icon="close"></canvas></button></div>
+  <div class="segmented manual-tabs"><button data-manual="controls">基本操作</button><button data-manual="route">战区路线</button></div>
+  <div id="guideControls"><p>角色会自动瞄准射击。移动收集经验，升级时从三项强化中选一项。</p><dl class="controls-list">
+    <div><dt>移动</dt><dd><kbd>WASD</kbd> / <kbd>方向键</kbd></dd></div>
+    <div><dt>角色必杀 / 武器技</dt><dd><kbd>E</kbd> / <kbd>Q</kbd></dd></div>
+    <div><dt>满能量变身机甲</dt><dd><kbd>F</kbd></dd></div>
+    <div><dt>使用战术道具</dt><dd><kbd>1</kbd> / <kbd>2</kbd></dd></div>
+    <div><dt>选择升级强化</dt><dd><kbd>1</kbd> / <kbd>2</kbd> / <kbd>3</kbd></dd></div>
+    <div><dt>暂停 / 继续</dt><dd><kbd>P</kbd> / <kbd>Esc</kbd></dd></div>
+  </dl><p class="touch-note"><canvas class="icon" data-icon="touch"></canvas>触屏可在左侧拖动移动，点右下按钮释放技能或使用道具。</p></div>
+  <div id="guideRoute" hidden><p>每个战区有十波敌潮。击败关底首领后，进入传送门前往下一站。</p><ol id="routeList" class="route-list"></ol></div>
+</dialog>
+<dialog id="settingsDialog" class="terminal-dialog settings-dialog">
+  <div class="dialog-head"><div><div class="section-kicker"><i></i>SYSTEM</div><h2>系统设置</h2></div><button class="icon-button dialog-close" aria-label="关闭设置"><canvas class="icon" data-icon="close"></canvas></button></div>
+  <div class="setting-row"><strong>游戏音效</strong><button id="settingSound" class="switch" role="switch"></button></div>
+  <div class="setting-row quality-row"><strong>渲染画质</strong><div class="segmented quality"><button data-quality="0">流畅</button><button data-quality="1">均衡</button><button data-quality="2">精细</button></div></div>
+  <p class="quality-desc" id="qualityDesc"></p>
+  <div class="setting-row"><strong>镜头震动与强闪光</strong><button id="settingMotion" class="switch" role="switch"></button></div>
+</dialog>
+</body>
+</html>
