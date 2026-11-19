@@ -154,8 +154,10 @@ button.wallet:hover{background:#3b3023;border-color:#a37c4e}
 .menu-sheet{width:min(100%,420px);max-height:100%;overflow:auto}.menu-sheet h2,.terminal-dialog h2{margin:7px 0 10px}
 .sheet-note,.terminal-dialog p{color:#c1cbc2;font-size:.94rem;line-height:1.65}.sheet-note{margin-bottom:19px}.pause-tools{display:flex;gap:9px;margin-top:9px}.pause-tools>*{flex:1}.pause-tools .secondary{padding:10px 6px;font-size:.88rem}
 .text-button{display:block;color:#c0c7bc;font-size:.86rem}.quit{margin:16px auto 0;min-height:34px;text-decoration:underline;text-decoration-color:#6d776e;text-underline-offset:5px}
-.level-sheet{width:min(100%,760px)}.sheet-head{justify-content:space-between;gap:14px}.lv-num{font-size:1rem;color:var(--pale)}
+.level-sheet{width:min(100%,1040px)}.sheet-head{justify-content:space-between;gap:14px}.lv-num{font-size:1rem;color:var(--pale)}
 .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.card{position:relative;color:var(--text);display:flex;align-items:flex-start;flex-direction:column;text-align:left;border:1px solid #46564e;background:#1a2222;padding:18px 14px 15px;min-width:0}
+@media(min-width:830px){.cards:not(.swap-options){grid-template-columns:repeat(5,minmax(0,1fr))}}
+@media(max-width:620px){.cards:not(.swap-options){grid-template-columns:repeat(2,minmax(0,1fr));max-height:52dvh;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;padding:4px;gap:7px}}
 .cards.swap-options{max-height:min(53dvh,465px);overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;padding:4px}
 .swap-options .card{padding:10px;min-height:92px}
 .swap-options .card .ico{min-width:26px;height:26px;margin:0 0 4px;font-size:1.1rem}

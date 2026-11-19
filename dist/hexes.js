@@ -1,4 +1,5 @@
 /* 海克斯按本局预掷档位，每个战役里程碑只结算一次。数值为《回响》规则。 */
+const DRAFT_CHOICES = 5;
 const HEXES = (function(){
   const tierNames = { silver:'白银', gold:'黄金', prism:'棱彩' };
   const tierColors = { silver:'#b6c5d2', gold:'#ffd172', prism:'#d7aaff' };
@@ -165,7 +166,7 @@ const HEXES = (function(){
     if(!previous.length && state.hand) return state.hand;
     const ids = offerIds();
     const prior = new Set(previous.map(o => o.id));
-    const options = draw(ids,3);
+    const options = draw(ids,DRAFT_CHOICES);
     if(previous.length && options.every(id => prior.has(id))){
       const fresh = ids.filter(id => !prior.has(id));
       if(fresh.length) options[options.length-1] = draw(fresh,1)[0];
@@ -176,7 +177,7 @@ const HEXES = (function(){
   }
 
   function canAscend(state = G.enhancements){
-    return state.pending && currentTier(state) === 'gold' && state.plan.upgrades[milestones.indexOf(state.pending)] && actualPool('prism',state).length >= 3;
+    return state.pending && currentTier(state) === 'gold' && state.plan.upgrades[milestones.indexOf(state.pending)] && actualPool('prism',state).length >= DRAFT_CHOICES;
   }
 
   function ascend(){

@@ -11,7 +11,7 @@ const HEX_UPGRADES = {
     desc:'混合局的每轮海克斯会从银色移出这部分概率，按 ' + Math.round(HEX_FORTUNE_GOLD_SHARE*100) +
       '% 和 ' + Math.round((1-HEX_FORTUNE_GOLD_SHARE)*100) + '% 分给金色与棱彩。' },
   goldPrism:{ name:'金变彩', icon:'◇', label:'升彩机会出现概率', step:5, unit:'%', base:0, costs:[1500,3000,5000],
-    desc:'每个金色轮次都有机会出现「本轮升彩」。按下后改为棱彩三选一，也可照常选择金色牌。' }
+    desc:'每个金色轮次都有机会出现「本轮升彩」。按下后改为棱彩五选一，也可照常选择金色牌。' }
 };
 const GROWTH_MODULES = {
   attack:{ name:'火控模块', icon:'◆', label:'伤害加成', step:4, unit:'%',

@@ -1,8 +1,8 @@
 /* 常规强化与战区大强化。效果只保存在本局，军费走既有积分记账。 */
 const TALENTS = (function(){
   const groups = {
-    fire: { n:'火力', ids:['rapid','power','pierce','barrage'] },
-    control: { n:'控场', ids:['blast','chain','drone','turret','mine'] },
+    fire: { n:'火力', ids:['rapid','power','pierce','barrage','crit','multi'] },
+    control: { n:'控场', ids:['blast','chain','drone','turret','mine','burn','freeze','boom'] },
     defense: { n:'生存', ids:['hp','armor','speed','magnet'] }
   };
   const pool = Object.entries(groups).flatMap(([tag, group]) =>
@@ -31,6 +31,7 @@ const TALENTS = (function(){
     const available = pool.flatMap(({ id, tag }) => {
       const lv = G.skills[id] || 0;
       if(lv >= SK[id].max) return [];
+      if(id === 'crit' && G.st?.crit >= .95 || id === 'freeze' && G.st?.freeze * PROJECTILE_EFFECTS.slowPerLevel >= PROJECTILE_EFFECTS.slowLimit) return [];
       const w = (lv ? 2.4 : 1) * (1 + current[tag] * .65 + (tag === weaponTag ? .35 : 0));
       return [{ id, tag, lv, kind:lv ? 'up' : full ? 'swap' : 'new', w }];
     });
@@ -53,14 +54,18 @@ const TALENTS = (function(){
     const pivot = draw(card => card.lv === 0 && card.tag !== focus) || draw(card => card.lv === 0);
     const main = draw(card => card.kind !== 'swap' && card.tag === focus) ||
       draw(card => card.kind !== 'swap') || draw(() => true);
-    let flex = draw(card => card.kind === 'up') || draw(() => true);
+    const flex = draw(card => card.kind === 'up') || draw(() => true);
+    const choices = [main,flex];
+    while(choices.length < DRAFT_CHOICES - 1) choices.push(draw(() => true));
+    choices.push(pivot);
     if(previous.length){
       const prior = new Set(previous.map(card => card.id));
-      if([main,flex,pivot].every(card => prior.has(card.id))){
-        flex = draw(card => !prior.has(card.id)) || flex;
+      if(choices.every(card => prior.has(card.id))){
+        const index = DRAFT_CHOICES - 2;
+        choices[index] = draw(card => !prior.has(card.id)) || choices[index];
       }
     }
-    return [main, flex, pivot];
+    return choices;
   }
 
   function tryBayonet(){
