@@ -65,6 +65,7 @@ function updateLoadout() {
   byId('recordBest').textContent = numberFormat.format(PROF.best);
   byId('recordRuns').textContent = numberFormat.format(PROF.runs);
   byId('hudPilot').textContent = SKIN().name;
+  updateMechLoadout();
 }
 function currentStock() {
   if(shopTab === 'growth') return PROF.growth.slots[0] || Object.keys(GROWTH_MODULES)[0];
@@ -279,7 +280,8 @@ function wireTerminal() {
   byId('btnHome').onclick = returnToLobby;
   byId('btnEvt').onclick = closeEvent;
   byId('lvCancel').onclick = TALENTS.cancelSwap;
-  byId('btnMech').onclick = summonMech;
+  byId('btnMech').onclick = useMechAction;
+  wireMechSelect();
   byId('charAction').onclick = charSkill;
   byId('weaponAction').onclick = weaponSkill;
   document.querySelectorAll('[data-bag]').forEach(b => b.onclick = () => useItem(Number(b.dataset.bag)));
@@ -366,14 +368,11 @@ function paintInstruments(force) {
   const active = [['over','过载'],['magnet','磁吸'],['stasis','停滞'],['fleet','疾风'],['rad','辐射'],['luck','幸运'],['weak','虚弱']];
   putText(instrument('hudBuffs'),active.filter(([k])=>G.buff[k]>0).map(([k,n])=>n+' '+Math.ceil(G.buff[k])+'s').join(' · '));
   putText(instrument('hudEnhancements'),TALENTS.status().join(' · '));
-  paintAbility('charAction',pilot.act.n,G.ccd>0 ? Math.ceil(G.ccd)+'s' : pilot.act.ic,pilot.act.n + ' · ' + pilot.act.t,G.ccd<=0,pilot.flow);
-  paintAbility('weaponAction',weapon.sk.n,G.wcd>0 ? Math.ceil(G.wcd)+'s' : weapon.sk.ic,weapon.sk.n + ' · ' + weapon.sk.t,G.wcd<=0,weapon.c);
-  const ready = canSummon(), live = G.mechT>0;
-  const locked = G.st.mechLocked;
-  const mechValue = locked ? '—' : live ? Math.ceil(G.mechT)+'s' : ready ? '变身' : Math.floor(G.energy)+'%';
-  const mechLabel = locked ? '机甲禁用' : live ? '巨人形态' : ready ? '机甲就绪' : '机甲充能';
-  paintAbility('btnMech',mechLabel,mechValue,locked ? '回归基本功 · 本局机甲禁用' : mechLabel + ' · ' + mechValue,ready,'#ffb462');
-  instrument('btnMech').classList.toggle('ready',ready);
+  const live = G.mechT > 0;
+  const shapeLock = live ? '机甲形态期间暂停使用' : '';
+  paintAbility('charAction',pilot.act.n,live ? '暂停' : G.ccd>0 ? Math.ceil(G.ccd)+'s' : pilot.act.ic,shapeLock || (pilot.act.n + ' · ' + pilot.act.t),!live && G.ccd<=0,pilot.flow);
+  paintAbility('weaponAction',weapon.sk.n,live ? '暂停' : G.wcd>0 ? Math.ceil(G.wcd)+'s' : weapon.sk.ic,shapeLock || (weapon.sk.n + ' · ' + weapon.sk.t),!live && G.wcd<=0,weapon.c);
+  paintMechAbility(live);
   const bagButtons = instrument('actionDock').querySelectorAll('[data-bag]');
   for(let i=0;i<MAX_BAG;i++){
     const item = G.bag[i] && IT[G.bag[i]];

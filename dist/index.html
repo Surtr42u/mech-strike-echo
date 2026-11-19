@@ -8,11 +8,13 @@
   <title>机甲突袭 · 回响</title>
   <link rel="icon" href="assets/emblem.png">
   <link rel="stylesheet" href="terminal.css">
+  <link rel="stylesheet" href="mechs.css">
   <script defer src="vendor/three.min.js"></script>
   <script defer src="growth.js"></script>
   <script defer src="terminal.js"></script>
   <script defer src="talents.js"></script>
   <script defer src="projectiles.js"></script>
+  <script defer src="mechs.js"></script>
   <script defer src="game.js"></script>
 </head>
 <body>
@@ -45,7 +47,7 @@
       <div class="ability-row">
         <button id="charAction" class="ability"><kbd>E</kbd><b class="ability-value"></b><span class="ability-name"></span></button>
         <button id="weaponAction" class="ability"><kbd>Q</kbd><b class="ability-value"></b><span class="ability-name"></span></button>
-        <button id="btnMech" class="ability mech"><kbd>F</kbd><b class="ability-value"></b><span class="ability-name">机甲充能</span></button>
+        <button id="btnMech" class="ability mech"><kbd>F</kbd><span class="mech-time" id="hudMechTime"></span><b class="ability-value"></b><span class="ability-name">机甲充能</span></button>
       </div>
     </div>
   </section>
@@ -71,7 +73,7 @@
           <div class="campaign-tag"><i aria-hidden="true"></i>单人生存战役<span></span><small>ROGUELIKE</small></div>
           <h1 id="gameTitle"><span>机甲突袭</span><span class="echo-title">回响<i aria-hidden="true"></i></span></h1>
           <div class="english-title" lang="en">MECH STRIKE <em>/</em> ECHO</div>
-          <p class="brief">迎击十波敌潮，突破五个战区。<br>拾取经验强化武装，蓄满能量化身光之巨人。</p>
+          <p class="brief">迎击十波敌潮，突破五个战区。<br>拾取经验强化武装，蓄满能量启动机甲。</p>
           <div class="hero-actions">
             <button class="primary launch" id="btnStart" disabled><canvas class="icon" data-icon="play"></canvas>开始出击<kbd>ENTER</kbd></button>
             <button class="secondary" id="btnShop"><canvas class="icon" data-icon="supply"></canvas>补给站</button>
@@ -91,6 +93,10 @@
           <button class="outfit-card" id="selectWeapon" aria-label="更换主武器">
             <span class="thumb weapon-thumb"><img id="weaponImage" alt=""></span>
             <span class="outfit-text"><small>主武器 <em>/ WEAPON</em></small><strong id="weaponName">突击步枪</strong><span id="weaponMove"></span></span><canvas class="icon card-edit" data-icon="swap"></canvas>
+          </button>
+          <button class="outfit-card" id="selectMech" aria-label="选择机甲" aria-haspopup="dialog">
+            <span class="thumb mech-thumb" id="mechThumb" aria-hidden="true"></span>
+            <span class="outfit-text"><small>出战机甲 <em>/ MECH</em></small><strong id="mechName">铁砧</strong><span id="mechRole"></span></span><canvas class="icon card-edit" data-icon="swap"></canvas>
           </button>
           <div class="record-card"><div class="record-heading"><canvas class="icon" data-icon="chart"></canvas><span>作战记录</span><small>RECORD</small></div><div class="records"><span><b id="recordBest">0</b><small>最高得分</small></span><i></i><span><b id="recordRuns">0</b><small>出击次数</small></span></div></div>
         </div>
@@ -141,12 +147,16 @@
   <div id="guideControls"><p>角色会自动瞄准射击。移动收集经验，升级时从三项强化中选一项。</p><dl class="controls-list">
     <div><dt>移动</dt><dd><kbd>WASD</kbd> / <kbd>方向键</kbd></dd></div>
     <div><dt>角色必杀 / 武器技</dt><dd><kbd>E</kbd> / <kbd>Q</kbd></dd></div>
-    <div><dt>满能量变身机甲</dt><dd><kbd>F</kbd></dd></div>
+    <div><dt>满能量变身 / 变身后释放机甲技</dt><dd><kbd>F</kbd></dd></div>
     <div><dt>使用战术道具</dt><dd><kbd>1</kbd> / <kbd>2</kbd></dd></div>
     <div><dt>选择升级强化</dt><dd><kbd>1</kbd> / <kbd>2</kbd> / <kbd>3</kbd></dd></div>
     <div><dt>暂停 / 继续</dt><dd><kbd>P</kbd> / <kbd>Esc</kbd></dd></div>
   </dl><p class="touch-note"><canvas class="icon" data-icon="touch"></canvas>触屏可在左侧拖动移动，点右下按钮释放技能或使用道具。</p></div>
   <div id="guideRoute" hidden><p>每个战区有十波敌潮。击败关底首领后，进入传送门前往下一站。</p><ol id="routeList" class="route-list"></ol></div>
+</dialog>
+<dialog id="mechDialog" class="terminal-dialog mech-dialog" aria-labelledby="mechDialogTitle">
+  <div class="dialog-head"><h2 id="mechDialogTitle">出战机甲</h2><button class="icon-button dialog-close" aria-label="关闭机甲选择"><canvas class="icon" data-icon="close"></canvas></button></div>
+  <div class="mech-choices" id="mechChoices"></div>
 </dialog>
 <dialog id="settingsDialog" class="terminal-dialog settings-dialog">
   <div class="dialog-head"><div><div class="section-kicker"><i></i>SYSTEM</div><h2>系统设置</h2></div><button class="icon-button dialog-close" aria-label="关闭设置"><canvas class="icon" data-icon="close"></canvas></button></div>

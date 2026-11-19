@@ -84,7 +84,7 @@ const TALENTS = (function(){
     if(id === 'stipend') grantPoints(600, '军费补助');
     if(id === 'basics'){
       G.energy = 0;
-      G.mechT = 0;
+      endMech();
       G.wcd *= cooldownMul;
       G.ccd *= cooldownMul;
       G.wcdMax *= cooldownMul;

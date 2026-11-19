@@ -349,7 +349,7 @@ const GIFT_PTS = 5000;
 const PROF = {
   ver:4,
   pts:GIFT_PTS, total:0, best:0, runs:0, gift:1, giftFx:1,
-  skin:0, weapon:'rifle',
+  skin:0, weapon:'rifle', mech:DEFAULT_MECH,
   ownSkins:[0], ownWeapons:['rifle'],
   growth:{ levels:{}, slots:[], weaponLevels:{} }
 };
@@ -363,12 +363,10 @@ function loadProf(){
     loadedProf = o;
     if(typeof o.pts === 'number') PROF.pts = Math.max(0, o.pts | 0);
     PROF.gift = o.gift ? 1 : 0;
-    let giftNow = false;
     if(!PROF.gift){
       PROF.pts += GIFT_PTS;
       PROF.gift = 1;
       PROF.giftFx = 1;
-      giftNow = true;
     }
     if(typeof o.total === 'number') PROF.total = Math.max(0, o.total | 0);
     if(typeof o.best === 'number') PROF.best = Math.max(0, o.best | 0);
@@ -386,12 +384,12 @@ function loadProf(){
     if(!fresh && typeof o.skin === 'number' && PROF.ownSkins.indexOf(o.skin) >= 0) PROF.skin = o.skin;
     if(typeof o.weapon === 'string' && PROF.ownWeapons.indexOf(o.weapon) >= 0) PROF.weapon = o.weapon;
     PROF.growth = readGrowth(o.growth);
-    /* 全部字段迁移完再落盘，避免把未过滤的档写回去 */
-    if(giftNow) saveProf();
+    PROF.mech = equippedMech(o.mech);
   }catch(e){}
 }
 function saveProf(){
-  const saved = storeSet(PKEY, JSON.stringify({...loadedProf,...PROF}));
+  const data = JSON.stringify({...loadedProf,...PROF});
+  const saved = storeGet(PKEY) === data || storeSet(PKEY,data);
   byId('saveStatus').textContent = saved ? '本机存档' : '仅本次会话';
 }
 function ownSkin(i){ return PROF.ownSkins.indexOf(i) >= 0; }
@@ -1504,7 +1502,7 @@ function collectLights(){
   LIGHTS.length = 0;
   const p = G.p;
   if(p){
-    if(G.mechT > 0) addLight(p.x, p.y, 190, '#ffb060', .62, 1);
+    if(G.mechT > 0) addLight(p.x, p.y, 190, currentMech().color, .62, 1);
     else addLight(p.x, p.y, 116, '#a9ccff', .38, 1);
     if(p.flashT > 0){
       /* 枪口光挪到枪口位置、压小压淡：原本叠在脚下又 .85 强度，
@@ -1519,7 +1517,7 @@ function collectLights(){
   for(let i = 0; i < G.bullets.length; i += st){
     const b = G.bullets[i];
     const bw = WP[b.w];
-    const bcol = b.mech ? '#ff9a4a' : (bw ? bw.c : '#ffd88a');
+    const bcol = b.mech ? MECHS[b.mechId].color : (bw ? bw.c : '#ffd88a');
     addLight(b.x, b.y, b.mech ? 34 : (b.boom ? 30 : (b.w === 'flamer' || b.w === 'toxin' ? 24 : 18)),
              bcol, b.mech ? .40 : .28, 1);
   }
@@ -1781,7 +1779,7 @@ const G = {
   t:0, cam:{x:ARENA.w/2, y:ARENA.h/2},
   score:0, kills:0, xp:0, lv:1, need:10, pending:0,
   skills:{}, slots:[], growth:growthSnapshot(),
-  energy:0, mechT:0,
+  energy:0, mechT:0, mechId:DEFAULT_MECH, mechCd:0, mechSide:0, mechEchoT:0, mechArcs:[],
   p:null, st:null,
   bullets:[], eb:[], enemies:[], orbs:[], parts:[], texts:[], rings:[],
   haz:[], drones:[], turrets:[], mines:[], booms:[],
@@ -3000,7 +2998,9 @@ function newRun(){
   G.xp = 0; G.lv = 1; G.need = 10; G.pending = 0;
   G.skills = {}; G.slots = []; G.growth = growthSnapshot();
   TALENTS.reset();
-  G.energy = 0; G.mechT = 0; G.revives = 1;
+  G.energy = 0; G.revives = 1;
+  G.mechId = PROF.mech;
+  resetMech();
   G.bullets.length = 0; G.eb.length = 0; G.enemies.length = 0;
   G.orbs.length = 0; G.parts.length = 0; G.texts.length = 0; G.rings.length = 0;
   G.haz.length = 0; G.drones.length = 0; G.turrets.length = 0;
@@ -3137,6 +3137,7 @@ function spawnBoss(kind){
 /* ── 玩家 ── */
 function updatePlayer(dt){
   const p = G.p, s = G.st;
+  updateMech(dt);
 
   let ix = 0, iy = 0;
   if(keys.left) ix -= 1;
@@ -3148,7 +3149,7 @@ function updatePlayer(dt){
   if(m > 1){ ix /= m; iy /= m; }
   const mag = Math.min(1, Math.hypot(ix, iy));
 
-  const spd = 106 * s.spdMul * (G.buff.fleet > 0 ? 1.35 : 1);
+  const spd = 106 * s.spdMul * (G.buff.fleet > 0 ? 1.35 : 1) * (G.mechT > 0 ? currentMech().speed : 1);
   const k = 1 - Math.pow(.0009, dt);
   p.vx = lerp(p.vx, ix * spd, k);
   p.vy = lerp(p.vy, iy * spd, k);
@@ -3175,7 +3176,7 @@ function updatePlayer(dt){
   }
 
   // 朝向：优先看目标，否则看移动（8 方向）
-  const tgt = nearestEnemy(p.x, p.y, G.mechT > 0 ? 460 : weaponReach(WEP(), s));
+  const tgt = G.mechT > 0 ? mechTarget(currentMech().reach) : nearestEnemy(p.x,p.y,weaponReach(WEP(),s));
   let fa = p.faceAngle;
   if(tgt){
     fa = Math.atan2(tgt.y - p.y, tgt.x - p.x);
@@ -3215,8 +3216,6 @@ function updatePlayer(dt){
 
   p.fireT -= dt;
   if(p.fireT <= 0 && tgt) fire(tgt);
-
-  updateMech(dt);
 
   // 相机
   const cw = VW, chh = VH / KZ;
@@ -3287,7 +3286,7 @@ function gunMuzzle(p, w, angle){
 }
 
 function fire(target){
-  if(G.mechT > 0){ mechFire(); return; }
+  if(G.mechT > 0){ mechFire(target); return; }
   if(TALENTS.tryBayonet()) return;
   const p = G.p, s = G.st, w = WEP();
   const t = target || nearestEnemy(p.x, p.y, weaponReach(w, s));
@@ -3466,7 +3465,7 @@ const WSK_G = {
 
 /* ── 武器主动技 ── */
 function weaponSkill(){
-  if(G.mode !== 'play' || !G.p || G.p.hp <= 0) return false;
+  if(G.mode !== 'play' || G.mechT > 0 || !G.p || G.p.hp <= 0) return false;
   if(G.wcd > 0) return false;
   const w = WEP(), p = G.p;
   G.wcd = G.wcdMax = abilityCooldown(w.sk.cd);
@@ -4182,7 +4181,7 @@ const CSK = {
 };
 
 function charSkill(){
-  if(G.mode !== 'play' || !G.p || G.p.hp <= 0) return false;
+  if(G.mode !== 'play' || G.mechT > 0 || !G.p || G.p.hp <= 0) return false;
   const sk = SKIN();
   if(!sk.act) return false;
   if(G.ccd > 0) return false;
@@ -4211,68 +4210,6 @@ function updateChar(dt){
     }
   }
   if(dirty) recalc();
-}
-
-/* 机甲火力：双管交替 · 高伤 · 穿透 */
-function mechFire(){
-  const p = G.p, s = G.st;
-  const t = nearestEnemy(p.x, p.y, 460);
-  if(!t) return;
-  const ang = Math.atan2(t.y - p.y, t.x - p.x);
-  p.fireT = .085;
-  p.flashT = .06;
-  G.mechSide = G.mechSide ? 0 : 1;
-  const off = G.mechSide ? 3 : -3;
-  const px2 = Math.cos(ang + Math.PI / 2) * off;
-  const py2 = Math.sin(ang + Math.PI / 2) * off;
-  G.bullets.push({
-    x: p.x + Math.cos(ang) * 16 + px2,
-    y: p.y + Math.sin(ang) * 16 + py2,
-    vx: Math.cos(ang) * 560, vy: Math.sin(ang) * 560,
-    dmg: (s.dmg * 1.9 + 10) * (G.buff.weak > 0 ? .65 : 1), pierce: 2, hits: [], life: 1.0,
-    crit: Math.random() < s.crit + .12, r: 4 * s.bigMul, mech: true
-  });
-  const mx = p.x + Math.cos(ang) * 18, my = p.y + Math.sin(ang) * 18;
-  G.parts.push({ x:mx, y:my, vx:Math.cos(ang)*90, vy:Math.sin(ang)*90,
-    life:.1, max:.1, col:'#ffe0a8', r:3 });
-  SFX.heavy();
-}
-
-/* ── 机甲 ── */
-const MECH_TIME = 25;
-function canSummon(){
-  return G.mode === 'play' && !G.st.mechLocked && G.mechT <= 0 && G.energy >= 100 && G.p && G.p.hp > 0;
-}
-function summonMech(){
-  if(!canSummon()) return;
-  G.energy = 0;
-  G.mechT = MECH_TIME;
-  G.shake = 12;
-  addFlash(G.p.x, G.p.y, 190, '#ffb060', .9);
-  G.rings.push({ x:G.p.x, y:G.p.y, r:8, max:120, life:.6, maxLife:.6, col:'#ffb060', w:4 });
-  for(let i=0;i<26;i++){
-    const a = rnd(0, TAU), v = rnd(60, 220);
-    G.parts.push({ x:G.p.x, y:G.p.y, vx:Math.cos(a)*v, vy:Math.sin(a)*v*.7,
-      life:.5, max:.5, col:pick(['#ffd08a','#ff9a45','#fff2cf']), r:2 });
-  }
-  SFX.mech();
-  banner('光之巨人 · 降临', MECH_TIME + ' 秒无敌 · 彩色计时器开始倒数', 1.2);
-}
-function updateMech(dt){
-  if(G.mechT <= 0) return;
-  const before = Math.ceil(G.mechT);
-  G.mechT -= dt;
-  const after = Math.ceil(G.mechT);
-  if(after !== before && after <= 5 && after > 0){
-    SFX.shoot();
-  }
-  if(G.mechT <= 0){
-    G.mechT = 0;
-    G.eb.length = 0;
-    G.rings.push({ x:G.p.x, y:G.p.y, r:6, max:90, life:.5, maxLife:.5, col:'#ffb060', w:3 });
-    G.p.inv = Math.max(G.p.inv, 1.2);
-    banner('能量耗尽', '光之巨人消散 · 重新积攒能量', 1.1);
-  }
 }
 
 function addEnergy(v){
@@ -4446,6 +4383,7 @@ function hurtPlayer(dmg){
 }
 
 function playerDown(){
+  endMech();
   if(G.revives > 0){
     G.revives--;
     G.p.hp = G.p.maxHp * .55;
@@ -6164,7 +6102,10 @@ const EVENTS = [
     apply:function(){ heal(G.p.maxHp * .5); floatText(G.p.x, G.p.y, '生命 +50%', '#7dffb0', true); } },
   { n:'能量过载', ic:'⚡', c:'#ffb45c', good:true, needsMech:true,
     desc:'能量场异常活跃，机甲能量瞬间充满。',
-    apply:function(){ G.energy = 100; floatText(G.p.x, G.p.y, '能量充满', '#ffb45c', true); } },
+    apply:function(){
+      addEnergy(100);
+      floatText(G.p.x,G.p.y,G.mechT > 0 ? '机甲已启动 · 能量不累积' : '能量充满','#ffb45c',true);
+    } },
   { n:'弹药克扣', ic:'▼', c:'#ff8a6a', good:false,
     desc:'补给线被切断，你的伤害短暂下降。',
     apply:function(){ G.buff.weak = 8; floatText(G.p.x, G.p.y, '伤害 -35%（8 秒）', '#ff8a6a', true); } },
@@ -6250,6 +6191,7 @@ function maybeEvent(){
 
 function nextStage(){
   if(G.mode !== 'play') return;
+  endMech();
   const s = G.stage;
   if(s >= SCENES.length - 1){
     G.mode = 'win';
@@ -6259,7 +6201,6 @@ function nextStage(){
   G.portal = null;
   G.p.hp = Math.min(G.p.maxHp, G.p.hp + G.p.maxHp * .3);
   G.energy = 0;
-  G.mechT = 0;
   G.revives = Math.max(G.revives, 0);
   setScene(s + 1);
   G.wave = 1;
@@ -8149,7 +8090,7 @@ function drawMechSprite(x, y, faceAngle, moving, anim, atkT){
   const fa = faceAngle || 0;
   const f = Math.cos(fa) < 0;
   const vy = Math.sin(fa);
-  const attacking = atkT > 0;
+  const attacking = atkT > 0, mech = currentMech();
 
   // 场景光照采样
   let lum = 1;
@@ -8159,13 +8100,13 @@ function drawMechSprite(x, y, faceAngle, moving, anim, atkT){
 
   drawAO(sx, sy + 1, 20, .50 * lum, .42);
   // A ground ring keeps the player visible in crowds and warms as the form expires.
-  const ringColor = G.mechT < 6 ? '255,162,83' : '116,232,218';
+  const ringColor = G.mechT < 6 ? '#ffa253' : mech.color;
   ctx.save();
   ctx.lineWidth = 1.2;
-  ctx.strokeStyle = 'rgba(' + ringColor + ',.42)';
+  ctx.strokeStyle = hexA(ringColor,.42);
   ctx.beginPath(); ctx.ellipse(sx, sy, 23, 8, 0, 0, TAU); ctx.stroke();
   const rot = G.t * 1.5;
-  ctx.strokeStyle = 'rgba(' + ringColor + ',.8)';
+  ctx.strokeStyle = hexA(ringColor,.8);
   for(let i = 0; i < 2; i++){
     ctx.beginPath();
     ctx.ellipse(sx, sy, 26, 9, 0, rot + i*Math.PI, rot + i*Math.PI + .78);
@@ -8178,9 +8119,10 @@ function drawMechSprite(x, y, faceAngle, moving, anim, atkT){
   const frame = SPRM.frames[name];
   if(!frame){
     drawMechFallback(sx,sy,f,vy,moving,anim,attacking,lum);
+    drawMechGear(sx,sy,fa,mech,attacking);
     return;
   }
-  const scale = .76, size = 96 * scale;
+  const scale = mech.size, size = 96 * scale;
   const recoil = attacking && !reducedEffects ? 1 : 0;
   ctx.save();
   ctx.translate(sx,sy - stride);
@@ -8190,6 +8132,7 @@ function drawMechSprite(x, y, faceAngle, moving, anim, atkT){
   ctx.globalAlpha = .88 + .12 * lum;
   ctx.drawImage(frame.img,frame.x,frame.y,frame.w,frame.h,left,top,size,size);
   ctx.restore();
+  drawMechGear(sx,sy,fa,mech,attacking);
 }
 
 function drawMechFallback(sx,sy,f,vy,moving,anim,attacking,lum){
@@ -8851,10 +8794,17 @@ function drawBulletBody(b, col){
   const br = b.r;
 
   if(b.mech){
+    const accent = MECHS[b.mechId].color;
     ctx.globalCompositeOperation = 'lighter';
-    bTrail(26, 12, '#ff9a4a', .55);
-    ctx.fillStyle = '#ffc078'; ctx.fillRect(-12, -2.6, 18, 5.2);
-    ctx.fillStyle = '#fffaf0'; ctx.fillRect(0, -1.8, 9, 3.6);
+    if(b.mechId === 'barrage'){
+      bTrail(13,7,accent,.7);
+      ctx.fillStyle = accent;
+      ctx.beginPath(); ctx.moveTo(-6,0); ctx.lineTo(0,-4); ctx.lineTo(7,0); ctx.lineTo(0,4); ctx.fill();
+    } else {
+      bTrail(26,12,accent,.55);
+      ctx.fillStyle = accent; ctx.fillRect(-12,-2.6,18,5.2);
+      ctx.fillStyle = '#fffaf0'; ctx.fillRect(0,-1.8,9,3.6);
+    }
     ctx.globalCompositeOperation = 'source-over';
 
   } else if(id === 'sniper' || id === 'rail' || id === 'marksman' || id === 'coilgun' || id === 'laser'){
@@ -9289,6 +9239,7 @@ function render(){
   }
 
   drawBullets();
+  drawMechSwings();
   drawRings();
   drawBeams();
   drawLights(1);
@@ -9404,6 +9355,7 @@ function settle(win){
 /* 主动结束本局：走和阵亡同一条结算链路 */
 function quitRun(){
   if(G.mode !== 'play' && G.mode !== 'pause') return;
+  endMech();
   elLevel.classList.add('hide');
   elPause.classList.add('hide');
   G.mode = 'over';
@@ -9549,7 +9501,7 @@ window.addEventListener('keydown', function(e){
   if(k === 'p' || k === 'escape'){
     if(G.mode === 'play' || G.mode === 'pause'){ togglePause(); e.preventDefault(); }
   } else if(G.mode === 'play'){
-    if(k === 'f') summonMech();
+    if(k === 'f') useMechAction();
     else if(k === 'q') weaponSkill();
     else if(k === 'e') charSkill();
     else if(k === '1' || k === '2') useItem(Number(k)-1);
@@ -9688,6 +9640,7 @@ function boot(){
   loadProf();
   G.skin = ownSkin(PROF.skin) ? PROF.skin : 0;
   G.weapon = ownWep(PROF.weapon) ? PROF.weapon : 'rifle';
+  G.mechId = PROF.mech;
   G.touch = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
   const quality = storeGet(QKEY);
   QLEVEL = ['0','1','2'].includes(quality) ? Number(quality) : G.touch ? 1 : 2;
@@ -9716,6 +9669,7 @@ window.__dbg = {
   spawnBoss:spawnBoss, spawnEnemy:spawnEnemy, applyDamage:applyDamage,
   damageBoss:damageBoss, killEnemy:killEnemy, summonMech:summonMech,
   canSummon:canSummon, hurtPlayer:hurtPlayer, gainXp:gainXp,
+  MECHS:MECHS, useMechAction:useMechAction, updateMech:updateMech, mechFire:mechFire,
   chooseCard:chooseCard, openLevel:openLevel, nextStage:nextStage,
   bossDown:bossDown, fire:fire, update:step, render:render,
   recalc:recalc, keys:keys, ARENA:ARENA, setScene:setScene,

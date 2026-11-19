@@ -11,9 +11,9 @@ const GROWTH_MODULES = {
   critical:{ name:'瞄准模块', icon:'✧', label:'暴击率', step:2, unit:' 个百分点', compactUnit:'%',
     desc:'提高射击暴击率，最终暴击率最高为 95%。', apply:(s,n) => { s.crit += n / 100; } },
   skill:{ name:'技能增幅', icon:'✦', label:'技能强度', step:8, unit:'%',
-    desc:'提高武器主动与驾驶员必杀的伤害、治疗或主要辅助效果的持续时间。', apply:(s,n) => { s.skillPower += n / 100; } },
+    desc:'提高武器主动、驾驶员必杀与机甲技的伤害、治疗或主要辅助时长。', apply:(s,n) => { s.skillPower += n / 100; } },
   barrage:{ name:'弹幕增幅', icon:'≋', label:'散射弹伤害', step:10, unit:'%',
-    desc:'射击时额外发射 1 枚散射弹，并提高所有散射弹的伤害，可与局内「弹幕风暴」叠加。',
+    desc:'主武器射击时额外发射 1 枚散射弹，并提高散射弹与星幕机甲弹幕的伤害，可与局内「弹幕风暴」叠加。',
     apply:(s,n) => { s.barragePower += n / 100; s.barrageExtra = 1; } },
   haste:{ name:'急速模块', icon:'»', label:'技能冷却', step:-4, unit:'%',
     desc:'缩短武器主动与驾驶员必杀的冷却时间。', apply:(s,n) => { s.skillCooldown += n / 100; } }
@@ -30,7 +30,8 @@ function readGrowth(raw){
     if(Number.isInteger(level) && level > 1) weaponLevels[id] = Math.min(level, MAX_WEAPON_GRADE);
   }
   const slots = Array.isArray(raw?.slots) ? [...new Set(raw.slots)] : [];
-  return { levels, slots:slots.filter(id => typeof id === 'string' && Object.hasOwn(levels, id)).slice(0, GROWTH_SLOTS), weaponLevels };
+  const fields = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  return { ...fields, levels, slots:slots.filter(id => typeof id === 'string' && Object.hasOwn(levels, id)).slice(0, GROWTH_SLOTS), weaponLevels };
 }
 
 function growthSnapshot(){
