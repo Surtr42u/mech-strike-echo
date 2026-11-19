@@ -143,6 +143,7 @@
       <button type="button" class="secondary" id="lvRefresh" hidden><span id="lvRefreshLabel"></span><kbd>R</kbd></button>
       <span class="slot-count" id="lvRefreshNote" role="status"></span>
       <button type="button" class="secondary" id="lvCancel" hidden>返回强化选择 <kbd>Esc</kbd></button>
+      <button type="button" class="secondary" id="lvSkip" aria-keyshortcuts="X" title="保留已有技能和等级，跳过这次普通升级" hidden>放弃本次强化 <kbd>X</kbd></button>
     </div></div>
   </section>
   <section class="ov veil hide" id="ovEvent" role="dialog" aria-modal="true" aria-label="战场事件">
@@ -178,6 +179,7 @@
     <div><dt>选择升级强化</dt><dd><kbd>1</kbd>–<kbd>3</kbd></dd></div>
     <div><dt>刷新强化选项（需解锁）</dt><dd><kbd>R</kbd></dd></div>
     <div><dt>满槽时选一项替换</dt><dd><kbd>1</kbd>–<kbd>9</kbd> / <kbd>0</kbd>（第 10 项）</dd></div>
+    <div><dt>满槽时保留所有技能，放弃本次强化</dt><dd><kbd>X</kbd></dd></div>
     <div><dt>暂停 / 继续</dt><dd><kbd>P</kbd> / <kbd>Esc</kbd></dd></div>
   </dl><p class="touch-note"><canvas class="icon" data-icon="touch"></canvas>触屏可在左侧拖动移动，点右下按钮释放技能或使用道具。替换技能时可滑动列表。</p></div>
   <div id="guideRoute" role="tabpanel" aria-labelledby="manualRoute" tabindex="0" hidden><p>每个战区有十四波敌潮，五区合计七十波。落日废土的地表与地下各有敌群，乘梯共用波次进度。落日废土和冰封矿场在第五波后有守卫，击败守卫即可继续第六波。击败关底首领后，进入传送门前往下一站。</p><ol id="routeList" class="route-list"></ol></div>

@@ -391,6 +391,7 @@ function wireTerminal() {
   byId('btnHome').onclick = returnToLobby;
   byId('btnEvt').onclick = closeEvent;
   byId('lvCancel').onclick = TALENTS.cancelSwap;
+  byId('lvSkip').onclick = event => { if(event.detail < 2) TALENTS.skipReward(); };
   byId('lvRefresh').onclick = TALENTS.refreshCards;
   byId('lvAscend').onclick = TALENTS.ascendCards;
   byId('btnMech').onclick = useMechAction;

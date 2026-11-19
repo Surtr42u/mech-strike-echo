@@ -121,8 +121,9 @@ const TALENTS = (function(){
     byId('lvNum').textContent = major ? '战区 ' + (G.stage + 1) : 'LV ' + (G.lv - G.pending + 1);
     byId('lvNote').textContent = major ? HEXES.planLabel() : '重复选择同一天赋可以提升等级。';
     byId('lvSlots').textContent = major ? status().join(' · ') :
-      '已持有 ' + G.slots.length + ' / ' + G.skillLimit + (G.slots.length >= G.skillLimit ? ' · 满槽可替换' : '');
+      '已持有 ' + G.slots.length + ' / ' + G.skillLimit + (G.slots.length >= G.skillLimit ? ' · 可替换，也可保留原技能' : '');
     byId('lvCancel').hidden = true;
+    byId('lvSkip').hidden = !canSkip();
     byId('lvAscend').hidden = !major || !HEXES.canAscend();
     renderRefresh();
     const cards = byId('cards');
@@ -223,6 +224,18 @@ const TALENTS = (function(){
     return true;
   }
 
+  function canSkip(){
+    return G.mode === 'level' && G.pending > 0 && G.slots.length >= G.skillLimit &&
+      G._cards.length > 0 && G._cards[0].kind !== 'major';
+  }
+
+  function skipReward(){
+    if(!canSkip()) return false;
+    G.pending--;
+    finishChoice();
+    return true;
+  }
+
   function finishChoice(){
     G._cards = [];
     G._swap = null;
@@ -264,6 +277,7 @@ const TALENTS = (function(){
   function handleKey(key){
     if(G.mode !== 'level') return false;
     if(key === 'escape') return cancelSwap();
+    if(key === 'x') return skipReward();
     if(key === 'r') return refreshCards();
     if(!/^[0-9]$/.test(key)) return false;
     const button = byId('cards').children[(Number(key) || 10) - 1];
@@ -273,5 +287,5 @@ const TALENTS = (function(){
   }
 
   return { groups, pool, majors, reset, rollCards, queueMilestone, rollMilestone, applyStats, onKill, status, tryBayonet,
-    renderCards, openLevel, openReward, chooseCard, chooseReplacement, cancelSwap, refreshCards, ascendCards, handleKey };
+    renderCards, openLevel, openReward, chooseCard, chooseReplacement, cancelSwap, skipReward, refreshCards, ascendCards, handleKey };
 })();
