@@ -12,6 +12,11 @@ const TOWER = (function(){
   const early = ['runner','gunner','drone','burrower','tank','bomber'];
   const mixed = [...early,'caster','sniper','brute','shellback','lancer','shieldguard','bastion','conjurer','lobber','anchor'];
   const areaAttackers = ['lobber','anchor'];
+  const paces = {
+    steady:{name:'标准',interval:1,extra:1},
+    easing:{name:'舒缓',interval:1.1,extra:.9},
+    surge:{name:'紧凑',interval:.9,extra:1.1}
+  };
 
   function active(){ return G.runMode === 'tower'; }
   function read(value){
@@ -21,25 +26,46 @@ const TOWER = (function(){
   function unlock(){
     if(!PROF.tower.unlocked) PROF.tower.unlocked = true;
   }
-  function fresh(){ return {floor:1,cleared:0,spawned:0,artilleryT:0}; }
+  function fresh(){
+    return {floor:1,cleared:0,spawned:0,artilleryT:0,pace:'steady',nextPace:'steady',startedAt:0,loss:0,down:false};
+  }
   function isBossFloor(floor=G.tower.floor){ return floor % 3 === 0; }
   function rule(floor=G.tower.floor){ return rules[((floor-1)%3+Math.floor((floor-1)/3)%3)%rules.length]; }
   function label(){ return '无尽塔 第 ' + G.tower.floor + ' 层'; }
+  function paceLabel(){ return '节奏 · ' + paces[G.tower.pace].name; }
   function skillLimit(base,floor){
     return Math.min(12,base + 2 + (floor >= 5 ? 1 : 0) + (floor >= 10 ? 1 : 0));
   }
   function difficulty(floor){
     const progress = 1 - 1 / (1 + (floor-1) / 17);
+    const depth = Math.max(0,Math.log2(floor/24));
     return {
-      interval:1.22-.70*progress, hp:1+6*progress, damage:1+1.3*progress,
+      interval:1.22-.70*progress, hp:1+6*progress+.18*depth,
+      damage:1+1.3*progress+Math.min(.27,.025*depth),
       speed:1+.23*progress, extra:.08+.6*progress, cap:Math.min(ENEMY_CAP,22+Math.floor((floor-1)*2)),
-      bossHp:.80+4.1*progress, bossSpeed:1+.17*progress, progress
+      bossHp:.80+4.1*progress+.16*depth, bossSpeed:1+.17*progress, progress
     };
+  }
+  function waveDuration(floor,wave){ return 14 + (wave-1)*3 + Math.min(7,Math.floor((floor-1)/3)); }
+  function noteDamage(amount){
+    if(G.phase !== 'clear') G.tower.loss += Math.min(G.p.hp,amount) / G.p.maxHp;
+  }
+  function noteDown(){
+    if(G.phase !== 'clear') G.tower.down = true;
+  }
+  function paceAfterClear(){
+    const {floor,startedAt,loss,down} = G.tower;
+    const fights = waves*waveDuration(floor,2);
+    const expected = fights + (isBossFloor(floor) ? 28 : 14);
+    const elapsed = G.t - startedAt;
+    if(down || loss >= .5 || elapsed > expected + 15) return 'easing';
+    if(loss <= .18 && elapsed <= expected - 6) return 'surge';
+    return 'steady';
   }
   function startWave(spawnDelay,announce){
     const {floor} = G.tower;
     G.phase = 'wave';
-    G.waveT = G.waveDur = 14 + (G.wave-1)*3 + Math.min(7,Math.floor((floor-1)/3));
+    G.waveT = G.waveDur = waveDuration(floor,G.wave);
     G.spawnT = spawnDelay;
     G.tower.artilleryT = 5;
     if(G.wave === 1 && (floor-1)%3 === 0) HEXES.queueTower(floor);
@@ -93,8 +119,9 @@ const TOWER = (function(){
     if(G.waveT > 0 && G.enemies.length < curve.cap){
       G.spawnT -= dt;
       if(G.spawnT <= 0){
-        G.spawnT = curve.interval * towerRule.cadence * rnd(.87,1.12);
-        const count = Math.min(curve.cap-G.enemies.length,Math.random()<curve.extra ? 2 : 1);
+        const pace = paces[G.tower.pace];
+        G.spawnT = curve.interval * towerRule.cadence * pace.interval * rnd(.87,1.12);
+        const count = Math.min(curve.cap-G.enemies.length,Math.random()<curve.extra*pace.extra ? 2 : 1);
         for(let i=0;i<count;i++){
           const pt = spawnPointNear(), kind = nextKind();
           spawnEnemy(kind,pt.x,pt.y,{noElite:true,elite:floor>=6 && CampaignEnemies.rank(kind)<3 && Math.random()<curve.progress*.24});
@@ -117,6 +144,7 @@ const TOWER = (function(){
     const {floor} = G.tower;
     G.phase = 'clear';
     G.tower.cleared = floor;
+    G.tower.nextPace = paceAfterClear();
     G.eb.length = G.haz.length = 0;
     if(floor > PROF.tower.best){
       PROF.tower.best = floor;
@@ -140,6 +168,10 @@ const TOWER = (function(){
     G.p.vx = G.p.vy = 0;
     G.wave = 1;
     G.tower.spawned = 0;
+    G.tower.pace = G.tower.nextPace;
+    G.tower.startedAt = G.t;
+    G.tower.loss = 0;
+    G.tower.down = false;
     G.skillLimit = skillLimit(skillCapacity(G.growth),floor);
     setScene((floor-1)%SCENES.length);
     startWave(1.25,true);
@@ -154,6 +186,6 @@ const TOWER = (function(){
     saveProf();
     return points;
   }
-  return { active, read, unlock, fresh, isBossFloor, rule, label, skillLimit, difficulty, startWave, endWave,
-    update, scaleEnemy, scaleBoss, complete, advance, limitParticles, settle, waves, hexLimit };
+  return { active, read, unlock, fresh, isBossFloor, rule, label, paceLabel, skillLimit, difficulty, startWave, endWave,
+    update, scaleEnemy, scaleBoss, noteDamage, noteDown, complete, advance, limitParticles, settle, waves, hexLimit };
 })();

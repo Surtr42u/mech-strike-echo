@@ -508,7 +508,8 @@ function paintInstruments(force) {
   meterFill('waveFill',boss ? boss.hp/boss.maxHp : G.phase === 'wave' ? G.waveT/G.waveDur : 1);
   const command=ThreatPacing.commander();
   const pressure=instrument('wavePressure'), threat=instrument('threatHealth');
-  const phaseText=G.phase==='wave' ? (tower ? TOWER.rule().name : ThreatPacing.at().label) : '';
+  const phaseText = tower ? (G.phase==='wave' ? TOWER.rule().name + '　' : '') + TOWER.paceLabel() :
+    G.phase==='wave' ? ThreatPacing.at().label : '';
   pressure.hidden=!phaseText;
   putText(pressure,command?.spec && !command.down ? command.spec.name+(command.body?'':'接近') : phaseText);
   threat.hidden=!command?.body || command.down;

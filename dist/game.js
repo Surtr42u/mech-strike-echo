@@ -4487,7 +4487,9 @@ function hurtPlayer(dmg){
     SFX.hit();
     return;
   }
-  p.hp -= dmg * incomingDamageFactor(G.st);
+  const damage = dmg * incomingDamageFactor(G.st);
+  if(TOWER.active()) TOWER.noteDamage(damage);
+  p.hp -= damage;
   p.inv = .75;
   p.hurtT = .3;
   G.hurt = .55;
@@ -4503,6 +4505,7 @@ function hurtPlayer(dmg){
 }
 
 function playerDown(){
+  if(TOWER.active()) TOWER.noteDown();
   if(PREPARATIONS.tryLock()) return;
   endMech();
   if(G.revives > 0){
@@ -9113,7 +9116,8 @@ function togglePause(){
     joyEnd();
     clearBanner();
     SFX.stopAmbience();
-    byId('pauseProgress').textContent = (TOWER.active() ? TOWER.label() : SCENES[G.stage].name) + ' · 第 ' + G.wave + ' 波 · 得分 ' + numberFormat.format(G.score);
+    const location = TOWER.active() ? TOWER.label() + ' · ' + TOWER.paceLabel() : SCENES[G.stage].name;
+    byId('pauseProgress').textContent = location + ' · 第 ' + G.wave + ' 波 · 得分 ' + numberFormat.format(G.score);
     elPause.classList.remove('hide');
     byId('btnResume').focus({preventScroll:true});
   } else if(G.mode === 'pause'){
