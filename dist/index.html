@@ -41,7 +41,7 @@
       <button id="btnMute" class="icon-button sound-toggle" aria-label="关闭音效" title="关闭音效"><canvas class="icon" data-icon="sound"></canvas></button>
       <button id="btnPause" class="icon-button" aria-label="暂停战斗" title="暂停战斗（P）"><canvas class="icon" data-icon="pause"></canvas></button>
     </div>
-    <div id="skillRack" class="skill-rack" aria-label="已装配强化"></div>
+    <div id="skillRack" class="skill-rack" role="group" aria-label="局内技能"></div>
     <div id="actionDock">
       <div class="bag-row"><button class="bag-button" data-bag="0"></button><button class="bag-button" data-bag="1"></button></div>
       <div class="ability-row">
@@ -84,7 +84,7 @@
         </button>
       </section>
       <section class="loadout" id="loadout" aria-labelledby="loadoutTitle">
-        <div class="section-bar"><h2 id="loadoutTitle"><i></i>出击配置 <small>LOADOUT</small></h2><span class="rule"></span><button class="loadout-modules" id="selectModules"><span>强化模块</span><b id="moduleLoadout">0 / 2</b></button></div>
+        <div class="section-bar"><h2 id="loadoutTitle"><i></i>出击配置 <small>LOADOUT</small></h2><span class="rule"></span><button class="loadout-modules" id="selectModules"><span>强化模块</span><b id="moduleLoadout">0 项生效 · 6 技能槽</b></button></div>
         <div class="loadout-grid">
           <button class="outfit-card" id="selectPilot" aria-label="更换驾驶员">
             <span class="thumb pilot-thumb"><img id="pilotImage" alt=""></span>
@@ -144,14 +144,15 @@
 <dialog id="manualDialog" class="terminal-dialog">
   <div class="dialog-head"><div><div class="section-kicker"><i></i>FIELD MANUAL</div><h2>作战手册</h2></div><button class="icon-button dialog-close" aria-label="关闭作战手册"><canvas class="icon" data-icon="close"></canvas></button></div>
   <div class="segmented manual-tabs"><button data-manual="controls">基本操作</button><button data-manual="route">战区路线</button></div>
-  <div id="guideControls"><p>角色会自动瞄准射击。移动收集经验，升级时从三项强化中选一项。</p><dl class="controls-list">
+  <div id="guideControls"><p>角色会自动瞄准射击。收集经验后，从三项强化中选一项。每局可持有 6 种技能，购买补给站的「技能扩容」可增至 8 或 10 种。</p><dl class="controls-list">
     <div><dt>移动</dt><dd><kbd>WASD</kbd> / <kbd>方向键</kbd></dd></div>
     <div><dt>角色必杀 / 武器技</dt><dd><kbd>E</kbd> / <kbd>Q</kbd></dd></div>
     <div><dt>满能量变身 / 变身后释放机甲技</dt><dd><kbd>F</kbd></dd></div>
     <div><dt>使用战术道具</dt><dd><kbd>1</kbd> / <kbd>2</kbd></dd></div>
-    <div><dt>选择升级强化</dt><dd><kbd>1</kbd> / <kbd>2</kbd> / <kbd>3</kbd></dd></div>
+    <div><dt>选择升级强化</dt><dd><kbd>1</kbd>–<kbd>3</kbd></dd></div>
+    <div><dt>满槽时选一项替换</dt><dd><kbd>1</kbd>–<kbd>9</kbd> / <kbd>0</kbd>（第 10 项）</dd></div>
     <div><dt>暂停 / 继续</dt><dd><kbd>P</kbd> / <kbd>Esc</kbd></dd></div>
-  </dl><p class="touch-note"><canvas class="icon" data-icon="touch"></canvas>触屏可在左侧拖动移动，点右下按钮释放技能或使用道具。</p></div>
+  </dl><p class="touch-note"><canvas class="icon" data-icon="touch"></canvas>触屏可在左侧拖动移动，点右下按钮释放技能或使用道具。替换技能时可滑动列表。</p></div>
   <div id="guideRoute" hidden><p>每个战区有十波敌潮。击败关底首领后，进入传送门前往下一站。</p><ol id="routeList" class="route-list"></ol></div>
 </dialog>
 <dialog id="mechDialog" class="terminal-dialog mech-dialog" aria-labelledby="mechDialogTitle">

@@ -56,8 +56,7 @@ function updateLoadout() {
   byId('pilotMove').textContent = '必杀 · ' + pilot.act.n;
   byId('weaponName').textContent = weapon.n;
   byId('weaponMove').textContent = 'Lv.' + weaponGrade(weapon.id) + ' · ' + weapon.sk.n;
-  const slots = PROF.growth.slots;
-  byId('moduleLoadout').textContent = slots.map(id => GROWTH_MODULES[id].name).join(' · ') || '0 / ' + GROWTH_SLOTS;
+  byId('moduleLoadout').textContent = activeModuleCount() + ' 项生效 · ' + skillCapacity() + ' 技能槽';
   byId('pilotImage').src = thumbnail('skin',PROF.skin);
   byId('hudPortrait').src = thumbnail('skin',G.skin);
   byId('weaponImage').src = thumbnail('weapon', weapon.id);
@@ -68,7 +67,7 @@ function updateLoadout() {
   updateMechLoadout();
 }
 function currentStock() {
-  if(shopTab === 'growth') return PROF.growth.slots[0] || Object.keys(GROWTH_MODULES)[0];
+  if(shopTab === 'growth') return Object.keys(GROWTH_MODULES)[0];
   return shopTab === 'skin' ? PROF.skin : PROF.weapon;
 }
 function stockRows() {
@@ -121,8 +120,8 @@ function buildShop() {
   const offset = grid.scrollTop, detailOffset = detail.scrollTop;
   const modules = shopTab === 'growth', equipped = currentStock();
   grid.classList.toggle('module-grid',modules);
-  byId('catalogName').textContent = modules ? '战前装配' : shopTab === 'skin' ? '驾驶员名册' : '武器库';
-  byId('catalogCount').textContent = modules ? '已装配 ' + PROF.growth.slots.length + ' / ' + GROWTH_SLOTS :
+  byId('catalogName').textContent = modules ? '永久强化 · 购买后自动生效' : shopTab === 'skin' ? '驾驶员名册' : '武器库';
+  byId('catalogCount').textContent = modules ? activeModuleCount() + ' / ' + rows.length + ' 生效 · ' + skillCapacity() + ' 技能槽' :
     '已解锁 ' + rows.filter(r=>r.owned).length + ' / ' + rows.length;
   document.querySelectorAll('[data-tab]').forEach(b => {
     b.setAttribute('aria-pressed',String(b.dataset.tab === shopTab));
@@ -136,9 +135,9 @@ function buildShop() {
     if(modules) {
       const art = node('span','module-symbol',row.icon);
       art.setAttribute('aria-hidden','true');
-      const status = row.equipped ? '已装配' : row.level ? '待装配' : '未升级';
+      const status = row.level ? '已生效' : '未购买';
       item.append(art,node('strong','',row.name),node('small','','Lv.' + row.level + ' · ' + row.effects),
-        node('small',row.equipped ? 'equipped' : '',status));
+        node('small',row.level ? 'equipped' : '',status));
     } else {
       const art = node('span','catalog-image' + (shopTab === 'weapon' ? ' gun' : ''));
       const img = node('img'); img.alt = ''; img.src = thumbnail(shopTab,row.id); art.append(img);
@@ -254,7 +253,7 @@ function showReport(win,withdrawn) {
     ['战区',SCENES[G.stage].name],['波次',G.wave + ' / ' + WAVES_PER_STAGE],
     ['击破',G.kills],['得分',numberFormat.format(G.score)],
     ['等级','LV ' + G.lv],['用时',Math.floor(G.time/60) + ':' + String(Math.floor(G.time%60)).padStart(2,'0')],
-    ['装配强化',G.slots.length + ' / ' + MAX_SLOTS],['最高得分',numberFormat.format(PROF.best)],
+    ['局内技能',G.slots.length + ' / ' + G.skillLimit],['最高得分',numberFormat.format(PROF.best)],
     ['获得积分','+' + numberFormat.format(points)],['积分余额',numberFormat.format(PROF.pts)]
   ];
   const stats = byId('overStats');
@@ -350,9 +349,10 @@ function paintInstruments(force) {
   const grade = weaponGrade(weapon.id,G.growth);
   if(force || growth.dataset.grade !== String(grade)) {
     growth.dataset.grade = grade;
-    const modules = G.growth.slots.map(id => GROWTH_MODULES[id].name + ' Lv.' + G.growth.levels[id]);
-    if(grade > 1) modules.push('武器 Lv.' + grade);
-    const label = modules.join(' · ');
+    const count = activeModuleCount(G.growth), parts = [];
+    if(count) parts.push('强化模块 ×' + count);
+    if(grade > 1) parts.push('武器 Lv.' + grade);
+    const label = parts.join(' · ');
     putText(growth,label);
     growth.hidden = !label;
   }
@@ -384,12 +384,14 @@ function paintInstruments(force) {
       b.replaceChildren(node('small','',i+1),node('b','',item ? item.ic : '·'));
     }
   }
-  const signature = G.slots.map(key=>key+'='+G.skills[key]).join(',');
+  const signature = G.skillLimit + ':' + G.slots.map(key=>key+'='+G.skills[key]).join(',');
   if(force || signature !== rackSignature) {
     rackSignature = signature;
     const rack = instrument('skillRack');
     rack.replaceChildren();
-    for(let i=0;i<MAX_SLOTS;i++){
+    rack.dataset.count = '技能 ' + G.slots.length + ' / ' + G.skillLimit;
+    rack.setAttribute('aria-label',rack.dataset.count);
+    for(let i=0;i<G.skillLimit;i++){
       const id = G.slots[i], skill = SK[id];
       const chip = node('span','skill-chip' + (skill ? '' : ' empty'));
       if(skill) {

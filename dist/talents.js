@@ -1,8 +1,8 @@
-/* 六槽常规强化与战区大强化。效果只保存在本局，军费走既有积分记账。 */
+/* 常规强化与战区大强化。效果只保存在本局，军费走既有积分记账。 */
 const TALENTS = (function(){
   const groups = {
     fire: { n:'火力', ids:['rapid','power','pierce','barrage'] },
-    control: { n:'控场', ids:['blast','chain','drone','turret'] },
+    control: { n:'控场', ids:['blast','chain','drone','turret','mine'] },
     defense: { n:'生存', ids:['hp','armor','speed','magnet'] }
   };
   const pool = Object.entries(groups).flatMap(([tag, group]) =>
@@ -34,7 +34,7 @@ const TALENTS = (function(){
   }
 
   function rollCards(){
-    const full = G.slots.length >= MAX_SLOTS;
+    const full = G.slots.length >= G.skillLimit;
     const current = { fire:0, control:0, defense:0 };
     for(const { id, tag } of pool){
       if(G.skills[id] > 0) current[tag]++;
@@ -156,9 +156,11 @@ const TALENTS = (function(){
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'card';
+    const key = (i + 1) % 10;
+    button.setAttribute('aria-keyshortcuts',String(key));
     button.innerHTML =
       '<span class="bar" style="background:' + card.c + '"></span>' +
-      '<span class="key">' + (i + 1) + '</span>' +
+      '<span class="key">' + key + '</span>' +
       '<span class="ico" style="color:' + card.c + '">' + card.ic + '</span>' +
       '<span class="nm">' + card.n + '</span>' +
       '<span class="lv">' + card.label + '</span>' +
@@ -176,9 +178,10 @@ const TALENTS = (function(){
     byId('lvNum').textContent = major ? '战区 ' + (G.stage + 1) : 'LV ' + (G.lv - G.pending + 1);
     byId('lvNote').textContent = major ? '本里程碑可选择一项。' : '重复选择同一天赋可以提升等级。';
     byId('lvSlots').textContent = major ? status().join(' · ') :
-      '已装配 ' + G.slots.length + ' / ' + MAX_SLOTS + (G.slots.length >= MAX_SLOTS ? ' · 满槽可替换' : '');
+      '已持有 ' + G.slots.length + ' / ' + G.skillLimit + (G.slots.length >= G.skillLimit ? ' · 满槽可替换' : '');
     byId('lvCancel').hidden = true;
     const cards = byId('cards');
+    cards.classList.remove('swap-options');
     cards.replaceChildren(...options.map((o, i) => {
       if(major) return cardButton({ ...majors[o.id], label:'大强化' }, i, () => chooseCard(o));
       const skill = SK[o.id], level = o.lv + 1;
@@ -218,11 +221,13 @@ const TALENTS = (function(){
     byId('lvSlots').textContent = '被替换的天赋及等级会移除。';
     byId('lvCancel').hidden = false;
     const cards = byId('cards');
+    cards.classList.add('swap-options');
     cards.replaceChildren(...G.slots.map((id, i) => {
       const skill = SK[id], level = G.skills[id];
       return cardButton({ ...skill, label:'槽位 ' + (i + 1) + ' · Lv' + level, d:skill.d(level), risk:skill.risk?.(level) },
         i, () => chooseReplacement(id));
     }));
+    cards.scrollTop = 0;
     cards.firstElementChild?.focus({ preventScroll:true });
   }
 
@@ -274,8 +279,8 @@ const TALENTS = (function(){
   function handleKey(key){
     if(G.mode !== 'level') return false;
     if(key === 'escape') return cancelSwap();
-    if(!/^[1-6]$/.test(key)) return false;
-    const button = byId('cards').children[Number(key) - 1];
+    if(!/^[0-9]$/.test(key)) return false;
+    const button = byId('cards').children[(Number(key) || 10) - 1];
     if(!button) return false;
     button.click();
     return true;

@@ -142,9 +142,7 @@ button.wallet:hover{background:#3b3023;border-color:#a37c4e}
 .growth-comparison span{display:grid;gap:2px}.growth-stat-name{font-size:.82rem;color:#c0c9c1}
 .growth-comparison small,.weapon-grade>small{font-size:.72rem;color:var(--muted)}
 .growth-comparison strong{font-size:.92rem;color:var(--text)}.growth-comparison span:nth-child(3) strong{color:var(--mint)}
-.growth-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-.shop-detail .growth-actions button,.shop-detail .weapon-grade button{min-height:44px;padding:7px 9px;font-size:.83rem;letter-spacing:0}
-.growth-actions .secondary:disabled{color:var(--muted);background:#1b2322;border-color:var(--line)}
+.shop-detail #buyModule,.shop-detail .weapon-grade button{min-height:44px;padding:7px 9px;font-size:.83rem;letter-spacing:0}
 .weapon-grade{margin-top:13px}.weapon-grade h4{margin:0;font-size:.86rem;color:var(--pale)}.weapon-grade .growth-comparison{margin-top:5px}
 #hudGrowth{color:var(--pale);flex-basis:100%}
 /* In-game and system dialogs */
@@ -155,6 +153,9 @@ button.wallet:hover{background:#3b3023;border-color:#a37c4e}
 .text-button{display:block;color:#c0c7bc;font-size:.86rem}.quit{margin:16px auto 0;min-height:34px;text-decoration:underline;text-decoration-color:#6d776e;text-underline-offset:5px}
 .level-sheet{width:min(100%,760px)}.sheet-head{justify-content:space-between;gap:14px}.lv-num{font-size:1rem;color:var(--pale)}
 .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.card{position:relative;color:var(--text);display:flex;align-items:flex-start;flex-direction:column;text-align:left;border:1px solid #46564e;background:#1a2222;padding:18px 14px 15px;min-width:0}
+.cards.swap-options{max-height:min(53dvh,465px);overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;padding:4px}
+.swap-options .card{padding:10px;min-height:92px}
+.swap-options .card .ico{min-width:26px;height:26px;margin:0 0 4px;font-size:1.1rem}
 .card:hover{border-color:var(--pale);background:#2a342e}.card .bar{position:absolute;inset:0 0 auto;height:2px}.card .key{position:absolute;top:7px;right:8px;font:700 .75rem var(--mono);color:#a6b2a8}
 .card .ico{font-size:1.7rem;line-height:1;min-width:41px;height:41px;display:grid;place-items:center;border:1px solid #566257;margin:5px 0 9px}
 .card .nm{font-size:1.05rem;font-weight:800}.card .lv,.card .ds,.card .rk{font-size:.83rem;line-height:1.5}.card .lv{color:var(--pale);margin:3px 0 7px}.card .ds{color:#d0d9ce}.card .rk{color:#ffaa96;margin-top:6px}
@@ -193,6 +194,7 @@ button.wallet:hover{background:#3b3023;border-color:#a37c4e}
 #comboText:not(:empty){display:block;position:absolute;left:50%;transform:translateX(-50%);top:100%;color:#ffcb7a;background:#16201de6;padding:2px 8px;font:.88rem var(--mono)}
 .corner-controls{position:absolute;right:var(--right);top:var(--top);display:flex;gap:5px}.corner-controls button{width:40px;height:40px}
 .skill-rack{position:absolute;bottom:var(--bottom);left:var(--left);gap:4px;max-width:50vw;flex-wrap:wrap}
+.skill-rack[data-count]::before{content:attr(data-count);flex-basis:100%;color:var(--text);font-size:.72rem;text-shadow:0 0 5px #000,0 1px 3px #000}
 .skill-chip{height:34px;min-width:34px;display:flex;align-items:center;justify-content:center;gap:2px;line-height:1;border-color:var(--chip,#59665d);color:var(--chip,#b8c4b5)}
 .skill-chip b{font-size:.96rem}.skill-chip small{font:600 .64rem var(--mono)}.skill-chip.empty{opacity:.42;border-style:dashed}
 #actionDock{position:absolute;right:var(--right);bottom:var(--bottom);display:flex;flex-direction:column;align-items:flex-end;gap:6px}
@@ -248,6 +250,7 @@ button.wallet:hover{background:#3b3023;border-color:#a37c4e}
   .shop-heading .segmented button{min-height:44px;padding-inline:8px;white-space:nowrap}
   .module-item{min-height:76px}.module-symbol{font-size:1.05rem;margin-bottom:1px}
   .growth-comparison{margin:8px 0;padding:6px 0}
+  .cards.swap-options{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
 }
 @media(max-width:360px){
   .shop-heading{align-items:flex-start;flex-direction:column;gap:4px}

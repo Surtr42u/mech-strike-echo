@@ -351,7 +351,7 @@ const PROF = {
   pts:GIFT_PTS, total:0, best:0, runs:0, gift:1, giftFx:1,
   skin:0, weapon:'rifle', mech:DEFAULT_MECH,
   ownSkins:[0], ownWeapons:['rifle'],
-  growth:{ levels:{}, slots:[], weaponLevels:{} }
+  growth:{ levels:{}, weaponLevels:{} }
 };
 let loadedProf = null;
 function loadProf(){
@@ -1778,7 +1778,7 @@ const G = {
   stage:0, wave:1, waveT:0, waveDur:0, spawnT:0,
   t:0, cam:{x:ARENA.w/2, y:ARENA.h/2},
   score:0, kills:0, xp:0, lv:1, need:10, pending:0,
-  skills:{}, slots:[], growth:growthSnapshot(),
+  skills:{}, slots:[], skillLimit:BASE_SKILL_CAPACITY, growth:growthSnapshot(),
   energy:0, mechT:0, mechId:DEFAULT_MECH, mechCd:0, mechSide:0, mechEchoT:0, mechArcs:[],
   p:null, st:null,
   bullets:[], eb:[], enemies:[], orbs:[], parts:[], texts:[], rings:[],
@@ -1796,7 +1796,6 @@ const G = {
   scars:[], spawnAnchors:null,
   time:0, revives:1, combo:0, comboT:0, picksGot:0, settled:false, shopFrom:'title'
 };
-const MAX_SLOTS = 6;
 
 /* ══════════════════════════════════════════════════════════
    地面视觉叙事 GROUND（纯视觉，无碰撞）
@@ -2997,6 +2996,7 @@ function newRun(){
   G.score = 0; G.kills = 0; G.combo = 0; G.comboT = 0;
   G.xp = 0; G.lv = 1; G.need = 10; G.pending = 0;
   G.skills = {}; G.slots = []; G.growth = growthSnapshot();
+  G.skillLimit = skillCapacity(G.growth);
   TALENTS.reset();
   G.energy = 0; G.revives = 1;
   G.mechId = PROF.mech;
@@ -3005,6 +3005,7 @@ function newRun(){
   G.orbs.length = 0; G.parts.length = 0; G.texts.length = 0; G.rings.length = 0;
   G.haz.length = 0; G.drones.length = 0; G.turrets.length = 0;
   G.mines.length = 0; G.booms.length = 0;
+  G.mineT = 0;
   G.picks.length = 0; G.crates.length = 0; G.jobs.length = 0;
   G.lightsFx.length = 0;
   G.bag[0] = G.bag[1] = null;
