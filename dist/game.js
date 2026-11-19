@@ -1522,7 +1522,8 @@ function collectLights(){
              bcol, b.mech ? .40 : .28, 1);
   }
   // 敌弹
-  for(let i = 0; i < G.eb.length; i += 2){
+  const enemyLightStride = Math.max(2,Math.ceil(G.eb.length/(QLEVEL === 0 ? 6 : 14)));
+  for(let i = 0; i < G.eb.length; i += enemyLightStride){
     const b = G.eb[i];
     addLight(b.x, b.y, 15, b.col, .32, 0);
   }
@@ -3004,6 +3005,7 @@ function abilityCooldown(seconds){ return seconds * (G.st?.skillCooldown ?? 1); 
 
 /* ── 开局 / 场景 ── */
 function newRun(){
+  EnemyEffects.clear();
   G.mode = 'play'; G.phase = 'wave';
   G.stage = 0; G.wave = 1;
   G.t = 0; G.time = 0;
@@ -4283,6 +4285,7 @@ function updateBullets(dt, previous){
       G.eb.splice(i, 1); continue;
     }
     if(G.p.inv <= 0 && d2(b.x, b.y, G.p.x, G.p.y) < (b.r + playerRadius()) ** 2){
+      EnemyEffects.impact(b);
       hurtPlayer(b.dmg);
       G.eb.splice(i, 1);
     }
@@ -4384,7 +4387,8 @@ function killEnemy(e, playerKill = true){
   if(EK[e.kind].boom){
     const d = dst(e.x, e.y, G.p.x, G.p.y);
     if(d < 26 + playerRadius()) hurtPlayer(EK[e.kind].dmg);
-    explodeFX(e.x, e.y, 40);
+    EnemyEffects.burst('fuse',e.x,e.y,0,26);
+    G.shake = Math.max(G.shake,2.8);
     aoe(e.x, e.y, 30, 12, e);
   }
   // 道具掉落：精英更容易爆货
@@ -5191,6 +5195,7 @@ function updateEnemies(dt){
   for(let i=G.enemies.length-1;i>=0;i--){
     const e = G.enemies[i];
     if(e.dead){
+      EnemyEffects.observe(e);
       e.deadT += dt;
       if(e.deadT > .58) G.enemies.splice(i, 1);
       continue;
@@ -5214,8 +5219,12 @@ function updateEnemies(dt){
     const d = Math.max(.001, Math.hypot(dx, dy));
     const ux = dx / d, uy = dy / d;
     e.face = ux >= 0 ? 1 : -1;
-    if(updateEliteVariant(e, dt, d)) continue;
+    if(updateEliteVariant(e, dt, d)){
+      EnemyEffects.observe(e);
+      continue;
+    }
     const tactic = EnemyTactics.motion(e,dt,d);
+    EnemyEffects.observe(e);
 
     let sp = e.spd * SectorClimate.frostFactor(e);
     if(e.slowT > 0) sp *= (1 - e.slowAmt);
@@ -5299,13 +5308,16 @@ function enemyShoot(e, ux, uy){
   const spd = e.beam ? 400 : 175;
   const base = Math.atan2(uy, ux);
   const n = e.beam ? 1 : (e.kind === 'caster' ? 3 : 1);
+  const fxKind = EnemyEffects.shotKind(e);
   for(let i=0;i<n;i++){
     const a = base + (n > 1 ? (i - 1) * .16 : rnd(-.06, .06));
+    const x = e.x + Math.cos(a)*8, y = e.y + Math.sin(a)*8;
+    if(i === (n>>1)) EnemyEffects.burst(fxKind,x,y,a);
     G.eb.push({
-      x: e.x + Math.cos(a) * 8, y: e.y + Math.sin(a) * 8,
+      x, y,
       vx: Math.cos(a) * spd, vy: Math.sin(a) * spd,
       dmg: e.dmg, r: e.beam ? 2.2 : 3.4, life: 3.2,
-      col: e.beam ? '#9dffd8' : '#ff8a6a'
+      col:EnemyEffects.color(fxKind), fxKind, owner:'enemy'
     });
   }
   SFX.shoot();
@@ -8319,6 +8331,7 @@ function drawEnemy(e){
     ctx.fillStyle = shade(c, .3);
     ctx.fillRect(sx - e.r * .7, sy - h - e.r * .5, e.r * 1.4, e.r * .8);
     ctx.restore();
+    EnemyEffects.drawUnit(ctx,e);
     return;
   }
 
@@ -8387,6 +8400,7 @@ function drawEnemy(e){
     ctx.restore();
     ctx.globalAlpha = 1;
   }
+  EnemyEffects.drawUnit(ctx,e);
 }
 
 function drawBoss(b){
@@ -8689,25 +8703,8 @@ function drawBullets(){
     ctx.globalCompositeOperation = 'source-over';
   }
   /* ── 敌方子弹 ── */
-  for(let i = 0; i < G.eb.length; i++){
-    const b = G.eb[i];
-    const sx = SX(b.x), sy = SY(b.y) - BULLET_H;
-    const ang = Math.atan2(b.vy, b.vx);
-    ctx.save();
-    ctx.translate(sx, sy);
-    ctx.rotate(ang);
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.fillStyle = hexA(b.col, .15);
-    ctx.beginPath(); ctx.ellipse(-b.r * 1.8, 0, b.r * 2.9, b.r * 1.15, 0, 0, TAU); ctx.fill();
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = '#301018';
-    ctx.beginPath(); ctx.arc(0, 0, b.r + 1.4, 0, TAU); ctx.fill();
-    ctx.fillStyle = b.col;
-    ctx.beginPath(); ctx.arc(0, 0, b.r, 0, TAU); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,.9)';
-    ctx.beginPath(); ctx.arc(-b.r * .22, -b.r * .28, b.r * .42, 0, TAU); ctx.fill();
-    ctx.restore();
-  }
+  const detail = QLEVEL > 0 && !reducedEffects && G.eb.length < 32;
+  for(const b of G.eb) EnemyEffects.drawBullet(ctx,b,detail);
   ctx.globalAlpha = 1;
 }
 
@@ -8924,6 +8921,7 @@ function render(){
   drawLights(1);
   drawEncounterWarnings(ctx);
   EnemyTactics.draw(ctx);
+  EnemyEffects.drawBursts(ctx);
   SectorClimate.drawWarning(ctx);
   drawParts();
   drawTexts();
