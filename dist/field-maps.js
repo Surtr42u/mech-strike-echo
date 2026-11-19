@@ -222,6 +222,7 @@ const FieldMaps = (() => {
     return null;
   }
   function interact() {
+    if(!field) return SectorClimate.activate();
     const use=nearby();
     if(!use) return false;
     if(use.action==='power') {
@@ -240,12 +241,14 @@ const FieldMaps = (() => {
   }
   function paintHud() {
     if(G.p && G.mode === 'play') drawMap(byId('miniFieldMap'),false);
+    const markers=SectorClimate.mapMarkers();
+    putText(byId('fieldMapLabel'),markers[0]?.name ?? '地图');
+    if(!field){ SectorClimate.paintHud(); return; }
     const button=byId('fieldInteract'), use=nearby();
     button.hidden=!use;
     if(use) putText(button,'R  '+use.label);
     const hint=byId('fieldObjective');
-    hint.hidden=!field;
-    if(!field) return;
+    hint.hidden=false;
     putText(hint,G.phase !== 'wave' ? 'F1 · 地表交战' : field.inside ?
       (field.vent?'B1 · 排风已启动':'B1 · 沿黄线启动排风') :
       (field.power?'F1 · 升降机可用':'F1 · 合上应急电闸'));
@@ -269,12 +272,21 @@ const FieldMaps = (() => {
     ctx.fillStyle=lit?color:'#bdcbc9';ctx.fillText(label,0,-18);ctx.restore();
   }
   function draw() {
-    if(!field)return;
+    if(!field){
+      SectorClimate.drawStations();
+      const station=SectorClimate.guideMarker();
+      if(station) drawEdgeGuide(station,station.color);
+      return;
+    }
     drawStation(lift,field.power?(field.inside?'地表升降机':'地下升降机'):'升降机 · 待供电',field.power,'#89d6ce',true);
     if(field.inside) drawStation(relay,field.vent?'排风运转':'排风配电台',!field.vent,'#efc976',false);
     else drawStation(breaker,field.power?'已供电':'应急电闸',!field.power,'#ffd17b',false);
     if(G.phase !== 'wave') return;
     const objective = field.inside ? (field.vent ? lift : relay) : (field.power ? lift : breaker);
+    drawEdgeGuide(objective,'#ffce83');
+  }
+
+  function drawEdgeGuide(objective,color){
     const x=SX(objective.x), y=SY(objective.y);
     const bx=clamp(x,24,VW-24), by=clamp(y,36,VH-28);
     if(x===bx && y===by) return;
@@ -282,7 +294,7 @@ const FieldMaps = (() => {
     ctx.translate(bx,by);
     ctx.rotate(Math.atan2(y-by,x-bx));
     ctx.strokeStyle='#111a20';
-    ctx.fillStyle='#ffce83';
+    ctx.fillStyle=color;
     ctx.lineWidth=2.4;
     ctx.beginPath();ctx.moveTo(9,0);ctx.lineTo(-7,5);ctx.lineTo(-3,0);ctx.lineTo(-7,-5);
     ctx.closePath();ctx.stroke();ctx.fill();ctx.restore();
@@ -324,6 +336,7 @@ const FieldMaps = (() => {
       if(underground()) mark(relay,'#f2c96e',size,'排风配电台');
       else mark(breaker,'#f2c96e',size,'应急电闸');
     }
+    for(const station of SectorClimate.mapMarkers()) mark(station,station.color,size,station.name);
     if(G.boss && !G.boss.dead) mark(G.boss,'#ff8573',size,'首领');
     if(G.portal) mark(G.portal,'#9ff2ae',size,'传送门');
     g.lineWidth=detail?2:1;

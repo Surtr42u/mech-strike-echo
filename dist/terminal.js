@@ -332,7 +332,8 @@ function wireTerminal() {
     const line = node('li');
     const guard = MID_BOSSES[i];
     const names = '关底 · ' + BOSSES[sc.boss].n + (guard ? '\n第' + guard.wave + '波后 · ' + BOSSES[guard.kind].n : '');
-    line.append(node('span','sector-number','S' + pad2(i+1)),node('b','',sc.name),node('small','',names));
+    line.append(node('span','sector-number','S' + pad2(i+1)),node('b','',sc.name),
+      node('small','',names + '\n' + SectorClimate.routeNotes[i]));
     byId('routeList').append(line);
   });
   if(G.touch) byId('titleHint').textContent = '左侧拖动移动 · 右侧点按技能';
@@ -389,7 +390,7 @@ function paintInstruments(force) {
   }
   instrument('hpFill').parentElement.classList.toggle('low',hp < .3);
   meterFill('hpFill',hp); meterFill('xpFill',G.xp/G.need);
-  putText(instrument('hudSector'),'S' + pad2(G.stage+1) + ' / ' + SCENES[G.stage].name);
+  putText(instrument('hudSector'),'S' + pad2(G.stage+1) + ' / ' + SCENES[G.stage].name + SectorClimate.skyLabel());
   FieldMaps.paintHud();
   instrument('wavePanel').classList.toggle('boss',!!boss);
   const clear = G.phase === 'clear';

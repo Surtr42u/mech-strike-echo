@@ -20,6 +20,7 @@
   <script defer src="encounters.js"></script>
   <script defer src="field-maps.js"></script>
   <script defer src="campaign.js"></script>
+  <script defer src="sector-climate.js"></script>
   <script defer src="game.js"></script>
 </head>
 <body>
@@ -48,7 +49,7 @@
       <button id="btnPause" class="icon-button" aria-label="暂停战斗" title="暂停战斗（P）"><canvas class="icon" data-icon="pause"></canvas></button>
     </div>
     <button id="fieldMapButton" class="field-map-button" type="button" aria-label="展开战区地图（M）">
-      <canvas id="miniFieldMap" width="140" height="93"></canvas><span>地图 <kbd>M</kbd></span>
+      <canvas id="miniFieldMap" width="140" height="93"></canvas><span><b id="fieldMapLabel">地图</b> <kbd>M</kbd></span>
     </button>
     <div id="skillRack" class="skill-rack" role="group" aria-label="局内技能"></div>
     <div id="actionDock">

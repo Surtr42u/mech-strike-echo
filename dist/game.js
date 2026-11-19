@@ -3065,10 +3065,12 @@ function setScene(i){
   G.stage = i;
   G.floorSpawnSerial = 0;
   FieldMaps.begin(i);
+  SectorClimate.begin(i);
   const sc = SCENES[i];
   /* 先说清道具，再算补给投放候选点，最后烘焙地面：
      三者共用同一组坐标，视觉暗示与实际投放严格一致 */
   G.props = buildProps(sc);
+  SectorClimate.prepareProps();
   G.supplyPads = GROUND.pads(sc, G.props);
   G.spawnAnchors = buildSpawnAnchors(sc);   // 刷怪点跟着场景装饰走
   G.scars.length = 0;
@@ -3176,7 +3178,7 @@ function updatePlayer(dt){
   if(m > 1){ ix /= m; iy /= m; }
   const mag = Math.min(1, Math.hypot(ix, iy));
 
-  const spd = 106 * s.spdMul * (G.buff.fleet > 0 ? 1.35 : 1) * (G.mechT > 0 ? currentMech().speed : 1);
+  const spd = 106 * s.spdMul * (G.buff.fleet > 0 ? 1.35 : 1) * (G.mechT > 0 ? currentMech().speed : 1) * SectorClimate.frostFactor(p);
   const k = 1 - Math.pow(.0009, dt);
   p.vx = lerp(p.vx, ix * spd, k);
   p.vy = lerp(p.vy, iy * spd, k);
@@ -5188,7 +5190,7 @@ function updateEnemies(dt){
     if(updateEliteVariant(e, dt, d)) continue;
     const tactic = EnemyTactics.motion(e,dt,d);
 
-    let sp = e.spd;
+    let sp = e.spd * SectorClimate.frostFactor(e);
     if(e.slowT > 0) sp *= (1 - e.slowAmt);
     if(e.stun > 0) sp = 0;
 
@@ -6298,7 +6300,9 @@ const ENV_DEFS = [
   { type:'void',  n:64, col:'rgba(210,150,255,', rMin:1.0, rMax:2.8, spd:22,  sway:36,  rise:-14, life:8 }
 ];
 function buildEnv(stage){
-  const d = ENV_DEFS[stage] || ENV_DEFS[0];
+  const kind = SectorClimate.particles(stage);
+  if(kind === null) return null;
+  const d = ENV_DEFS[kind] || ENV_DEFS[0];
   const arr = [];
   for(let i=0;i<d.n;i++){
     arr.push({
@@ -9141,6 +9145,7 @@ function render(){
   }
   /* 远景视差层：远山剪影 + 云影（比地面移动得慢，制造纵深） */
   if(!FieldMaps.underground()) BACKDROP.draw(VW, VH);
+  SectorClimate.tintFloor(ctx);
   /* 功能性地表标记：独立透明层，1:1 叠加（3D 低分辨率舞台不会吃掉细节） */
   if(!FieldMaps.underground()){ drawEnv(); drawSceneAmbience(); }
   drawHazards();
@@ -9189,6 +9194,7 @@ function render(){
   drawLights(1);
   drawEncounterWarnings(ctx);
   EnemyTactics.draw(ctx);
+  SectorClimate.drawWarning(ctx);
   drawParts();
   drawTexts();
 
@@ -9380,6 +9386,7 @@ function step(dt){
   updateHazards(dt);
   updateOrbs(dt);
   updatePicks(dt);
+  SectorClimate.tick(dt);
   updateCrates(dt);
   updateJobs(dt);
   if(G.mode !== 'play') return;
