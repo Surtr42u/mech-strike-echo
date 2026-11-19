@@ -85,8 +85,8 @@ const GROUP_STYLE = {
   crate:'stack', rock:'ring', crystal:'cluster', pillar:'pair', pipe:'pair'
 };
 
-/* ── 技能表（6 槽，重复选择升级） ── */
-const SKILLS = [
+/* ── 技能定义（保留旧天赋 ID，常规牌池见 talents.js） ── */
+const SKILL_DEFS = [
   { id:'rapid', n:'连射', ic:'»', c:'#8fe3ff', max:6,
     d:l=>'射速 +' + (16*l) + '%', ap:(s,l)=>{ s.rateMul += .16*l; } },
   { id:'power', n:'重弹', ic:'◆', c:'#ffb45c', max:6,
@@ -127,7 +127,7 @@ const SKILLS = [
     d:l=>'每 2.4 秒自动布雷 ×' + l, ap:(s,l)=>{ s.mine += l; } },
   { id:'boom', n:'回旋刃', ic:'✦', c:'#9dffd8', max:3,
     d:l=>'投出回旋刃 ×' + l, ap:(s,l)=>{ s.boom += l; } },
-  { id:'barrage', n:'弹幕风暴', ic:'≋', c:'#ff9d5c', max:99,
+  { id:'barrage', n:'弹幕风暴', ic:'≋', c:'#ff9d5c', max:3,
     d:l=>'每次射击额外 +' + (l*2) + ' 发子弹（散射）', ap:(s,l)=>{ s.barrage += l; } },
   { id:'gigantism', n:'巨力', ic:'▦', c:'#ff6a8a', max:99,
     d:l=>'子弹体积 +' + (12*l) + '%（易命中）', ap:(s,l)=>{ s.bigMul += .12*l; } },
@@ -147,7 +147,8 @@ const SKILLS = [
     d:l=>'暴击率 +' + (15*l) + '%', risk:l=>'最大生命 -' + (25*l),
     ap:(s,l)=>{ s.crit += .15*l; s.maxHp -= 25*l; } }
 ];
-const SK = {}; SKILLS.forEach(function(s){ SK[s.id] = s; });
+const SK = Object.fromEntries(SKILL_DEFS.map(skill => [skill.id, skill]));
+const SKILLS = TALENTS.pool.map(({ id, tag }) => ({ ...SK[id], tag }));
 
 /* ── 战场道具 ──
    mode:'auto' 走过去自动生效 / mode:'bag' 进战术背包（1·2 键或点格释放） */
@@ -2951,7 +2952,7 @@ const RESONANCE = {
                fn:function(s){ s.pierce += 1; s.bspdMul *= .90; } }
 };
 
-function recalc(){
+function recalc({ fillNewCapacity = true } = {}){
   const s = baseStats();
   applyGrowth(s);
   for(const id in G.skills){
@@ -2971,6 +2972,7 @@ function recalc(){
   if(b.spd > 0) s.spdMul *= 1.3;
   if(b.armor > 0) s.armor += .25;
   if(b.extra > 0) s.extra += 2;
+  TALENTS.applyStats(s);
   /* 生命上限兜底：易碎/玻璃大炮叠满也不至于变成 0 血 */
   s.maxHp = Math.max(20, Math.round(s.maxHp));
   s.crit = clamp(s.crit, 0, .95);
@@ -2979,7 +2981,7 @@ function recalc(){
   G.st = s;
   if(G.p){
     G.p.maxHp = s.maxHp;
-    if(s.maxHp > oldMax) G.p.hp += s.maxHp - oldMax;
+    if(fillNewCapacity && s.maxHp > oldMax) G.p.hp += s.maxHp - oldMax;
     G.p.hp = Math.min(G.p.hp, s.maxHp);
   }
 }
@@ -2996,6 +2998,7 @@ function newRun(){
   G.score = 0; G.kills = 0; G.combo = 0; G.comboT = 0;
   G.xp = 0; G.lv = 1; G.need = 10; G.pending = 0;
   G.skills = {}; G.slots = []; G.growth = growthSnapshot();
+  TALENTS.reset();
   G.energy = 0; G.mechT = 0; G.revives = 1;
   G.bullets.length = 0; G.eb.length = 0; G.enemies.length = 0;
   G.orbs.length = 0; G.parts.length = 0; G.texts.length = 0; G.rings.length = 0;
@@ -3093,6 +3096,7 @@ function endWave(){
   } else {
     G.wave++;
     startWave();
+    TALENTS.queueMilestone();
   }
 }
 
@@ -3266,8 +3270,9 @@ function nearestEnemyExcept(x, y, range, excl){
 
 function fire(){
   if(G.mechT > 0){ mechFire(); return; }
+  if(TALENTS.tryBayonet()) return;
   const p = G.p, s = G.st, w = WEP();
-  const reach = w.reach || (w.id === 'shotgun' ? 250 : (w.id === 'sniper' ? 620 : 400));
+  const reach = (w.reach || (w.id === 'shotgun' ? 250 : (w.id === 'sniper' ? 620 : 400))) * s.gunRangeMul;
   const t = nearestEnemy(p.x, p.y, reach);
   if(!t) return;
   const ang = Math.atan2(t.y - p.y, t.x - p.x);
@@ -3290,10 +3295,10 @@ function fire(){
       vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
       dmg: s.dmg * weakM, pct: oved ? .25 : 0,
       pierce: s.pierce + (focus ? 2 : 0) + (heat ? 2 : 0),
-      hits: [], pi: 0, life: w.life + (s.lifeAdd || 0), crit: Math.random() < s.crit,
+      hits: [], pi: 0, life: (w.life + (s.lifeAdd || 0)) * s.gunRangeMul, crit: Math.random() < s.crit,
       r: w.br * s.bigMul,
       over: oved, w: w.id, boom: !!w.boom,
-      arc: w.boom ? w.life : 0, arcH: w.boom ? 28 : 0
+      arc: w.boom ? w.life * s.gunRangeMul : 0, arcH: w.boom ? 28 : 0
     });
   }
   /* 弹幕风暴：额外散射子弹（土豆兄弟「子弹增多」型天赋） */
@@ -3305,7 +3310,7 @@ function fire(){
       G.bullets.push({
         x: p.x + Math.cos(a) * 12, y: p.y + Math.sin(a) * 12,
         vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
-        dmg: s.dmg * .8 * weakM * s.barragePower, pierce: s.pierce, hits: [], life: w.life * .9,
+        dmg: s.dmg * .8 * weakM * s.barragePower, pierce: s.pierce, hits: [], life: w.life * .9 * s.gunRangeMul,
         crit: Math.random() < s.crit * .7, r: w.br * s.bigMul * .8,
         over: oved, w: w.id, boom: false, barrage: true
       });
@@ -4228,7 +4233,7 @@ function mechFire(){
 /* ── 机甲 ── */
 const MECH_TIME = 25;
 function canSummon(){
-  return G.mode === 'play' && G.mechT <= 0 && G.energy >= 100 && G.p && G.p.hp > 0;
+  return G.mode === 'play' && !G.st.mechLocked && G.mechT <= 0 && G.energy >= 100 && G.p && G.p.hp > 0;
 }
 function summonMech(){
   if(!canSummon()) return;
@@ -4263,7 +4268,7 @@ function updateMech(dt){
 }
 
 function addEnergy(v){
-  if(G.mechT > 0 || G.mode !== 'play') return;
+  if(G.mechT > 0 || G.mode !== 'play' || G.st.mechLocked) return;
   G.energy = Math.min(100, G.energy + v);
 }
 
@@ -4463,6 +4468,7 @@ function killEnemy(e){
   G.combo++; G.comboT = 2.2;
   addEnergy(e.elite ? 8 : 5);
   if(G.st.leech > 0) heal(G.st.leech);
+  TALENTS.onKill();
   /* 疾风：连杀攒移速爆发 */
   if(G.st.fleet > 0){
     G.fleetKill = (G.fleetKill || 0) + 1;
@@ -4588,7 +4594,7 @@ function updateOrbs(dt){
     }
     o.x += o.vx * dt; o.y += o.vy * dt;
     if(d < 14){
-      gainXp(o.val);
+      gainXp(o.val, false);
       G.orbs.splice(i, 1);
       SFX.pick();
       continue;
@@ -4708,7 +4714,9 @@ function applyItem(id){
     const b = G.energy;
     /* 机甲期间不积攒能量：走受保护的 addEnergy，机甲存在时直接忽略 */
     addEnergy(40);
-    floatText(cx, cy, G.mechT > 0 ? '机甲已启动 · 能量不累积' : '能量 +' + Math.round(G.energy - b), '#ffb45c', true);
+    const label = G.st.mechLocked ? '本局机甲禁用' :
+      G.mechT > 0 ? '机甲已启动 · 能量不累积' : '能量 +' + Math.round(G.energy - b);
+    floatText(cx, cy, label, '#ffb45c', true);
     G.rings.push({ x:cx, y:cy, r:6, max:66, life:.45, maxLife:.45, col:'#ffb45c', w:2.5 });
   }
   else if(id === 'over'){
@@ -4997,7 +5005,7 @@ function drawCrate(c){
   }
 }
 
-function gainXp(v){
+function gainXp(v, showReward = true){
   if(G.buff.luck > 0) v *= 2;   /* 幸运星：经验翻倍 */
   G.xp += v;
   while(G.xp >= G.need){
@@ -5006,9 +5014,7 @@ function gainXp(v){
     G.need = Math.round(8 + G.lv * 6);
     G.pending++;
   }
-  if(G.pending > 0 && G.mode === 'play'){
-    openLevel();
-  }
+  if(showReward) openLevel();
 }
 
 /* ── 敌人 ── */
@@ -6262,7 +6268,7 @@ const EVENTS = [
   { n:'医疗无人机', ic:'✚', c:'#7dffb0', good:true,
     desc:'一架医疗无人机送来急救，回复大量生命。',
     apply:function(){ heal(G.p.maxHp * .5); floatText(G.p.x, G.p.y, '生命 +50%', '#7dffb0', true); } },
-  { n:'能量过载', ic:'⚡', c:'#ffb45c', good:true,
+  { n:'能量过载', ic:'⚡', c:'#ffb45c', good:true, needsMech:true,
     desc:'能量场异常活跃，机甲能量瞬间充满。',
     apply:function(){ G.energy = 100; floatText(G.p.x, G.p.y, '能量充满', '#ffb45c', true); } },
   { n:'弹药克扣', ic:'▼', c:'#ff8a6a', good:false,
@@ -6314,7 +6320,10 @@ const elEvent = document.getElementById('ovEvent');
 const elEvtBox = document.getElementById('evtBox');
 
 function triggerEvent(force){
-  const ev = force || pick(EVENTS);
+  if(G.mode !== 'play' || G.phase !== 'wave') return;
+  const pool = G.st.mechLocked ? EVENTS.filter(ev => !ev.needsMech) : EVENTS;
+  const ev = force || pick(pool);
+  if(G.st.mechLocked && ev.needsMech) return;
   G._event = ev;
   elEvtBox.innerHTML =
     '<div class="evtIco" style="color:' + ev.c + '">' + ev.ic + '</div>' +
@@ -6335,7 +6344,7 @@ function closeEvent(){
   G.mode = 'play';
   if(ev && ev.apply) ev.apply();
   SFX.pick();
-  wakeGame();
+  if(!openReward()) wakeGame();
 }
 
 /* 每关（进入新区域 / 首关开局）10% 概率触发，一关最多一次 */
@@ -6346,6 +6355,7 @@ function maybeEvent(){
 }
 
 function nextStage(){
+  if(G.mode !== 'play') return;
   const s = G.stage;
   if(s >= SCENES.length - 1){
     G.mode = 'win';
@@ -6359,6 +6369,7 @@ function nextStage(){
   G.revives = Math.max(G.revives, 0);
   setScene(s + 1);
   G.wave = 1;
+  TALENTS.queueMilestone();
   G.phase = 'wave';
   G.waveT = waveDuration(1);
   G.waveDur = G.waveT;
@@ -9424,148 +9435,11 @@ function drawHUD(){
   paintInstruments(false);
 }
 
-const elCards = document.getElementById('cards');
+const { rollCards, renderCards, openLevel, openReward, chooseCard } = TALENTS;
 const elLevel = document.getElementById('ovLevel');
 const elPause = document.getElementById('ovPause');
 const elOver = document.getElementById('ovOver');
 const elTitle = document.getElementById('ovTitle');
-
-function rollCards(){
-  /* 天赋无上限：每个已持有天赋都能无限升级，不再被 s.max 拦下 */
-  const owned = Object.keys(G.skills);
-  const cand = [];
-  const upPool = [];   // 已持有天赋的升级选项
-  for(let i=0;i<SKILLS.length;i++){
-    const s = SKILLS[i];
-    const lv = G.skills[s.id] || 0;
-    if(lv > 0) upPool.push({ id:s.id, lv:lv, w: 3 });
-  }
-  const newPool = [];  // 未持有天赋的选项（获取或替换都从这里抽）
-  for(let i=0;i<SKILLS.length;i++){
-    const s = SKILLS[i];
-    const lv = G.skills[s.id] || 0;
-    if(lv > 0) continue;
-    newPool.push({ id:s.id, lv:0, w: 2 });
-  }
-
-  const out = [];
-  const picks = [];
-  function draw(pool){
-    let tot = 0;
-    for(let i=0;i<pool.length;i++) tot += pool[i].w;
-    if(tot <= 0) return null;
-    let r = Math.random() * tot;
-    let idx = pool.length - 1;
-    for(let i=0;i<pool.length;i++){ r -= pool[i].w; if(r <= 0){ idx = i; break; } }
-    return pool.splice(idx, 1)[0];
-  }
-  /* 已持有的天赋：抽 2 个升级位 */
-  for(let i=0;i<2;i++){
-    const it = draw(upPool);
-    if(it) picks.push({ id:it.id, lv:it.lv, kind:'up' });
-  }
-  /* 新天赋位：优先给未满槽的获取；若已满槽，则作为「替换」位出现 */
-  if(owned.length < MAX_SLOTS){
-    const it = draw(newPool);
-    if(it) picks.push({ id:it.id, lv:0, kind:'new' });
-  } else {
-    /* 满槽：第三个位是「替换」——抽一个新天赋，选中后随机顶掉一个已装配天赋 */
-    const it = draw(newPool);
-    if(it) picks.push({ id:it.id, lv:0, kind:'swap' });
-  }
-  while(out.length < 3){
-    if(picks.length) out.push(picks.shift());
-    else out.push({ id:'__supply', lv:0, kind:'sup' });
-  }
-  return out;
-}
-
-function renderCards(){
-  const opts = rollCards();
-  G._cards = opts;
-  elCards.innerHTML = '';
-  document.getElementById('lvNum').textContent = 'LV ' + G.lv;
-  opts.forEach(function(o, i){
-    const div = document.createElement('button');
-    div.type = 'button';
-    div.className = 'card' + (o.kind === 'new' ? ' new' : o.kind === 'up' ? ' up' : o.kind === 'swap' ? ' swap' : '');
-    let ic = '✚', nm = '应急补给', lvTxt = '', ds = '立即回复 40 点生命', col = '#7dffc0', rk = '';
-    if(o.id !== '__supply'){
-      const sk = SK[o.id];
-      ic = sk.ic; nm = sk.n; col = sk.c;
-      if(o.kind === 'swap'){
-        lvTxt = '替换天赋';
-        ds = '随机顶掉一个已装配天赋，换成「' + nm + '」';
-      } else {
-        const nl = o.lv + 1;
-        lvTxt = o.lv === 0 ? '新技能' : 'Lv' + o.lv + ' → <b>Lv' + nl + '</b>';
-        ds = sk.d(nl);
-      }
-      if(sk.risk) rk = sk.risk(o.lv + 1);
-    }
-    div.innerHTML =
-      '<div class="bar" style="background:' + col + '"></div>' +
-      '<div class="key">' + (i + 1) + '</div>' +
-      (rk ? '<div class="warn" title="有代价">!</div>' : '') +
-      '<div class="ico" style="color:' + col + ';box-shadow:inset 0 0 18px ' + col + '33">' + ic + '</div>' +
-      '<div class="nm">' + nm + '</div>' +
-      '<div class="lv">' + lvTxt + '</div>' +
-      '<div class="ds">' + ds + '</div>' +
-      (rk ? '<div class="rk">' + rk + '</div>' : '');
-    div.addEventListener('click', function(){ chooseCard(o); });
-    elCards.appendChild(div);
-  });
-  const sl = document.getElementById('lvSlots');
-  if(sl){
-    sl.textContent = G.slots.length >= MAX_SLOTS
-      ? '技能槽已满 ' + G.slots.length + ' / ' + MAX_SLOTS + ' · 可替换'
-      : '已装配技能 ' + G.slots.length + ' / ' + MAX_SLOTS;
-  }
-}
-
-function openLevel(){
-  if(G.mode !== 'play') return;
-  G.mode = 'level';
-  renderCards();
-  clearBanner();
-  elLevel.classList.remove('hide');
-  elCards.firstElementChild?.focus({preventScroll:true});
-  SFX.lvl();
-}
-
-function chooseCard(o){
-  if(G.mode !== 'level') return;
-  if(o.id === '__supply'){
-    heal(40);
-    G.score += 60;
-  } else if(o.kind === 'swap'){
-    /* 替换：随机顶掉一个已装配天赋，换成这张新天赋（1 级） */
-    if(G.slots.length > 0){
-      const drop = G.slots[(Math.random() * G.slots.length) | 0];
-      delete G.skills[drop];
-      const idx = G.slots.indexOf(drop);
-      if(idx >= 0) G.slots.splice(idx, 1);
-      floatText(G.p.x, G.p.y, '替换掉 ' + SK[drop].n, '#ff9ad5', true);
-    }
-    G.skills[o.id] = 1;
-    G.slots.push(o.id);
-    recalc();
-  } else {
-    const lv = (G.skills[o.id] || 0) + 1;
-    G.skills[o.id] = lv;
-    if(G.slots.indexOf(o.id) < 0 && G.slots.length < MAX_SLOTS) G.slots.push(o.id);
-    recalc();
-  }
-  SFX.pick();
-  G.pending--;
-  if(G.pending > 0){
-    renderCards();
-  } else {
-    elLevel.classList.add('hide');
-    G.mode = 'play';
-    wakeGame();
-  }
-}
 
 function showOver(win){ showReport(win,false); }
 
@@ -9670,6 +9544,7 @@ function step(dt){
   updatePicks(dt);
   updateCrates(dt);
   updateJobs(dt);
+  if(G.mode !== 'play') return;
   tickBuff(dt);
   syncCompanions(dt);
   updateParts(dt);
@@ -9679,7 +9554,10 @@ function step(dt){
   FOREFX.update(dt, SW, SH);
   updateScars(dt);
   if(G.sceneFx > 0) G.sceneFx = Math.max(0, G.sceneFx - dt);
-  updatePortal(dt);
+  if(!openReward()){
+    updatePortal(dt);
+    openReward();
+  }
 
   if(G.comboT > 0){
     G.comboT -= dt;
@@ -9729,6 +9607,7 @@ window.addEventListener('keydown', function(e){
   const move = keyMap(k);
   if(move && G.mode === 'play'){ keys[move] = true; e.preventDefault(); return; }
   if(e.repeat) return;
+  if(TALENTS.handleKey(k)){ e.preventDefault(); return; }
   if(k === 'p' || k === 'escape'){
     if(G.mode === 'play' || G.mode === 'pause'){ togglePause(); e.preventDefault(); }
   } else if(G.mode === 'play'){
@@ -9736,9 +9615,6 @@ window.addEventListener('keydown', function(e){
     else if(k === 'q') weaponSkill();
     else if(k === 'e') charSkill();
     else if(k === '1' || k === '2') useItem(Number(k)-1);
-  } else if(G.mode === 'level' && ['1','2','3'].includes(k)){
-    const option = G._cards?.[Number(k)-1];
-    if(option) chooseCard(option);
   } else if(G.mode === 'event' && (k === 'enter' || k === ' ')){
     closeEvent(); e.preventDefault();
   } else if(G.mode === 'title' && (k === 'enter' || k === ' ')){
@@ -9926,7 +9802,7 @@ window.__dbg = {
   GUNART:GUNART, weaponIconURL:weaponIconURL, storeSet:storeSet, storeGet:storeGet,
   GIFT_PTS:GIFT_PTS,
   EVENTS:EVENTS, triggerEvent:triggerEvent, closeEvent:closeEvent, maybeEvent:maybeEvent,
-  rollCards:rollCards, renderCards:renderCards, unlockCrate:unlockCrate,
+  rollCards:rollCards, renderCards:renderCards, talents:TALENTS, openReward:openReward, unlockCrate:unlockCrate,
   GROUND:GROUND, buildGround:buildGround, buildProps:buildProps, STAGE3D:STAGE3D,
   FARFX:FARFX, FOREFX:FOREFX, BREATH_LIGHTS:BREATH_LIGHTS, addScar:addScar,
   spawnPointNear:spawnPointNear, collectLights:collectLights, LIGHTS:LIGHTS,

@@ -11,6 +11,7 @@
   <script defer src="vendor/three.min.js"></script>
   <script defer src="growth.js"></script>
   <script defer src="terminal.js"></script>
+  <script defer src="talents.js"></script>
   <script defer src="game.js"></script>
 </head>
 <body>
@@ -24,7 +25,7 @@
       <div class="meter hp-meter"><i id="hpFill"></i></div>
       <div class="meter xp-meter" aria-label="升级经验"><i id="xpFill"></i></div>
       <div class="vitals-meta"><span>击破 <b id="hudKills">0</b></span><span>得分 <b id="hudScore">0</b></span></div>
-      <div class="hud-status"><span id="hudLives"></span><span id="hudBuffs"></span><span id="hudGrowth" class="hud-growth" hidden></span></div>
+      <div class="hud-status"><span id="hudLives"></span><span id="hudBuffs"></span><span id="hudGrowth" class="hud-growth" hidden></span><span id="hudEnhancements"></span></div>
     </div>
     <div id="wavePanel" class="wave-panel combat-panel">
       <div class="hud-sector" id="hudSector"></div>
@@ -112,9 +113,10 @@
     </div>
   </section>
 
-  <section class="ov veil hide" id="ovLevel" role="dialog" aria-modal="true" aria-labelledby="levelTitle">
-    <div class="menu-sheet level-sheet"><div class="section-kicker"><i></i>LEVEL UP</div><div class="sheet-head"><h2 id="levelTitle">选择强化</h2><span class="lv-num" id="lvNum"></span></div>
-    <p class="sheet-note">重复选择同一技能可叠加升级。</p><div class="cards" id="cards"></div><div class="slot-count" id="lvSlots"></div></div>
+  <section class="ov veil hide" id="ovLevel" role="dialog" aria-modal="true" aria-labelledby="levelTitle" aria-describedby="lvNote">
+    <div class="menu-sheet level-sheet"><div class="section-kicker"><i></i><span id="lvKicker">等级提升</span></div><div class="sheet-head"><h2 id="levelTitle">选择强化</h2><span class="lv-num" id="lvNum"></span></div>
+    <p class="sheet-note" id="lvNote"></p><div class="cards" id="cards"></div><div class="slot-count" id="lvSlots"></div>
+    <button type="button" class="secondary" id="lvCancel" hidden>返回强化选择 <kbd>Esc</kbd></button></div>
   </section>
   <section class="ov veil hide" id="ovEvent" role="dialog" aria-modal="true" aria-label="战场事件">
     <div class="menu-sheet centered"><div class="section-kicker"><i></i>战场事件</div><div id="evtBox"></div><button class="primary" id="btnEvt">确认事件</button></div>

@@ -278,6 +278,7 @@ function wireTerminal() {
   byId('btnQuit').onclick = quitRun;
   byId('btnHome').onclick = returnToLobby;
   byId('btnEvt').onclick = closeEvent;
+  byId('lvCancel').onclick = TALENTS.cancelSwap;
   byId('btnMech').onclick = summonMech;
   byId('charAction').onclick = charSkill;
   byId('weaponAction').onclick = weaponSkill;
@@ -364,12 +365,14 @@ function paintInstruments(force) {
   putText(instrument('comboText'),G.combo >= 5 ? G.combo + ' 连击' : '');
   const active = [['over','过载'],['magnet','磁吸'],['stasis','停滞'],['fleet','疾风'],['rad','辐射'],['luck','幸运'],['weak','虚弱']];
   putText(instrument('hudBuffs'),active.filter(([k])=>G.buff[k]>0).map(([k,n])=>n+' '+Math.ceil(G.buff[k])+'s').join(' · '));
+  putText(instrument('hudEnhancements'),TALENTS.status().join(' · '));
   paintAbility('charAction',pilot.act.n,G.ccd>0 ? Math.ceil(G.ccd)+'s' : pilot.act.ic,pilot.act.n + ' · ' + pilot.act.t,G.ccd<=0,pilot.flow);
   paintAbility('weaponAction',weapon.sk.n,G.wcd>0 ? Math.ceil(G.wcd)+'s' : weapon.sk.ic,weapon.sk.n + ' · ' + weapon.sk.t,G.wcd<=0,weapon.c);
   const ready = canSummon(), live = G.mechT>0;
-  const mechValue = live ? Math.ceil(G.mechT)+'s' : ready ? '变身' : Math.floor(G.energy)+'%';
-  const mechLabel = live ? '巨人形态' : ready ? '机甲就绪' : '机甲充能';
-  paintAbility('btnMech',mechLabel,mechValue,mechLabel + ' · ' + mechValue,ready,'#ffb462');
+  const locked = G.st.mechLocked;
+  const mechValue = locked ? '—' : live ? Math.ceil(G.mechT)+'s' : ready ? '变身' : Math.floor(G.energy)+'%';
+  const mechLabel = locked ? '机甲禁用' : live ? '巨人形态' : ready ? '机甲就绪' : '机甲充能';
+  paintAbility('btnMech',mechLabel,mechValue,locked ? '回归基本功 · 本局机甲禁用' : mechLabel + ' · ' + mechValue,ready,'#ffb462');
   instrument('btnMech').classList.toggle('ready',ready);
   const bagButtons = instrument('actionDock').querySelectorAll('[data-bag]');
   for(let i=0;i<MAX_BAG;i++){
