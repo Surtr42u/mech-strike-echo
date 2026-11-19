@@ -148,7 +148,7 @@ const SKILL_DEFS = [
     ap:(s,l)=>{ s.crit += .15*l; s.maxHp -= 25*l; } }
 ];
 const SK = Object.fromEntries(SKILL_DEFS.map(skill => [skill.id, skill]));
-const SKILLS = TALENTS.pool.map(({ id, tag }) => ({ ...SK[id], tag }));
+const SKILLS = TALENTS.pool.map(({ id, tag, tags }) => ({ ...SK[id], tag, tags }));
 
 /* ── 战场道具 ──
    mode:'auto' 走过去自动生效 / mode:'bag' 进战术背包（1·2 键或点格释放） */
@@ -2941,7 +2941,7 @@ function baseStats(){
     barrage:0, bigMul:1, fleet:0,
     skillPower:1, skillCooldown:1, barragePower:1, barrageExtra:0,
     bodyScale:1, gunRangeMul:1, mechLocked:false,
-    pierceRetention:.7, mechPower:1, mechDuration:0,
+    pierceRetention:.7, mechPower:1, mechDuration:0, deployCooldown:1, deployPower:1, deployPierce:0,
     /* 共鸣与被动扩展位 */
     lifeAdd:0, spreadMul:1, bspdMul:1, boomMul:1, elemMul:1,
     burnMul:1, selfBurn:0, dmgTaken:0, noMedkit:false
@@ -3190,7 +3190,8 @@ function updatePlayer(dt){
   if(m > 1){ ix /= m; iy /= m; }
   const mag = Math.min(1, Math.hypot(ix, iy));
 
-  const spd = 106 * s.spdMul * (G.buff.fleet > 0 ? 1.35 : 1) * (G.mechT > 0 ? currentMech().speed : 1) * SectorClimate.frostFactor(p);
+  const spd = 106 * s.spdMul * (G.buff.fleet > 0 ? 1.35 : 1) * (G.mechT > 0 ? currentMech().speed : 1) *
+    SectorClimate.frostFactor(p) * HEXES.moveMultiplier(p);
   const k = 1 - Math.pow(.0009, dt);
   p.vx = lerp(p.vx, ix * spd, k);
   p.vy = lerp(p.vy, iy * spd, k);
@@ -4333,7 +4334,7 @@ function applyDamage(e, dmg, crit, hx, hy, opt){
   r.dmg=EnemyTactics.absorb(e,r.dmg);
   if(r.dmg<=0){ e.flash=.07; SFX.hit(true); return; }
   EnemyTactics.interrupt(e);
-  if(source === 'player') HEXES.onAttackDamage(Math.min(e.hp,r.dmg));
+  if(source === 'player') HEXES.onAttackDamage(Math.min(e.hp,r.dmg),e,r.crit);
   e.hp -= r.dmg;
   e.flash = .11;
   if(r.crit) G.hitStop = Math.max(G.hitStop, .028);
@@ -4399,7 +4400,7 @@ function damageBoss(b, dmg, crit, hx, hy, opt){
   if(!b || b.dead) return;
   const source = opt?.source ?? 'player';
   const r = calcDamage(dmg, source, b, Object.assign({ crit: crit }, opt || {}));
-  if(source === 'player') HEXES.onAttackDamage(Math.min(b.hp,r.dmg));
+  if(source === 'player') HEXES.onAttackDamage(Math.min(b.hp,r.dmg),b,r.crit);
   b.hp -= r.dmg;
   b.flash = .09;
   if(Math.random() < .6 || r.crit){
@@ -4423,6 +4424,7 @@ function hurtPlayer(dmg){
   // 力场护盾：先消耗一层，不掉血
   if(G.shield > 0){
     G.shield--;
+    HEXES.onShieldBlock();
     G.shieldFx = .85;
     p.inv = .5;
     G.rings.push({ x:p.x, y:p.y, r:8, max:44, life:.35, maxLife:.35, col:'#b9c7ff', w:3 });
@@ -5346,10 +5348,10 @@ function syncCompanions(dt){
         const ang = Math.atan2(t.y - d.y, t.x - d.x);
         G.bullets.push({
           x:d.x, y:d.y, vx:Math.cos(ang) * 460, vy:Math.sin(ang) * 460,
-          dmg: s.dmg * .55, pierce: 0, hits: [], life: .9,
+          dmg: s.dmg * .55 * s.deployPower, pierce:s.deployPierce, hits: [], life: .9,
           crit: Math.random() < s.crit, r: 2.2
         });
-        d.cd = .66; d.flash = .08;
+        d.cd = .66 * s.deployCooldown; d.flash = .08;
       } else d.cd = .2;
     }
   }
@@ -5377,10 +5379,10 @@ function syncCompanions(dt){
         tu.ang = ang;
         G.bullets.push({
           x:tu.x, y:tu.y, vx:Math.cos(ang) * 440, vy:Math.sin(ang) * 440,
-          dmg: s.dmg * .75, pierce: 0, hits: [], life: 1,
+          dmg: s.dmg * .75 * s.deployPower, pierce:s.deployPierce, hits: [], life: 1,
           crit: Math.random() < s.crit, r: 2.4
         });
-        tu.cd = .5; tu.flash = .08;
+        tu.cd = .5 * s.deployCooldown; tu.flash = .08;
       } else tu.cd = .15;
     }
   }

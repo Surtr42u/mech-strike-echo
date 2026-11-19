@@ -1,5 +1,64 @@
 /* 海克斯按本局预掷档位，每个战役里程碑只结算一次。数值为《回响》规则。 */
 const DRAFT_CHOICES = 5;
+const BUILD_TAGS = {
+  fire:'射击', pierce:'贯穿', burn:'灼烧', crit:'暴击', control:'控场', summon:'召唤',
+  skill:'技能', mech:'机甲', guard:'防御', mobility:'机动', supplies:'补给', fortune:'质变'
+};
+const BUILD_DRAFT = (function(){
+  const classTags = {
+    rifle:['fire','pierce'], shotgun:['fire','control'], heavy:['control','pierce'],
+    precise:['crit','pierce'], elemental:['burn','control'], tech:['pierce','skill']
+  };
+  const weaponTags = {
+    flamer:['burn','fire'], toxin:['control','fire'], frost:['control','fire'],
+    rail:['pierce','crit'], launcher:['control','fire'], micromissile:['control','skill'],
+    tesla:['control','pierce'], cryocannon:['control','fire'], acid:['burn','control']
+  };
+  function profile(weapon, talents, majors){
+    const weights = {};
+    function add(tags, value){
+      tags.forEach((tag,i) => { weights[tag] = (weights[tag] || 0) + value * (i ? .62 : 1); });
+    }
+    add(weaponTags[weapon.id] || classTags[weapon.class] || [],1.15);
+    for(const card of talents) add(card.tags,1 + Math.min(card.lv-1,4) * .15);
+    for(const card of majors) add(card.tags,1.30);
+    return weights;
+  }
+  function choose(candidates, weights, previous = [], rng = Math.random){
+    const remaining = candidates.slice();
+    const strongest = Math.max(0,...Object.values(weights));
+    const focus = Object.keys(weights).filter(tag => weights[tag] >= strongest*.76);
+    const crosses = card => card.tags.some(tag => tag !== 'fortune') && !card.tags.some(tag => focus.includes(tag));
+    function score(card){
+      const affinity = Math.max(0,...card.tags.map(tag => weights[tag] || 0));
+      return 1 + Math.min(2.6,affinity*.52) + (card.kind === 'up' ? .65 : 0);
+    }
+    function pick(filter){
+      const choices = remaining.filter(filter);
+      if(!choices.length) return null;
+      let chance = rng() * choices.reduce((sum,card) => sum + score(card),0);
+      const card = choices.find(candidate => (chance -= score(candidate)) < 0) || choices[choices.length-1];
+      remaining.splice(remaining.indexOf(card),1);
+      return card;
+    }
+    const pivot = (focus.length && (pick(card => crosses(card) && card.kind !== 'up') || pick(crosses))) ||
+      pick(card => card.kind === 'new' || card.kind === 'swap');
+    const selected = [];
+    const count = Math.min(DRAFT_CHOICES,candidates.length) - (pivot ? 1 : 0);
+    while(selected.length < count) selected.push(pick(() => true));
+    if(pivot) selected.push(pivot);
+    if(previous.length){
+      const prior = new Set(previous.map(card => card.id));
+      if(selected.every(card => prior.has(card.id))){
+        const fresh = pick(card => !prior.has(card.id));
+        if(fresh) selected[Math.max(0,count-1)] = fresh;
+      }
+    }
+    return selected;
+  }
+  const label = tags => tags.map(tag => BUILD_TAGS[tag]).join(' / ');
+  return {profile,choose,label};
+})();
 const HEXES = (function(){
   const tierNames = { silver:'白银', gold:'黄金', prism:'棱彩' };
   const tierColors = { silver:'#b6c5d2', gold:'#ffd172', prism:'#d7aaff' };
@@ -15,6 +74,16 @@ const HEXES = (function(){
   const thermal = { levels:2, multiplier:1.35 };
   const freezeLevels = 2, armorBonus = .22;
   const goldRetention = 80, prismRetention = 90;
+  const cell = {energy:1,interval:1.2,refund:.25};
+  const chase = { threshold:.40, speed:.18 };
+  const combustion = {refund:.45,interval:1.2};
+  const critGuard = {layers:2,interval:9};
+  const droneRelay = {cooldown:.76};
+  const mechRelay = {seconds:4,lockedCooldown:.92};
+  const flareNet = {radius:54,damage:12,seconds:2,interval:1.8,maxTargets:4};
+  const storm = {crit:.12,energy:5,refund:1.1,interval:.7};
+  const companionArms = {power:1.33,pierce:2};
+  const mirror = {layers:3,interval:11,blockInterval:4.5,refund:.25};
   const cards = {
     relay: { tier:'silver', n:'速射中继', ic:'»', d:'主武器射速 +14%。', apply:s => { s.rateMul *= 1.14; } },
     plating: { tier:'silver', n:'加固护板', ic:'▣', d:'生命上限 +16。', apply:s => { s.maxHp += 16; } },
@@ -23,6 +92,11 @@ const HEXES = (function(){
     sights: { tier:'silver', n:'校准瞄镜', ic:'✧', d:'暴击率 +8 个百分点。', apply:s => { s.crit += .08; } },
     alloy: { tier:'silver', n:'穿甲弹芯', ic:'➤', d:'主武器弹丸穿透 +1。', apply:s => { s.pierce++; } },
     quick: { tier:'silver', n:'快速回路', ic:'↻', d:'武器技能与角色必杀冷却时间 -12%。', apply:s => { s.skillCooldown *= .88; } },
+    primer: { tier:'silver', n:'引火底药', ic:'☄', d:'弹丸命中附加一级灼烧，技能强度 +8%。', apply:s => { s.burn++; s.skillPower *= 1.08; } },
+    chase: { tier:'silver', n:'低位冲刺', ic:'↝',
+      d:`生命不超过 ${chase.threshold*100}% 时，移动速度 +${Math.round(chase.speed*100)}%，离开低血区间即结束。` },
+    cell: { tier:'silver', n:'备用电芯', ic:'ϟ',
+      d:`未变身时每击破一名计分敌人额外充能 ${cell.energy} 点。机甲锁定则改为各返 ${cell.refund} 秒 Q/E 冷却，间隔 ${cell.interval} 秒。` },
     transmuteGold: { tier:'silver', n:'质变·黄金', ic:'⇈', d:'本次直接获得 1 项随机黄金海克斯。结果会在选择后揭晓。', to:'gold' },
 
     stipend: { tier:'gold', n:'军费补助', ic:'▤', d:'立即获得 600 补给站积分，每局至多领取一次。', enter:() => grantPoints(600,'军费补助') },
@@ -61,6 +135,15 @@ const HEXES = (function(){
       d:`未变身时，每次击破计分敌人额外获得 ${capacitor.energy} 点机甲能量。机甲锁定时改为各返 ${capacitor.refund} 秒武器技能和必杀冷却，间隔 ${capacitor.interval} 秒。` },
     aegis: { tier:'gold', n:'出手成盾', ic:'⛊',
       d:`施放武器技能或角色必杀时获得 1 层护盾，通过此牌最多补至 ${aegis.layers} 层。两技能共用 ${aegis.interval} 秒触发间隔。` },
+    combustion: {tier:'gold', n:'余烬回路', ic:'↻',
+      d:`攻击已在灼烧的目标并造成伤害时，Q/E 各返 ${combustion.refund} 秒冷却，最多每 ${combustion.interval} 秒一次。`},
+    critGuard: {tier:'gold', n:'精准格挡', ic:'⛉',
+      d:`造成有效暴击时获得 1 层护盾，通过此牌最多补至 ${critGuard.layers} 层，触发间隔 ${critGuard.interval} 秒。`},
+    droneRelay: {tier:'gold', n:'机群调度', ic:'◉',
+      d:`增加 1 台环绕机炮，所有环绕机炮和哨戒炮的开火间隔缩短 ${Math.round((1-droneRelay.cooldown)*100)}%。`,
+      apply:s => { s.drone++; s.deployCooldown *= droneRelay.cooldown; }},
+    mechRelay: {tier:'gold', n:'第二动力', ic:'ϟ',
+      d:`每次变身第一次施放机甲技，剩余变身时间 +${mechRelay.seconds} 秒。机甲锁定时，改为 Q/E 冷却 -${Math.round((1-mechRelay.lockedCooldown)*100)}%。`},
     transmutePrism: { tier:'gold', n:'质变·棱彩', ic:'⇈', d:'本次直接获得 1 项随机棱彩海克斯。结果会在选择后揭晓。', to:'prism' },
 
     bayonet: { tier:'prism', n:'亮剑', ic:'⚔',
@@ -95,11 +178,39 @@ const HEXES = (function(){
     guard: { tier:'prism', n:'棱镜护幕', ic:'⬢',
       d:`生命上限 +${guard.hp}。造成有效伤害时获得 1 层护盾，通过此牌最多补至 ${guard.layers} 层，每 ${guard.interval} 秒最多触发一次。`,
       apply:s => { s.maxHp += guard.hp; } },
+    flareNet: {tier:'prism', n:'连环烽火', ic:'☄',
+      d:`弹丸附加两级灼烧。造成伤害时，若目标正在灼烧，会向半径 ${flareNet.radius} 内最多 ${flareNet.maxTargets} 个其他敌人传火，每秒 ${flareNet.damage} 基础灼烧伤害、持续 ${flareNet.seconds} 秒。触发间隔 ${flareNet.interval} 秒。`,
+      apply:s => { s.burn += 2; }},
+    storm: {tier:'prism', n:'暴击发电', ic:'✧',
+      d:`暴击率 +${Math.round(storm.crit*100)} 个百分点。未变身时有效暴击返 ${storm.energy} 点机甲能量；机甲锁定则各返 ${storm.refund} 秒 Q/E。触发间隔 ${storm.interval} 秒。`,
+      apply:s => { s.crit += storm.crit; }},
+    companionArms: {tier:'prism', n:'交叉火控', ic:'◉',
+      d:`增加 1 台环绕机炮，每 7 秒部署 1 座额外哨戒炮。两类召唤物的弹丸伤害 +${Math.round((companionArms.power-1)*100)}%，穿透 +${companionArms.pierce}。`,
+      apply:s => { s.drone++; s.turret++; s.deployPower *= companionArms.power; s.deployPierce += companionArms.pierce; }},
+    mirror: {tier:'prism', n:'镜盾反转', ic:'⬡',
+      d:`施放 Q/E 补 1 层护盾，最多补至 ${mirror.layers} 层，间隔 ${mirror.interval} 秒。护盾挡伤时返还 Q/E 各自剩余冷却的 ${mirror.refund*100}%，间隔 ${mirror.blockInterval} 秒。`},
     pandora: { tier:'prism', n:'潘多拉的盒子', ic:'◇',
       d:'将已持有的白银、黄金海克斯逐一换成随机棱彩，本轮再获得 1 项随机棱彩。原有棱彩保留，结果互不重复。',
       risk:'需要持有白银或黄金才会出现。被替换效果与层数移除，已到账军费保留，每局至多选一次。' }
   };
-  for(const card of Object.values(cards)) card.c = tierColors[card.tier];
+  const tags = {
+    relay:['fire'], plating:['guard'], pathfinder:['mobility'], collector:['supplies','mobility'],
+    sights:['crit'], alloy:['pierce'], quick:['skill'], primer:['burn','skill'], chase:['mobility','guard'],
+    cell:['mech','skill'], transmuteGold:['fortune'],
+    stipend:['supplies'], tank:['guard'], scatter:['fire','control'], thermal:['burn','fire'], fieldArmor:['guard'],
+    freeze:['control'], overdrive:['skill'], breach:['pierce'], capacitor:['mech','skill'], aegis:['guard','skill'],
+    combustion:['burn','skill'], critGuard:['crit','guard'], droneRelay:['summon','fire'], mechRelay:['mech','skill'],
+    transmutePrism:['fortune'],
+    bayonet:['mobility','guard'], basics:['skill'], goliath:['guard','fire'], mystic:['skill','fire'],
+    shock:['control','fire'], arsenal:['summon','control'], unstable:['fire'], overclock:['fire'],
+    lance:['pierce','fire'], reactor:['mech'], apex:['crit'], link:['skill'], guard:['guard','fire'],
+    flareNet:['burn','control'], storm:['crit','mech'], companionArms:['summon','pierce'],
+    mirror:['guard','skill'], pandora:['fortune']
+  };
+  for(const [id,card] of Object.entries(cards)){
+    card.c = tierColors[card.tier];
+    card.tags = tags[id];
+  }
 
   function weighted(entries, rng){
     let roll = rng() * entries.reduce((sum, entry) => sum + entry[1], 0);
@@ -164,14 +275,8 @@ const HEXES = (function(){
   function roll(previous = []){
     const state = G.enhancements;
     if(!previous.length && state.hand) return state.hand;
-    const ids = offerIds();
-    const prior = new Set(previous.map(o => o.id));
-    const options = draw(ids,DRAFT_CHOICES);
-    if(previous.length && options.every(id => prior.has(id))){
-      const fresh = ids.filter(id => !prior.has(id));
-      if(fresh.length) options[options.length-1] = draw(fresh,1)[0];
-    }
-    const hand = options.map(id => ({id,kind:'major'}));
+    const options = offerIds().map(id => ({id,kind:'major',tags:cards[id].tags}));
+    const hand = BUILD_DRAFT.choose(options,TALENTS.buildProfile(),previous);
     if(state.pending) state.hand = hand;
     return hand;
   }
@@ -228,13 +333,18 @@ const HEXES = (function(){
   function applyStats(s){
     for(const id of G.enhancements.chosen) cards[id].apply?.(s,G.enhancements);
     if(s.mechLocked && has('reactor')) s.dmgPct += reactor.lockedDamage / 100;
+    if(s.mechLocked && has('mechRelay')) s.skillCooldown *= mechRelay.lockedCooldown;
   }
 
   function onKill(){
     const state = G.enhancements;
+    if(has('cell')){
+      if(!G.st.mechLocked) addEnergy(cell.energy);
+      else if(hasCooldown() && ready('cell',cell.interval)) refundSkills(cell.refund);
+    }
     if(has('capacitor')){
       if(!G.st.mechLocked) addEnergy(capacitor.energy);
-      else if((G.wcd > 0 || G.ccd > 0) && ready('capacitor',capacitor.interval)) refundSkills(capacitor.refund);
+      else if(hasCooldown() && ready('capacitor',capacitor.interval)) refundSkills(capacitor.refund);
     }
     if(!has('tank') || state.tankKills >= tank.kills * tank.limit) return;
     if(++state.tankKills % tank.kills !== 0) return;
@@ -243,16 +353,17 @@ const HEXES = (function(){
   }
 
   function ready(id, interval){
-    const activations = G.enhancements.activations;
-    if(G.t < (activations[id] ?? -Infinity) + interval) return false;
-    activations[id] = G.t;
+    if(!due(id,interval)) return false;
+    G.enhancements.activations[id] = G.t;
     return true;
   }
+  function due(id,interval){ return G.t >= (G.enhancements.activations[id] ?? -Infinity) + interval; }
 
   function refundSkills(seconds){
     G.wcd = Math.max(0,G.wcd - seconds);
     G.ccd = Math.max(0,G.ccd - seconds);
   }
+  function hasCooldown(){ return G.wcd > 0 || G.ccd > 0; }
 
   function awardShield(id,rule){
     if(!has(id) || G.shield >= rule.layers || !ready(id,rule.interval)) return;
@@ -260,15 +371,49 @@ const HEXES = (function(){
     G.shieldFx = .5;
   }
 
-  function onAttackDamage(actual){
+  function onAttackDamage(actual,target,critical){
     if(actual <= 0 || G.mode !== 'play') return;
-    if((G.wcd > 0 || G.ccd > 0) && has('mystic') && ready('mystic',punch.interval)) refundSkills(punch.refund);
+    if(hasCooldown() && has('mystic') && ready('mystic',punch.interval)) refundSkills(punch.refund);
     awardShield('guard',guard);
+    if(target?.noReward) return;
+    if(critical){
+      awardShield('critGuard',critGuard);
+      if(has('storm') && (G.st.mechLocked ? hasCooldown() : G.mechT <= 0 && G.energy < 100) && ready('storm',storm.interval)){
+        if(G.st.mechLocked) refundSkills(storm.refund);
+        else addEnergy(storm.energy);
+      }
+    }
+    if(!(target?.burnT > 0) || target.venom) return;
+    if(has('combustion') && hasCooldown() && ready('combustion',combustion.interval)) refundSkills(combustion.refund);
+    if(!has('flareNet') || !due('flareNet',flareNet.interval)) return;
+    const neighbors = G.enemies.filter(e => e !== target && !e.dead && e.spawnT <= 0 && !e.noReward &&
+      d2(e.x,e.y,target.x,target.y) <= flareNet.radius ** 2);
+    if(!neighbors.length || !ready('flareNet',flareNet.interval)) return;
+    for(const enemy of neighbors.slice(0,flareNet.maxTargets)) setBurn(enemy,flareNet.seconds,flareNet.damage);
   }
 
   function onSkillCast(other){
     if(has('link') && G[other] > 0 && ready('link',link.interval)) G[other] *= 1 - link.percent / 100;
     awardShield('aegis',aegis);
+    awardShield('mirror',mirror);
+  }
+
+  function onShieldBlock(){
+    if(!has('mirror') || !hasCooldown() || !ready('mirrorBlock',mirror.blockInterval)) return;
+    G.wcd *= 1 - mirror.refund;
+    G.ccd *= 1 - mirror.refund;
+  }
+
+  function onMechStart(){ G.enhancements.mechRelayUsed = false; }
+
+  function onMechSkill(){
+    if(!has('mechRelay') || G.enhancements.mechRelayUsed) return;
+    G.enhancements.mechRelayUsed = true;
+    G.mechT += mechRelay.seconds;
+  }
+
+  function moveMultiplier(p){
+    return has('chase') && p.hp <= p.maxHp * chase.threshold ? 1 + chase.speed : 1;
   }
 
   function onMechExpiry(){
@@ -288,5 +433,6 @@ const HEXES = (function(){
   }
 
   return { makePlan, createRun, queueMilestone, offerIds, roll, canAscend, ascend, choose, has,
-    currentTier, applyStats, onKill, onAttackDamage, onSkillCast, onMechExpiry, planLabel, status, tierNames, tierColors, cards, bayonet };
+    currentTier, applyStats, onKill, onAttackDamage, onSkillCast, onShieldBlock, onMechStart, onMechSkill, onMechExpiry,
+    moveMultiplier, planLabel, status, tierNames, tierColors, cards, bayonet, tagLabels:BUILD_TAGS, tagLabel:BUILD_DRAFT.label };
 })();

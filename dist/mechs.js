@@ -55,6 +55,7 @@ function summonMech(){
   const mech = currentMech(), p = G.p;
   G.energy = 0;
   G.mechT = mech.time + G.st.mechDuration;
+  HEXES.onMechStart();
   G.shake = 10;
   p.fireT = 0;
   addFlash(p.x,p.y,175,mech.color,.75);
@@ -207,6 +208,7 @@ function useMechSkill(){
   if(!canUseMechSkill()) return false;
   const mech = currentMech(), p = G.p;
   G.mechCd = mech.skill.cooldown;
+  HEXES.onMechSkill();
   p.atkT = .2;
   if(mech.id === 'heavy'){
     const angle = mechAim(570), length = 495, width = 24;

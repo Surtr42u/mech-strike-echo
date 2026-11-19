@@ -5,12 +5,16 @@ const TALENTS = (function(){
     control: { n:'控场', ids:['blast','chain','drone','turret','mine','burn','freeze','boom'] },
     defense: { n:'生存', ids:['hp','armor','speed','magnet'] }
   };
-  const pool = Object.entries(groups).flatMap(([tag, group]) =>
-    group.ids.map(id => ({ id, tag }))
-  );
-  const weaponTags = {
-    rifle:'fire', shotgun:'fire', heavy:'control', precise:'fire', elemental:'control', tech:'control'
+  const tags = {
+    rapid:['fire'], power:['fire'], pierce:['pierce'], barrage:['fire','control'],
+    crit:['crit'], multi:['fire','crit'], blast:['control','fire'], chain:['control','pierce'],
+    drone:['summon','fire'], turret:['summon','control'], mine:['summon','control'],
+    burn:['burn','fire'], freeze:['control'], boom:['summon','pierce'],
+    hp:['guard'], armor:['guard'], speed:['mobility'], magnet:['supplies','mobility']
   };
+  const pool = Object.entries(groups).flatMap(([tag, group]) =>
+    group.ids.map(id => ({ id, tag, tags:tags[id] }))
+  );
   const { cards:majors, queueMilestone, roll:rollMilestone, applyStats, onKill, status } = HEXES;
   const bayonetReach = 38;
 
@@ -22,50 +26,22 @@ const TALENTS = (function(){
 
   function regularOptions(){
     const full = G.slots.length >= G.skillLimit;
-    const current = { fire:0, control:0, defense:0 };
-    for(const { id, tag } of pool){
-      if(G.skills[id] > 0) current[tag]++;
-    }
-    const weaponTag = weaponTags[WEP().class];
-    const focus = Object.keys(groups).reduce((top, tag) => current[tag] > current[top] ? tag : top, weaponTag);
-    const available = pool.flatMap(({ id, tag }) => {
-      const lv = G.skills[id] || 0;
-      if(lv >= SK[id].max) return [];
-      if(id === 'crit' && G.st?.crit >= .95 || id === 'freeze' && G.st?.freeze * PROJECTILE_EFFECTS.slowPerLevel >= PROJECTILE_EFFECTS.slowLimit) return [];
-      const w = (lv ? 2.4 : 1) * (1 + current[tag] * .65 + (tag === weaponTag ? .35 : 0));
-      return [{ id, tag, lv, kind:lv ? 'up' : full ? 'swap' : 'new', w }];
+    return pool.flatMap(card => {
+      const lv = G.skills[card.id] || 0;
+      if(lv >= SK[card.id].max) return [];
+      if(card.id === 'crit' && G.st?.crit >= .95 ||
+        card.id === 'freeze' && G.st?.freeze * PROJECTILE_EFFECTS.slowPerLevel >= PROJECTILE_EFFECTS.slowLimit) return [];
+      return [{ ...card, lv, kind:lv ? 'up' : full ? 'swap' : 'new' }];
     });
-    return { available, focus };
+  }
+
+  function buildProfile(){
+    const talents = pool.filter(card => G.skills[card.id] > 0).map(card => ({...card,lv:G.skills[card.id]}));
+    return BUILD_DRAFT.profile(WEP(),talents,G.enhancements.chosen.map(id => majors[id]));
   }
 
   function rollCards(previous = []){
-    const { available, focus } = regularOptions();
-
-    function draw(filter){
-      const candidates = available.filter(filter);
-      if(!candidates.length) return null;
-      let roll = Math.random() * candidates.reduce((sum, card) => sum + card.w, 0);
-      const card = candidates.find(card => (roll -= card.w) < 0) || candidates[candidates.length - 1];
-      available.splice(available.indexOf(card), 1);
-      return card;
-    }
-
-    // 始终留一个未装配选项。优先给当前流派之外的选择。
-    const pivot = draw(card => card.lv === 0 && card.tag !== focus) || draw(card => card.lv === 0);
-    const main = draw(card => card.kind !== 'swap' && card.tag === focus) ||
-      draw(card => card.kind !== 'swap') || draw(() => true);
-    const flex = draw(card => card.kind === 'up') || draw(() => true);
-    const choices = [main,flex];
-    while(choices.length < DRAFT_CHOICES - 1) choices.push(draw(() => true));
-    choices.push(pivot);
-    if(previous.length){
-      const prior = new Set(previous.map(card => card.id));
-      if(choices.every(card => prior.has(card.id))){
-        const index = DRAFT_CHOICES - 2;
-        choices[index] = draw(card => !prior.has(card.id)) || choices[index];
-      }
-    }
-    return choices;
+    return BUILD_DRAFT.choose(regularOptions(),buildProfile(),previous);
   }
 
   function tryBayonet(){
@@ -135,10 +111,10 @@ const TALENTS = (function(){
     cards.classList.remove('swap-options');
     cards.classList.toggle('hex-options',major);
     cards.replaceChildren(...options.map((o, i) => {
-      if(major) return cardButton({ ...majors[o.id], label:HEXES.tierNames[tier] + '海克斯' }, i, () => chooseCard(o));
+      if(major) return cardButton({ ...majors[o.id], label:HEXES.tierNames[tier] + ' · ' + BUILD_DRAFT.label(o.tags) }, i, () => chooseCard(o));
       const skill = SK[o.id], level = o.lv + 1;
       const action = o.kind === 'swap' ? '替换 · Lv1' : o.kind === 'new' ? '新天赋' : 'Lv' + o.lv + ' → Lv' + level;
-      const card = { ...skill, label:groups[o.tag].n + ' · ' + action, d:skill.d(level), risk:skill.risk?.(level) };
+      const card = { ...skill, label:BUILD_DRAFT.label(o.tags) + ' · ' + action, d:skill.d(level), risk:skill.risk?.(level) };
       return cardButton(card, i, () => chooseCard(o));
     }));
     const focusIndex = options.findIndex(o => o.id === focusId);
@@ -147,7 +123,7 @@ const TALENTS = (function(){
 
   function hasAlternative(cards){
     if(!cards.length) return false;
-    const eligible = cards[0].kind === 'major' ? HEXES.offerIds() : regularOptions().available.map(card => card.id);
+    const eligible = cards[0].kind === 'major' ? HEXES.offerIds() : regularOptions().map(card => card.id);
     return eligible.some(id => !cards.some(card => card.id === id));
   }
 
@@ -291,6 +267,6 @@ const TALENTS = (function(){
     return true;
   }
 
-  return { groups, pool, majors, reset, rollCards, queueMilestone, rollMilestone, applyStats, onKill, status, tryBayonet,
+  return { groups, pool, majors, reset, rollCards, queueMilestone, rollMilestone, applyStats, onKill, status, tryBayonet, buildProfile,
     renderCards, openLevel, openReward, chooseCard, chooseReplacement, cancelSwap, skipReward, refreshCards, ascendCards, handleKey };
 })();
