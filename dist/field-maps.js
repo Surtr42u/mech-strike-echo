@@ -10,7 +10,7 @@ const FieldMaps = (() => {
     {x:773,y:386,w:138,h:25}, {x:206,y:497,w:138,h:23}
   ];
   const step = 32;
-  let lift, breaker, core, relay, rails, cols, rows;
+  let lift, breaker, core, relay, lowerLift, liner, rails, cols, rows;
   const point = (x,y) => ({x:x*ARENA.w/1040, y:y*ARENA.h/720});
   const offsets = [[1,0],[-1,0],[0,1],[0,-1]];
   const images = {};
@@ -38,12 +38,16 @@ const FieldMaps = (() => {
   }
 
   function begin(stage) {
-    field = stage === 0 ? {inside:false,power:false,vent:false,surface:null,tunnel:null,nav:null,target:-1,liftReady:0} : null;
-    lift = point(source.lift.x,source.lift.y);
-    breaker = point(source.breaker.x,source.breaker.y);
-    core = point(source.core.x,source.core.y);
-    relay = point(source.relay.x,source.relay.y);
-    rails = railLayout.map(({x,y,w,h})=>({...point(x,y),w:w*ARENA.w/1040,h:h*ARENA.h/720}));
+    const mine = stage === 2;
+    field = stage === 0 || mine ? {mine,inside:false,power:false,vent:false,surface:null,tunnel:null,nav:null,target:-1,liftReady:0} : null;
+    if(field){
+      const stations = mine ? MineFloor.stations : source;
+      const at = ({x,y})=>point(x,y);
+      lift = at(stations.lift);
+      if(mine){ lowerLift = at(stations.lowerLift); liner = at(stations.liner); }
+      else { breaker = at(stations.breaker); core = at(stations.core); relay = at(stations.relay); }
+      rails = (mine ? MineFloor.walls : railLayout).map(({x,y,w,h})=>({...point(x,y),w:w*ARENA.w/1040,h:h*ARENA.h/720}));
+    }
     cols = Math.ceil(ARENA.w/step);
     rows = Math.ceil(ARENA.h/step);
     byId('fieldInteract').hidden = true;
@@ -61,9 +65,13 @@ const FieldMaps = (() => {
 
   function prepareSurface() {
     if(!field) return;
-    texture(G.ground.getContext('2d'),'surface-ground',.44);
-    G.props = G.props.filter(p => p.lm || [lift,breaker].every(s => Math.hypot(p.x-s.x,p.y-s.y) > p.r+48));
-    field.surface = {ground:G.ground,marks:G.groundMarks,props:G.props,pads:G.supplyPads,anchors:G.spawnAnchors};
+    if(!field.mine) texture(G.ground.getContext('2d'),'surface-ground',.44);
+    const access = field.mine ? [lift] : [lift,breaker];
+    G.props = G.props.filter(p => p.lm || access.every(s => Math.hypot(p.x-s.x,p.y-s.y) > p.r+48));
+  }
+
+  function snapshotLayout(){
+    return {ground:G.ground,marks:G.groundMarks,props:G.props,pads:G.supplyPads,anchors:G.spawnAnchors};
   }
 
   function buildTunnel() {
@@ -73,6 +81,13 @@ const FieldMaps = (() => {
     g.fillStyle = '#233238'; g.fillRect(0,0,floor.width,floor.height);
     texture(g,'underground-floor',.87);
     g.fillStyle = '#12252942'; g.fillRect(0,0,floor.width,floor.height);
+    const marks = document.createElement('canvas');
+    marks.width = ARENA.w; marks.height = ARENA.h;
+    const m = marks.getContext('2d');
+    if(field.mine){
+      const {pads,track} = MineFloor.bake(g,m,rails,point);
+      return {ground:floor,marks,props:[],pads,anchors:[],track};
+    }
     for(const wall of rails) {
       const {x,y,w,h} = wall;
       g.fillStyle = '#121f22'; g.fillRect(x+5,y+6,w,h+4);
@@ -83,9 +98,6 @@ const FieldMaps = (() => {
       if(w>h) for(let i=8;i<w-7;i+=26) g.fillRect(x+i,y-1,9,3);
       else for(let i=8;i<h-7;i+=26) g.fillRect(x+3,y+i,3,9);
     }
-    const marks = document.createElement('canvas');
-    marks.width = ARENA.w; marks.height = ARENA.h;
-    const m = marks.getContext('2d');
     // One worn guide cable leads from the lift through the lower switchback.
     m.strokeStyle='#c2a15eaa'; m.lineWidth=3; m.setLineDash([12,11]);
     m.beginPath(); m.moveTo(lift.x,lift.y);
@@ -96,7 +108,10 @@ const FieldMaps = (() => {
   }
 
   function setFloor(inside, exchange = true){
-    if(inside && !field.tunnel) field.tunnel = buildTunnel();
+    if(inside){
+      field.surface = snapshotLayout();
+      field.tunnel ??= buildTunnel();
+    } else Object.assign(field.tunnel,snapshotLayout());
     const layout = inside ? field.tunnel : field.surface;
     field.inside = inside;
     G.ground = layout.ground; G.groundMarks = layout.marks; G.props = layout.props;
@@ -106,6 +121,11 @@ const FieldMaps = (() => {
     G.parts.length = G.rings.length = G.lightsFx.length = G.texts.length = 0;
     STAGE3D.invalidateGround();
     G.sceneFx = .32;
+    if(field.mine){
+      const target = inside ? lowerLift : lift;
+      Object.assign(G.p,{...target,vx:0,vy:0});
+      Object.assign(G.cam,target);
+    }
     clearRails(G.p,playerRadius(9));
     for(const crate of G.crates) clearRails(crate,18);
     if(exchange) reformWaveEnemies(floorId());
@@ -116,13 +136,16 @@ const FieldMaps = (() => {
     setFloor(false,false);
     Object.assign(G.p,{x:lift.x,y:lift.y,vx:0,vy:0});
     Object.assign(G.cam,{x:lift.x,y:lift.y});
-    CampaignStory.transmit('升降机已回到地表迎战。击破首领后仍可下井。');
+    CampaignStory.transmit(field.mine?'矿井升降台已回到地表迎战。击破首领后仍可下矿井。':'升降机已回到地表迎战。击破首领后仍可下井。');
   }
 
   function underground() { return !!field && field.inside; }
-  function floorId(){ return underground() ? 'underground' : 'surface'; }
+  function mineBelow(){ return underground() && field.mine; }
+  function floorId(){ return underground() ? field.mine?'ice-mine':'underground' : 'surface'; }
   function stations(){
-    return field ? {lift:{...lift},breaker:{...breaker},core:{...core},relay:{...relay}} : null;
+    if(!field) return null;
+    return field.mine ? {lift:{...lift},lowerLift:{...lowerLift},liner:{...liner}} :
+      {lift:{...lift},breaker:{...breaker},core:{...core},relay:{...relay}};
   }
   function blocksMovement(x,y,r) {
     return underground() && rails.some(w =>
@@ -148,11 +171,28 @@ const FieldMaps = (() => {
 
   function lineOpen(x,y,tx,ty){
     if(!underground()) return true;
+    if(mineBelow()) return shotContact(x,y,tx,ty,4) === null;
     const steps = Math.ceil(Math.hypot(tx-x,ty-y) / 16);
     for(let i=1;i<steps;i++){
       if(blocksMovement(lerp(x,tx,i/steps),lerp(y,ty,i/steps),4)) return false;
     }
     return true;
+  }
+
+  function shotContact(x,y,tx,ty,pad=0){
+    if(!mineBelow()) return null;
+    const dx=tx-x,dy=ty-y;
+    let hit=null;
+    for(const w of rails){
+      const l=w.x-pad,r=w.x+w.w+pad,t=w.y-pad,b=w.y+w.h+pad;
+      if((!dx && (x<l || x>r)) || (!dy && (y<t || y>b))) continue;
+      const x1=dx?(l-x)/dx:-Infinity,x2=dx?(r-x)/dx:Infinity;
+      const y1=dy?(t-y)/dy:-Infinity,y2=dy?(b-y)/dy:Infinity;
+      const enter=Math.max(0,Math.min(x1,x2),Math.min(y1,y2));
+      const exit=Math.min(hit??1,Math.max(x1,x2),Math.max(y1,y2));
+      if(enter<=exit) hit=enter;
+    }
+    return hit;
   }
   function dashDistance(p,ax,ay,distance,r=playerRadius(9)){
     if(!underground()) return distance;
@@ -218,6 +258,12 @@ const FieldMaps = (() => {
   function nearby() {
     if(!field || G.mode!=='play' || G.phase==='boss' || !G.p) return null;
     const near = s => Math.hypot(G.p.x-s.x,G.p.y-s.y)<43;
+    if(field.mine){
+      if(field.inside && !CampaignStory.linerBonus() && near(liner)) return {label:'领取矿工缓冲衬板',action:'liner'};
+      const landing = field.inside ? lowerLift : lift;
+      return SectorClimate.mineOpen() && G.t>=field.liftReady && near(landing) ?
+        {label:field.inside?'返回地表':'下冻晶矿井',action:'lift'} : null;
+    }
     if(!field.inside && !field.power && near(breaker)) return {label:'合上电闸',action:'power'};
     if(field.inside && !CampaignStory.coreBonus() && near(core)) return {label:'回收稳压核心',action:'core'};
     if(field.inside && !field.vent && near(relay)) return {label:'启动排风',action:'vent'};
@@ -227,7 +273,7 @@ const FieldMaps = (() => {
   function interact() {
     if(!field) return SectorClimate.activate();
     const use=nearby();
-    if(!use) return false;
+    if(!use) return field.mine && !field.inside && SectorClimate.activate();
     if(use.action==='power') {
       field.power=true; G.shield++; G.shieldFx=.8;
       banner('地表电闸已合上','获得一层护盾 · 东侧升降机已供电',1.45);
@@ -235,6 +281,9 @@ const FieldMaps = (() => {
     } else if(use.action==='core') {
       CampaignStory.claimCore();
       banner('稳压核心已回收','本局生命上限 +'+CampaignStory.coreBonus(),1.35);
+    } else if(use.action==='liner') {
+      CampaignStory.claimLiner();
+      banner('矿工缓冲衬板已装配','本局护甲 +12 个百分点',1.35);
     } else if(use.action==='vent') {
       field.vent=true; G.buff.stasis=Math.max(G.buff.stasis,5);
       SectorClimate.clearDust();
@@ -243,8 +292,9 @@ const FieldMaps = (() => {
     } else {
       setFloor(!field.inside);
       field.liftReady = G.t + .65;
-      banner(field.inside?'B1 · 地下检修廊':'F1 · 落日废土',field.inside?'沿黄线前往排风配电台':
-        field.vent?'尘暴已停 · 查看灯标':'地表尘暴持续',1.1);
+      if(field.mine) banner(field.inside?'B1 · 冻晶矿井':'F1 · 冰封矿场',field.inside?'沿矿轨前往东侧回收柜':'已回到货轨层',1.1);
+      else banner(field.inside?'B1 · 地下检修廊':'F1 · 落日废土',field.inside?'沿黄线前往排风配电台':
+          field.vent?'尘暴已停 · 查看灯标':'地表尘暴持续',1.1);
     }
     SFX.pick(); paintInstruments(true);
     return true;
@@ -252,14 +302,25 @@ const FieldMaps = (() => {
   function paintHud() {
     if(G.p && G.mode === 'play') drawMap(byId('miniFieldMap'),false);
     const markers=SectorClimate.mapMarkers();
-    putText(byId('fieldMapLabel'),markers[0]?.name ?? '地图');
+    const mineLabel = mineBelow() ? '冻晶矿井' : null;
+    putText(byId('fieldMapLabel'),mineLabel ?? markers[0]?.name ?? '地图');
     if(!field){ SectorClimate.paintHud(); return; }
+    if(field.mine && !field.inside) SectorClimate.paintHud();
     const button=byId('fieldInteract'), use=nearby();
-    button.hidden=!use;
-    if(use) putText(button,'R  '+use.label);
+    if(!field.mine || field.inside || use){
+      button.hidden=!use;
+      if(use) putText(button,'R  '+use.label);
+    }
     const hint=byId('fieldObjective');
     hint.hidden=false;
     const route = CampaignStory.approachRoute();
+    if(field.mine){
+      const secured = CampaignStory.linerBonus()>0;
+      if(field.inside) putText(hint,secured?'B1 · 沿轨返回升降台':'B1 · 沿轨前往东侧回收柜');
+      else if(SectorClimate.mineOpen()) putText(hint,route ? route+(secured?'':' · 或下矿井') :
+        secured?'F1 · 衬板已回收，固守货轨':'F1 · 货轨已解冻，可下冻晶矿井');
+      return;
+    }
     const objective = field.inside ? (!CampaignStory.coreBonus()?'B1 · 回收稳压核心':
       field.vent?'B1 · 乘梯返回地表':'B1 · 启动排风') : field.vent ? 'F1 · 尘暴已停，查看避雷棚信标' :
       field.power?'F1 · 乘升降机下井':'F1 · 合上应急电闸';
@@ -293,6 +354,10 @@ const FieldMaps = (() => {
       if(station) drawEdgeGuide(station,station.color);
       return;
     }
+    if(field.mine){
+      drawMine(portal);
+      return;
+    }
     drawStation(lift,field.power?(field.inside?'地表升降机':'地下升降机'):'升降机 · 待供电',field.power,'#89d6ce',true);
     if(field.inside){
       drawStation(relay,field.vent?'排风运转':'排风配电台',field.vent,'#efc976',false);
@@ -302,6 +367,25 @@ const FieldMaps = (() => {
     const target = field.inside ? (!CampaignStory.coreBonus()?core:field.vent?lift:relay) :
       CampaignStory.beacon() || (field.power?lift:breaker);
     drawEdgeGuide(target,target.color || '#ffce83');
+  }
+
+  function drawMine(portal){
+    const open = SectorClimate.mineOpen(), claimed = CampaignStory.linerBonus()>0;
+    if(field.inside){
+      drawStation(lowerLift,'返回地表',true,'#89d6ce',true);
+      MineFloor.drawCabinet(ctx,liner,claimed);
+      const visible = p=>lineOpen(G.p.x,G.p.y,p.x,p.y);
+      const track = field.tunnel.track;
+      const turn = claimed ? track.find(visible) : track.findLast(visible);
+      drawEdgeGuide(turn || (claimed?lowerLift:liner),claimed?'#89d6ce':'#ffe2a1');
+      return;
+    }
+    SectorClimate.drawStations();
+    drawStation(lift,open?'冻晶矿井升降台':'冻晶矿井 · 冰封',open,'#89d6ce',true);
+    if(!portal && G.phase!=='boss'){
+      const target = open && !claimed ? lift : SectorClimate.guideMarker() || CampaignStory.beacon();
+      if(target) drawEdgeGuide(target,target.color || '#89d6ce');
+    }
   }
 
   function drawEdgeGuide(objective,color){
@@ -328,6 +412,12 @@ const FieldMaps = (() => {
     if(underground()){
       g.fillStyle='#71877b';
       for(const wall of rails) g.fillRect(x(wall.x),y(wall.y),wall.w*sx,wall.h*sy);
+      if(field.mine){
+        g.strokeStyle='#ab9880';g.lineWidth=detail?2:1;
+        g.beginPath();
+        field.tunnel.track.forEach((p,i)=>i?g.lineTo(x(p.x),y(p.y)):g.moveTo(x(p.x),y(p.y)));
+        g.stroke();
+      }
     } else {
       g.fillStyle='#627769';
       for(const prop of G.props){
@@ -349,7 +439,11 @@ const FieldMaps = (() => {
     };
     for(const e of G.enemies){ if(!e.dead) mark(e,'#b97368',detail?2.4:1.35); }
     const size=detail?5:2.5;
-    if(field){
+    if(field?.mine){
+      const open = SectorClimate.mineOpen();
+      mark(underground()?lowerLift:lift,open?'#99dcce':'#798e9b',size,underground()?'返回地表':open?'冻晶矿井升降台':'矿井升降台 · 冰封');
+      if(underground() && !CampaignStory.linerBonus()) mark(liner,'#ffe2a1',size,'矿工缓冲衬板');
+    } else if(field){
       mark(lift,'#99dcce',size,'升降机');
       if(underground()){
         mark(relay,'#f2c96e',size,'排风配电台');
@@ -371,7 +465,8 @@ const FieldMaps = (() => {
     keys.up=keys.down=keys.left=keys.right=false;
     joyEnd();
     G.mode='map';
-    putText(byId('fieldMapTitle'),SCENES[G.stage].name + (field ? (underground()?' · 地下检修廊':' · 地表') : ''));
+    const floor = underground() ? (field.mine?' · 冻晶矿井':' · 地下检修廊') : field?' · 地表':'';
+    putText(byId('fieldMapTitle'),SCENES[G.stage].name + floor);
     drawMap(byId('openFieldMap'),true);
     CampaignStory.paintLog();
     byId('fieldMapDialog').showModal();
@@ -384,6 +479,6 @@ const FieldMaps = (() => {
     wakeGame();
   }
 
-  return {load,begin,prepareSurface,underground,floorId,stations,blocksMovement,lineOpen,dashDistance,clearRails,
+  return {load,begin,prepareSurface,underground,floorId,stations,blocksMovement,lineOpen,shotContact,dashDistance,clearRails,
     openPoint,safePoint,chase,interact,returnForEncounter,paintHud,draw};
 })();

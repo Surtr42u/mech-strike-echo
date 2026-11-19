@@ -147,6 +147,7 @@ function projectileDuration(b, step){
 }
 
 function sweepProjectile(field, b, x0, y0, x1, y1, start, end, contacts, duration=0){
+  const wall = FieldMaps.shotContact(x0,y0,x1,y1,b.r);
   contacts.length = 0;
   field.query(x0, y0, x1, y1, b.r, p => {
     if(p.e===b.splitOrigin || b.hits.includes(p.e) || b.railTargets?.includes(p.e) || (p.e === G.boss && b.bossHit)) return;
@@ -160,6 +161,7 @@ function sweepProjectile(field, b, x0, y0, x1, y1, start, end, contacts, duratio
   if(contacts.length > 1) contacts.sort((a, b) => a.t - b.t);
   for(const contact of contacts){
     const e = contact.e;
+    if(wall!==null && contact.t>=wall) break;
     if(!projectileTargetActive(e) || b.railTargets?.includes(e) || (e === G.boss && b.bossHit)) continue;
     b.x = lerp(x0, x1, contact.t);
     b.y = lerp(y0, y1, contact.t);
@@ -168,6 +170,12 @@ function sweepProjectile(field, b, x0, y0, x1, y1, start, end, contacts, duratio
     onBulletHit(b, e, field, lerp(start, end, contact.t), altitude);
     if(b.pierce <= 0) return false;
     b.pierce--;
+  }
+  if(wall!==null){
+    b.x=lerp(x0,x1,wall);b.y=lerp(y0,y1,wall);
+    spark(b.x,b.y,3,'#9ad0d4',44);
+    if(b.fuse) projectileExplosion(b,field,lerp(start,end,wall),null,b.arc ? projectileAltitude(b,b.life-duration*wall) : undefined);
+    return false;
   }
   b.x = x1;
   b.y = y1;

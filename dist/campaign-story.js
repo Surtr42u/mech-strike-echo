@@ -2,6 +2,8 @@
 const CampaignStory = (() => {
   const coreName = '稳压核心';
   const coreHealth = 16;
+  const linerName = '矿工缓冲衬板';
+  const linerArmor = .12;
   const sectors = [
     {
       name:'避雷棚信标', color:'#c9f4a8', position:[.76,.37],
@@ -24,9 +26,9 @@ const CampaignStory = (() => {
     {
       name:'解冻货运轨', color:'#ffe29c', position:[.65,.51],
       brief:'冰墙封住了驶向熔岩工厂的货轨。开地热阀解冻。',
-      note:'打开地热阀融化东侧冰墙，阀区抵御暴雪减速。沿解冻货轨进入熔岩工厂。',
-      repaired:'东侧冰墙融开。沿解冻货轨能到熔岩工厂的冷却回路。',
-      ready:'矿场已清场。货轨通向熔岩工厂，去给转接炉降温。',
+      note:'开地热阀融开冰墙。沿货轨去熔岩工厂，或乘升降台到冻晶矿井回收缓冲衬板。',
+      repaired:'货轨已解冻。南侧升降台能下冻晶矿井，沿轨找回收柜。',
+      ready:'货轨通向熔岩工厂。冻晶矿井的升降台仍可使用。',
       fallback:'霜牙的巢穴露出排水井入口。可融开东侧冰墙，也可走排水井跃点。',
       fromFallback:'排水井坐标已同步。', backup:'工厂排水井跃点'
     },
@@ -51,7 +53,7 @@ const CampaignStory = (() => {
     }
   ];
   const routeNotes = sectors.map(sector => sector.note);
-  let log = [], transmission, state, hasCore = false;
+  let log = [], transmission, state, hasCore = false, hasLiner = false;
 
   function transmit(message){
     transmission = {message,until:G.t+5.5};
@@ -61,7 +63,7 @@ const CampaignStory = (() => {
   function reset(){
     log = [];
     transmission = state = null;
-    hasCore = false;
+    hasCore = hasLiner = false;
     byId('fieldLog').open = false;
   }
 
@@ -82,6 +84,22 @@ const CampaignStory = (() => {
   }
 
   function coreBonus(){ return hasCore ? coreHealth : 0; }
+  function linerBonus(){ return hasLiner ? linerArmor : 0; }
+
+  function claimLiner(){
+    if(hasLiner) return false;
+    hasLiner = true;
+    recalc();
+    transmit(linerName+'已装配。本局护甲 +12 个百分点。沿轨返回升降台。');
+    return true;
+  }
+
+  function equipment(){
+    const equipped = [];
+    if(hasCore) equipped.push({id:'core',name:coreName,summary:'生命上限 +'+coreHealth});
+    if(hasLiner) equipped.push({id:'liner',name:linerName,summary:'护甲 +12 个百分点'});
+    return equipped;
+  }
   function repaired(){ return state?.repaired ?? false; }
 
   function openRoute(){
@@ -140,9 +158,10 @@ const CampaignStory = (() => {
   }
 
   function paintHud(){
-    const equipment = byId('hudFieldGear');
-    equipment.hidden = !hasCore;
-    if(hasCore) putText(equipment,coreName+' +'+coreHealth+' 生命');
+    const gear = byId('hudFieldGear');
+    gear.hidden = !hasCore && !hasLiner;
+    if(!gear.hidden) putText(gear, [hasCore ? coreName+' +'+coreHealth+' 生命' : '',
+      hasLiner ? '缓冲衬板 +12% 护甲' : ''].filter(Boolean).join(' · '));
     const radio = byId('fieldTransmission');
     radio.hidden = !transmission || G.t >= transmission.until;
     if(!radio.hidden) putText(radio,'回声 · '+transmission.message);
@@ -150,7 +169,7 @@ const CampaignStory = (() => {
 
   function paintLog(){
     byId('fieldLog').open = false;
-    const status = hasCore ? coreName+' · 本局生命上限 +'+coreHealth : '未回收稳压核心';
+    const status = equipment().map(item=>item.name+' · 本局'+item.summary).join(' / ') || '未回收战役装备';
     putText(byId('fieldGearLog'),status);
     const items = log.slice().reverse().map(({sector,message})=>node('li','',sector+' · '+message));
     byId('fieldLogEntries').replaceChildren(...items);
@@ -160,6 +179,6 @@ const CampaignStory = (() => {
     return state.repaired ? '双锚已校准，回声车队沿航道撤离。' : '应急信标已接通，驾驶员脱离虚空核心。';
   }
 
-  return {routeNotes,reset,begin,transmit,claimCore,coreBonus,repaired,complete,clear,
+  return {routeNotes,reset,begin,transmit,claimCore,coreBonus,claimLiner,linerBonus,equipment,repaired,complete,clear,
     beacon,visiblePortal,approachRoute,drawBeacon,paintHud,paintLog,ending};
 })();

@@ -41,6 +41,8 @@ const CampaignEnemies = (() => {
   ];
   const tunnel = [['burrower',1,6],['shellback',3,3]];
   const tunnelSkins = {burrower:'voidshard',shellback:'golem'};
+  const iceMine = [['bomber',1,5],['shellback',1,4],['sniper',3,2]];
+  const mineSkins = {bomber:'slime',shellback:'golem',sniper:'hackdrone'};
   const supports = ['golem','hackdrone','golem','fireelem','eyedemon'];
   const chanters = ['scav','assassin','snowbeast','fireelem','eyedemon'];
   const lancers = ['scav','assassin','snowbeast','fireelem','voidshard'];
@@ -51,7 +53,7 @@ const CampaignEnemies = (() => {
   const healthGrowth = (kind,profile) => light.has(kind) ? profile.lightHpGrowth : profile.hpGrowth;
 
   function kind(stage, wave, floor, sample, maxRank=3){
-    const entries = floor === 'underground' ? tunnel : surface[stage];
+    const entries = floor === 'ice-mine' ? iceMine : floor === 'underground' ? tunnel : surface[stage];
     const eligible = entries.filter(entry => wave >= entry[1] && rank(entry[0]) <= maxRank);
     let roll = sample * eligible.reduce((sum, entry) => sum + entry[2], 0);
     for(const entry of eligible){
@@ -62,6 +64,7 @@ const CampaignEnemies = (() => {
   }
 
   function sprite(enemy){
+    if(FieldMaps.floorId()==='ice-mine' && mineSkins[enemy.kind]) return mineSkins[enemy.kind];
     if(FieldMaps.underground() && tunnelSkins[enemy.kind]) return tunnelSkins[enemy.kind];
     if(enemy.kind === 'shieldguard') return supports[G.stage];
     if(enemy.kind === 'conjurer') return chanters[G.stage];
@@ -96,7 +99,7 @@ const ThreatPacing = (() => {
   const rosterNotes = [
     '基础小怪与耐打小怪。地下是裂泥虫和壳卫。',
     '锁线枪手逼迫横移，护盾支援兵保护附近同伴。',
-    '重装外甲可破，裂隙召唤可用射击打断。',
+    '地表重装外甲可破。冻晶矿井有自爆虫、壳卫和坑道狙击手。',
     '护盾支援兵会修复同伴，重装震击需要拉开距离。',
     '远程压迫与重装混编，优先打断召唤。'
   ];
@@ -129,7 +132,8 @@ const ThreatPacing = (() => {
 
   function nextKind(sample){
     beginWave();
-    const intro=current.spawned++===0 && (G.stage===1 && G.wave===3 ? 'lancer' : G.stage===2 && G.wave===4 ? 'bastion' : null);
+    const intro=current.spawned++===0 && !FieldMaps.underground() &&
+      (G.stage===1 && G.wave===3 ? 'lancer' : G.stage===2 && G.wave===4 ? 'bastion' : null);
     if(intro) return intro;
     const heavies=G.enemies.filter(e=>!e.dead && CampaignEnemies.rank(e.kind)===3).length;
     const maxRank=at().delay?1:heavies>=(G.stage>=4?3:2)?2:3;

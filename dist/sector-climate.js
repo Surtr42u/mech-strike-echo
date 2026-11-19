@@ -37,6 +37,8 @@ const SectorClimate = (() => {
     G.env=buildEnv(state.stage);
   }
 
+  function mineOpen(){ return state?.spec?.id==='heater' && state.used; }
+
   function mapMarkers(){
     return FieldMaps.underground() ? noMarkers : (state?.pads ?? noMarkers);
   }
@@ -69,7 +71,7 @@ const SectorClimate = (() => {
   }
 
   function nearPad() {
-    if(!state?.spec || G.mode!=='play' || !G.p) return -1;
+    if(!state?.spec || G.mode!=='play' || FieldMaps.underground() || !G.p) return -1;
     return state.pads.findIndex(s=>d2(G.p.x,G.p.y,s.x,s.y)<44**2);
   }
 
@@ -95,7 +97,7 @@ const SectorClimate = (() => {
       } else if(spec.id==='heater'){
         G.props=G.props.filter(p=>!p.iceSeal);
         G.spawnAnchors=buildSpawnAnchors(SCENES[G.stage]);
-        banner('地热阀已开启','东侧冰墙融开 · 阀区抵御暴雪减速',1.6);
+        banner('地热阀已开启','冰墙融开 · 冻晶矿井升降台可用',1.6);
       } else if(spec.id==='valve'){
         state.cooling=10;purgePools();
         banner('冷却阀泄压','十秒内阀区持续清除熔池、减速敌人',1.6);
@@ -114,7 +116,7 @@ const SectorClimate = (() => {
   }
 
   function frostFactor(unit) {
-    if(!state || state.sky!=='blizzard' || unit.fly) return 1;
+    if(!state || state.sky!=='blizzard' || unit.fly || FieldMaps.underground()) return 1;
     const heater=state.pads[0];
     if(state.used && heater && d2(unit.x,unit.y,heater.x,heater.y)<135**2) return 1;
     return .88;
@@ -292,6 +294,6 @@ const SectorClimate = (() => {
     g.save();g.strokeStyle=color;g.lineWidth=3;g.globalAlpha=1-(s.t-s.wind)/.28;
     g.beginPath();g.moveTo(x+9,y-86);g.lineTo(x-7,y-37);g.lineTo(x+4,y-40);g.lineTo(x,y);g.stroke();g.restore();
   }
-  return {begin,clearDust,particles,prepareProps,activate,frostFactor,tick,skyLabel,tintFloor,drawWastelandWeather,
+  return {begin,clearDust,mineOpen,particles,prepareProps,activate,frostFactor,tick,skyLabel,tintFloor,drawWastelandWeather,
     paintHud,drawStations,drawWarning,mapMarkers,guideMarker};
 })();

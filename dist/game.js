@@ -2986,6 +2986,7 @@ function recalc({ fillNewCapacity = true } = {}){
   if(b.armor > 0) s.armor += .25;
   if(b.extra > 0) s.extra += 2;
   TALENTS.applyStats(s);
+  s.armor += CampaignStory.linerBonus();
   /* 生命上限兜底：易碎/玻璃大炮叠满也不至于变成 0 血 */
   s.maxHp = Math.max(20, Math.round(s.maxHp)) + CampaignStory.coreBonus();
   s.crit = clamp(s.crit, 0, .95);
@@ -3285,7 +3286,7 @@ function nearestEnemy(x, y, range){
     const e = G.enemies[i];
     if(e.dead || e.spawnT > 0) continue;
     const dd = d2(x, y, e.x, e.y);
-    if(dd < bd){ bd = dd; best = e; }
+    if(dd < bd && FieldMaps.shotContact(x,y,e.x,e.y)===null){ bd = dd; best = e; }
   }
   if(G.boss && !G.boss.dead){
     const dd = d2(x, y, G.boss.x, G.boss.y);
@@ -3297,7 +3298,7 @@ function nearestEnemy(x, y, range){
       const c = G.crates[i];
       if(c.dead || c.fall > 0) continue;
       const dd = d2(x, y, c.x, c.y);
-      if(dd < bd){ bd = dd; best = c; }
+      if(dd < bd && FieldMaps.shotContact(x,y,c.x,c.y)===null){ bd = dd; best = c; }
     }
   }
   return best;
@@ -3309,7 +3310,7 @@ function nearestEnemyExcept(x, y, range, excl){
     const e = G.enemies[i];
     if(e.dead || e.spawnT > 0 || excl.indexOf(e) >= 0) continue;
     const dd = d2(x, y, e.x, e.y);
-    if(dd < bd){ bd = dd; best = e; }
+    if(dd < bd && FieldMaps.shotContact(x,y,e.x,e.y)===null){ bd = dd; best = e; }
   }
   return best;
 }
@@ -3399,11 +3400,14 @@ function fire(target){
 
 /* 沿射线判定（贯穿类技能共用）：返回命中数 */
 function rayHit(ox, oy, ang, len, wide, dmg, crit, bossDmg = dmg){
-  const x = ox + Math.cos(ang) * len, y = oy + Math.sin(ang) * len;
+  const tx = ox + Math.cos(ang) * len, ty = oy + Math.sin(ang) * len;
+  const wall = FieldMaps.shotContact(ox,oy,tx,ty) ?? 1;
+  const x = lerp(ox,tx,wall), y = lerp(oy,ty,wall);
   let n = 0;
   for(const e of projectileTargets()){
     if(!projectileTargetActive(e)) continue;
     if(projectileContact(ox - e.x, oy - e.y, x - e.x, y - e.y, e.r + wide) === null) continue;
+    if(FieldMaps.shotContact(ox,oy,e.x,e.y)!==null) continue;
     if(e === G.boss) damageBoss(e, bossDmg, crit, e.x, e.y);
     else applyDamage(e, dmg, crit, e.x, e.y - 6);
     n++;
@@ -3413,8 +3417,10 @@ function rayHit(ox, oy, ang, len, wide, dmg, crit, bossDmg = dmg){
 
 function beamFX(x, y, ang, len, col, wide, life, radius){
   const L = life || .22;
+  const tx=x+Math.cos(ang)*len, ty=y+Math.sin(ang)*len;
+  const wall=FieldMaps.shotContact(x,y,tx,ty) ?? 1;
   G.parts.push({ x:x, y:y, vx:0, vy:0, life:L, max:L, col:col, r:wide || 1,
-    line:{ x2:x + Math.cos(ang) * len, y2:y + Math.sin(ang) * len, width:wide, radius:radius } });
+    line:{ x2:lerp(x,tx,wall), y2:lerp(y,ty,wall), width:wide, radius:radius } });
 }
 
 /* ── 主动技：以最近敌人为基准方向 ── */
@@ -4285,7 +4291,9 @@ function updateBullets(dt, previous){
       const sp = Math.hypot(b.vx, b.vy);
       b.vx = Math.cos(na) * sp; b.vy = Math.sin(na) * sp;
     }
-    b.x += b.vx * dt; b.y += b.vy * dt;
+    const x=b.x+b.vx*dt,y=b.y+b.vy*dt;
+    if(FieldMaps.shotContact(b.x,b.y,x,y,b.r)!==null){ G.eb.splice(i,1); continue; }
+    b.x=x;b.y=y;
     b.life -= dt;
     if(b.life <= 0 || b.x < -30 || b.x > ARENA.w + 30 || b.y < -30 || b.y > ARENA.h + 30){
       G.eb.splice(i, 1); continue;
@@ -4995,7 +5003,11 @@ function reformWaveEnemies(floor){
   for(const e of G.enemies){
     e.variantRoll ??= (++G.floorSpawnSerial * .61803398875) % 1;
     const wave = e.waveOrigin ?? G.wave;
-    const kind = CampaignEnemies.kind(G.stage,wave,floor,e.variantRoll);
+    if(G.stage===2){
+      e.mineKinds ??= {};
+      e.mineKinds[floor==='surface'?'ice-mine':'surface'] = e.kind;
+    }
+    const kind = e.mineKinds?.[floor] ?? CampaignEnemies.kind(G.stage,wave,floor,e.variantRoll);
     if(kind !== e.kind){
       const health = e.hp / e.maxHp;
       const stats = enemyTypeStats(kind,CampaignBalance.at(G.stage,wave),e.elite,e.hpMul ?? 1);
