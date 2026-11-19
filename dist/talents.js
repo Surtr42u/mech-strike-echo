@@ -126,6 +126,7 @@ const TALENTS = (function(){
     renderRefresh();
     const cards = byId('cards');
     cards.classList.remove('swap-options');
+    cards.classList.toggle('hex-options',major);
     cards.replaceChildren(...options.map((o, i) => {
       if(major) return cardButton({ ...majors[o.id], label:HEXES.tierNames[tier] + '海克斯' }, i, () => chooseCard(o));
       const skill = SK[o.id], level = o.lv + 1;

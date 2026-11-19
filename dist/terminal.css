@@ -268,6 +268,15 @@ button.wallet:hover{background:#3b3023;border-color:#a37c4e}
 @media(max-width:360px){
   .section-bar h2 small{display:none}
 }
+@media(max-width:430px) and (orientation:portrait){
+  .cards.hex-options{grid-template-columns:1fr;gap:7px}
+  .hex-options .card{display:grid;grid-template-columns:32px minmax(0,1fr);column-gap:8px;padding:9px 12px;align-items:start}
+  .hex-options .ico{grid-column:1;grid-row:1/span 3;min-width:30px;height:30px;font-size:1.15rem;margin:0}
+  .hex-options :is(.nm,.lv,.ds,.rk){grid-column:2}
+  .hex-options .nm{font-size:.95rem;padding-right:14px}
+  .hex-options :is(.lv,.ds,.rk){font-size:.78rem;line-height:1.4}
+  .hex-options .lv{margin:2px 0 4px}.hex-options .rk{margin-top:4px}
+}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important}}
 .field-interact{align-self:end;pointer-events:auto;background:#173331f2;color:#bcf4dc;border:1px solid #82bc9d;padding:7px 12px;font:700 .83rem var(--sans);cursor:pointer;margin-bottom:4px}.field-interact:focus-visible{outline:2px solid #ffe1a4}.wave-panel .field-objective{display:block;font:600 .7rem/1.4 var(--sans);color:#acd9ca;margin:3px 0 0}.field-interact[hidden],.field-objective[hidden]{display:none!important}
 

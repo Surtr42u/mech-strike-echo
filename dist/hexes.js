@@ -49,8 +49,7 @@ const HEXES = (function(){
   function makePlan(fortune = 0, goldChance = 0, rng = Math.random){
     const mode = weighted([['silver',20],['gold',20],['prism',15],['mixed',45]],rng);
     const bonus = Math.max(0,Math.min(.50,fortune));
-    const goldShare = typeof HEX_FORTUNE_GOLD_SHARE === 'number' ? HEX_FORTUNE_GOLD_SHARE : .60;
-    const goldBonus = bonus * goldShare;
+    const goldBonus = bonus * HEX_FORTUNE_GOLD_SHARE;
     const weights = [['silver',.50-bonus],['gold',.35+goldBonus],['prism',.15+bonus-goldBonus]].filter(entry => entry[1] > 0);
     const tiers = milestones.map(() => mode === 'mixed' ? weighted(weights,rng) : mode);
     if(mode === 'mixed' && tiers.every(tier => tier === tiers[0])){
@@ -61,9 +60,7 @@ const HEXES = (function(){
   }
 
   function createRun(){
-    const fortune = typeof hexFortuneBonus === 'function' ? hexFortuneBonus(G.growth) : 0;
-    const goldChance = typeof goldPrismChance === 'function' ? goldPrismChance(G.growth) : 0;
-    return { plan:makePlan(fortune,goldChance), chosen:[], used:new Set(), offered:[], pending:null, hand:null,
+    return { plan:makePlan(hexFortuneBonus(),goldPrismChance()), chosen:[], used:new Set(), offered:[], pending:null, hand:null,
       ascended:new Set(), tankKills:0, punchAt:-Infinity, result:'' };
   }
 
