@@ -2,7 +2,6 @@
 const HEXES = (function(){
   const tierNames = { silver:'白银', gold:'黄金', prism:'棱彩' };
   const tierColors = { silver:'#b6c5d2', gold:'#ffd172', prism:'#d7aaff' };
-  const modes = { silver:'全银局', gold:'全金局', prism:'全彩局', mixed:'混合局' };
   const milestones = ['0:1','0:4','2:1','4:1'];
   const tankStep = 8, tankLimit = 16, punchInterval = .28;
   const cards = {
@@ -182,8 +181,7 @@ const HEXES = (function(){
   }
 
   function planLabel(state = G.enhancements){
-    const schedule = milestones.map((key,i) => state.ascended.has(key) ? '金→彩' : tierNames[state.plan.tiers[i]][0]).join(' / ');
-    return modes[state.plan.mode] + ' · ' + state.offered.length + '/4 · ' + schedule;
+    return '海克斯 ' + state.offered.length + '/' + milestones.length;
   }
 
   function status(state = G.enhancements){
