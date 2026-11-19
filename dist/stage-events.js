@@ -23,9 +23,9 @@ const StageEvents = (() => {
   const regions = [
     {waves:[2,7,10],events:['scavengers','salvage','rifle']},
     {waves:[2,4,10],events:['patrol','voltage','salve']},
-    {waves:[2,7,10],events:['caveIn','caches','frost']},
+    {waves:[2,7,12],events:['caveIn','caches','frost']},
     {waves:[2,4,11],events:['overflow','coil','shields']},
-    {waves:[2,5,12],events:['breach','prism','distortion']}
+    {waves:[2,7,12],events:['breach','prism','distortion']}
   ];
   // The archive keeps the original 10% wild card as instant support.
   const legacy = [0,5,11,12];

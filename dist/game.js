@@ -5023,11 +5023,11 @@ function reformWaveEnemies(floor){
   for(const e of G.enemies){
     e.variantRoll ??= (++G.floorSpawnSerial * .61803398875) % 1;
     const wave = e.waveOrigin ?? G.wave;
-    if(G.stage===2){
+    if(G.stage===2 && !e.commander){
       e.mineKinds ??= {};
       e.mineKinds[floor==='surface'?'ice-mine':'surface'] = e.kind;
     }
-    const kind = e.mineKinds?.[floor] ?? CampaignEnemies.kind(G.stage,wave,floor,e.variantRoll);
+    const kind = e.commander?.kind ?? e.mineKinds?.[floor] ?? CampaignEnemies.kind(G.stage,wave,floor,e.variantRoll);
     if(kind !== e.kind){
       const health = e.hp / e.maxHp;
       const stats = enemyTypeStats(kind,CampaignBalance.at(G.stage,wave),e.elite,e.hpMul ?? 1);
