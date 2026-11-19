@@ -424,8 +424,10 @@ const EK = {
   burrower:{ n:'裂泥虫', hp:19, hpw:2, spd:87, r:9, dmg:6, xp:2, h:23, c:'#d8a485' },
   shellback:{ n:'壳卫', hp:87, hpw:3.5, spd:39, r:13, dmg:13, xp:6, h:27, c:'#85a28f' },
   lancer:{ n:'锁线枪手', hp:47, hpw:2.2, spd:50, r:14, dmg:13, xp:5, h:34, c:'#ffab85' },
+  lobber:{ n:'震雷投手', hp:49, hpw:2.15, spd:49, r:14, dmg:12, xp:5, h:35, c:'#ffd28d' },
   shieldguard:{ n:'护盾支援兵', hp:48, hpw:2.1, spd:54, r:13, dmg:7, xp:5, h:32, c:'#85edd7' },
   bastion:{ n:'锚甲重装', hp:106, hpw:3.5, spd:37, r:20, dmg:19, xp:8, h:45, c:'#ffc887' },
+  anchor:{ n:'压场锚兽', hp:81, hpw:2.9, spd:39, r:19, dmg:14, xp:7, h:46, c:'#9be8ff' },
   conjurer:{ n:'裂隙召唤师', hp:74, hpw:2.7, spd:42, r:17, dmg:8, xp:7, h:43, c:'#edb0ff' }
 };
 /* 同屏敌人上限：超出时移除最早生成的非 Boss 敌人（不掉经验/道具） */
@@ -4361,7 +4363,7 @@ function applyDamage(e, dmg, crit, hx, hy, opt){
   if(EnemyTactics.supported(e)) r.dmg = Math.max(1, Math.round(r.dmg * .52));
   r.dmg=EnemyTactics.absorb(e,r.dmg);
   if(r.dmg<=0){ e.flash=.07; SFX.hit(true); return; }
-  EnemyTactics.interrupt(e);
+  EnemyTactics.interrupt(e,r.dmg);
   if(source === 'player') HEXES.onAttackDamage(Math.min(e.hp,r.dmg),e,r.crit);
   e.hp -= r.dmg;
   e.flash = .11;

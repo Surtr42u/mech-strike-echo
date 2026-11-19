@@ -34,10 +34,10 @@ const CampaignEnemies = (() => {
   // Each row is [role, minimum sector wave, weight]. The tunnels use a different roster from the surface.
   const surface = [
     [['runner',1,5],['gunner',1,3],['tank',3,2]],
-    [['drone',1,4],['gunner',1,3],['runner',1,3],['tank',2,2],['lancer',3,3],['shieldguard',4,2]],
-    [['runner',1,4],['tank',1,3],['shieldguard',2,2],['lancer',2,2],['bastion',4,2],['conjurer',7,2]],
-    [['bomber',1,4],['gunner',1,3],['runner',1,2],['lancer',1,2],['shieldguard',2,3],['bastion',1,2],['conjurer',5,1]],
-    [['drone',1,4],['runner',1,3],['sniper',1,3],['lancer',1,2],['shieldguard',4,2],['bastion',2,2],['conjurer',1,3]]
+    [['drone',1,4],['gunner',1,3],['runner',1,3],['tank',2,2],['lancer',3,3],['shieldguard',4,2],['lobber',6,3]],
+    [['runner',1,4],['tank',1,3],['shieldguard',2,2],['lancer',2,2],['bastion',4,2],['conjurer',7,2],['lobber',6,2],['anchor',8,2]],
+    [['bomber',1,4],['gunner',1,3],['runner',1,2],['lancer',1,2],['shieldguard',2,3],['bastion',1,2],['conjurer',5,1],['lobber',4,2],['anchor',6,2]],
+    [['drone',1,4],['runner',1,3],['sniper',1,3],['lancer',1,2],['shieldguard',4,2],['bastion',2,2],['conjurer',1,3],['lobber',1,2],['anchor',3,2]]
   ];
   const tunnel = [['burrower',1,6],['shellback',3,3]];
   const tunnelSkins = {burrower:'voidshard',shellback:'golem'};
@@ -47,7 +47,7 @@ const CampaignEnemies = (() => {
   const chanters = ['scav','assassin','snowbeast','fireelem','eyedemon'];
   const lancers = ['scav','assassin','snowbeast','fireelem','voidshard'];
   const heavies = ['golem','golem','golem','fireelem','eyedemon'];
-  const ranks = {lancer:2,shieldguard:2,sniper:2,bastion:3,conjurer:3};
+  const ranks = {lancer:2,shieldguard:2,sniper:2,lobber:2,bastion:3,conjurer:3,anchor:3};
   const rank = kind => ranks[kind] || 1;
   const light = new Set(['runner','gunner','drone','bomber','burrower']);
   const healthGrowth = (kind,profile) => light.has(kind) ? profile.lightHpGrowth : profile.hpGrowth;
@@ -70,6 +70,8 @@ const CampaignEnemies = (() => {
     if(enemy.kind === 'conjurer') return chanters[G.stage];
     if(enemy.kind === 'lancer') return lancers[G.stage];
     if(enemy.kind === 'bastion') return heavies[G.stage];
+    if(enemy.kind === 'lobber') return G.stage===4 ? 'voidshard' : 'hackdrone';
+    if(enemy.kind === 'anchor') return G.stage===2 ? 'golem' : 'eyedemon';
     return MON_THEME[G.stage][enemy.kind] || 'scav';
   }
 
@@ -80,9 +82,9 @@ const ThreatPacing = (() => {
   const patterns = [
     'ssppgrpprcpccc',
     'sspprporcprpcc',
-    'sppcgrpcrpcpcc',
+    'sppcgrpcorcpcc',
     'sppcrpporcprcc',
-    'spcprppcorcpcc'
+    'spcporpcorcpcc'
   ];
   const entries = {
     s:{label:'侦察',interval:1.20,cap:-3}, p:{label:'受压',interval:1,cap:0},
@@ -91,21 +93,27 @@ const ThreatPacing = (() => {
     g:{label:'守卫前哨',interval:.96,cap:0},
     o:{label:'指挥精英',interval:1.14,cap:-2}
   };
-  const commanders = {
-    1:{wave:7,kind:'lancer',name:'信号指挥兵',hint:'锁线会分叉 · 趁蓄力横移',col:'#ffb18b'},
-    3:{wave:8,kind:'bastion',name:'炉线指挥兵',hint:'打碎外甲，再避开近身震击',col:'#ffd197'},
-    4:{wave:9,kind:'conjurer',name:'裂隙指挥兵',hint:'击中施法者，打断援军和裂隙',col:'#f0b9ff'}
-  };
+  const commanders = [
+    [],
+    [{wave:7,kind:'lancer',name:'信号指挥兵',hint:'锁线会分叉 · 趁蓄力横移',col:'#ffb18b'}],
+    [{wave:9,kind:'anchor',name:'冰锁指挥兵',hint:'击破蓄力核心，或撤出锁定区域',col:'#9feaff'}],
+    [{wave:8,kind:'bastion',name:'炉线指挥兵',hint:'打碎外甲，再避开近身震击',col:'#ffd197'}],
+    [
+      {wave:5,kind:'lobber',name:'裂隙巡界兵',hint:'三处爆区依次落下，别沿排开的雷圈跑',col:'#ffc88e'},
+      {wave:9,kind:'conjurer',name:'裂隙指挥兵',hint:'击中施法者，打断援军和裂隙',col:'#f0b9ff'}
+    ]
+  ];
   const rosterNotes = [
     '基础小怪与耐打小怪。地下是裂泥虫和壳卫。',
-    '锁线枪手逼迫横移，护盾支援兵保护附近同伴。',
-    '地表重装外甲可破。冻晶矿井有自爆虫、壳卫和坑道狙击手。',
+    '锁线枪手逼迫横移，震雷投手预锁地面，护盾支援兵保护同伴。',
+    '地表重装外甲可破，锁区蓄力可打断。冻晶矿井有自爆虫、壳卫和坑道狙击手。',
     '护盾支援兵会修复同伴，重装震击需要拉开距离。',
-    '远程压迫与重装混编，优先打断召唤。'
+    '错峰爆区与重装混编，优先打断封锁和召唤。'
   ];
   const escorts = [
     null,null,['runner','shieldguard','conjurer'],['bomber','shieldguard','bastion'],['drone','lancer','conjurer']
   ];
+  const introductions={ '1:3':'lancer','1:6':'lobber','2:4':'bastion','2:8':'anchor' };
   let current=null;
 
   function at(stage=G.stage,wave=G.wave){
@@ -118,25 +126,24 @@ const ThreatPacing = (() => {
   }
 
   function routeNote(stage){
-    const c=commanders[stage];
-    return rosterNotes[stage] + (c?' 第'+c.wave+'波 · '+c.name+'，随后休整。':'');
+    const schedule=commanders[stage].map(c=>'第'+c.wave+'波 · '+c.name).join('、');
+    return rosterNotes[stage]+(schedule ? ' '+schedule+'，分别在下一波休整。' : '');
   }
 
   function beginWave(){
     if(current?.stage===G.stage && current.wave===G.wave) return;
-    const spec=commanders[G.stage];
-    current={stage:G.stage,wave:G.wave,spawned:0,body:null,down:false,spec:spec?.wave===G.wave ? spec : null};
+    const spec=commanders[G.stage].find(c=>c.wave===G.wave);
+    current={stage:G.stage,wave:G.wave,spawned:0,body:null,down:false,spec};
   }
 
   function reset(){ current=null; }
 
   function nextKind(sample){
     beginWave();
-    const intro=current.spawned++===0 && !FieldMaps.underground() &&
-      (G.stage===1 && G.wave===3 ? 'lancer' : G.stage===2 && G.wave===4 ? 'bastion' : null);
-    if(intro) return intro;
     const heavies=G.enemies.filter(e=>!e.dead && CampaignEnemies.rank(e.kind)===3).length;
     const maxRank=at().delay?1:heavies>=(G.stage>=4?3:2)?2:3;
+    const intro=current.spawned++===0 && !FieldMaps.underground() && introductions[G.stage+':'+G.wave];
+    if(intro && CampaignEnemies.rank(intro)<=maxRank) return intro;
     return CampaignEnemies.kind(G.stage,G.wave,FieldMaps.floorId(),sample,maxRank);
   }
 
@@ -196,7 +203,17 @@ const EnemyTactics = (() => {
       d2(e.x,e.y,support.x,support.y) <= 130 ** 2;
   }
 
-  function interrupt(e){
+  function interrupt(e,damage){
+    if(e.press?.breakLeft>0 && damage>0){
+      e.press.breakLeft-=damage;
+      if(e.press.breakLeft<=0){
+        e.press=null;
+        e.stun=Math.max(.9,e.stun);
+        e.tacticsCd=3.3;
+        spark(e.x,e.y,6,'#a7eeff',85);
+        floatText(e.x,e.y,'蓄力打断','#a7eeff',true);
+      }
+    }
     if(e.repair){
       e.repair=null;
       e.repairCd=3.2;
@@ -337,10 +354,45 @@ const EnemyTactics = (() => {
   }
 
   function motion(e, dt, distance){
+    if(e.kind==='lobber' || e.kind==='anchor') return areaMotion(e,dt,distance);
     if(e.kind === 'shieldguard') return guardMotion(e,dt);
     if(e.kind === 'conjurer') return summonMotion(e,dt,distance);
     if(e.kind==='lancer' || e.kind==='bastion') return pressureMotion(e,dt,distance);
     return null;
+  }
+
+  function areaMotion(e,dt,distance){
+    const heavy=e.kind==='anchor';
+    if(e.stun>0){e.press=null;return {stop:true};}
+    e.tacticsCd-=dt;
+    const a=e.press;
+    if(a){
+      a.left-=dt;
+      if(a.left<=0){
+        e.press=null;
+        e.tacticsCd=heavy?4.9:3.8;
+        a.areas.forEach(({x,y,r},i)=>{
+          if(heavy) addPool(x,y,r,e.dmg,.5+(e.commander?2.4:1.9),'rgba(65,180,215,.54)');
+          else addZone(x,y,r,e.dmg,.52+i*.24);
+        });
+        spark(e.x,e.y,5,a.color,74);
+        SFX.heavy();
+      }
+      return {stop:true};
+    }
+    if(e.tacticsCd<=0 && distance>=76 && distance<=325 && FieldMaps.lineOpen(e.x,e.y,G.p.x,G.p.y)){
+      const p=G.p, angle=Math.atan2(p.y-e.y,p.x-e.x);
+      const width=heavy?121:55, radius=heavy?(e.commander?66:60):39;
+      const offsets=heavy?(e.commander?[0,1]:[0]):e.commander?[-1,0,1]:[-.60,.60];
+      const areas=offsets.map(side=>({
+        x:clamp(p.x-Math.sin(angle)*width*side,38,ARENA.w-38),
+        y:clamp(p.y+Math.cos(angle)*width*side,44,ARENA.h-38),r:radius
+      }));
+      const wind=heavy?1.28:.68, required=heavy?(e.commander?64:43):0;
+      e.press={areas,wind,left:wind,breakLeft:required,breakGoal:required,color:heavy?'#9be8ff':'#ffd28d'};
+      return {stop:true};
+    }
+    return {x:G.p.x,y:G.p.y,keep:heavy?168:217};
   }
 
   function draw(g){
@@ -351,7 +403,26 @@ const EnemyTactics = (() => {
         if(a.rays){
           for(const ray of a.rays) drawEncounterLane(g,a.x,a.y,a.x+Math.cos(ray.angle)*ray.reach,
             a.y+Math.sin(ray.angle)*ray.reach,a.width,'#ff9b77',true,BULLET_H);
+        } else if(a.areas){
+          for(const pt of a.areas) drawHazardCircle(g,pt.x,pt.y,pt.r,a.color,1-a.left/a.wind);
         } else drawHazardCircle(g,a.x,a.y,a.radius,'#ffc377',1-a.left/a.wind);
+      }
+      if(e.kind==='anchor' || e.kind==='lobber'){
+        const x=SX(e.x),y=SY(e.y)-e.h*.6;
+        g.save();g.translate(x,y);
+        g.strokeStyle='#182637';g.lineWidth=2.2;g.fillStyle=e.kind==='anchor'?'#9be8ff':'#ffd28d';
+        g.beginPath();
+        if(e.kind==='anchor'){
+          g.moveTo(0,-8);g.lineTo(7,0);g.lineTo(0,7);g.lineTo(-7,0);
+        } else {
+          g.moveTo(-6,-4);g.lineTo(6,-4);g.lineTo(5,4);g.lineTo(-5,4);
+        }
+        g.closePath();g.fill();g.stroke();
+        if(e.press?.breakGoal>0){
+          g.fillStyle='#263642';g.fillRect(-12,-14,24,4);
+          g.fillStyle='#c3f8ff';g.fillRect(-12,-14,24*e.press.breakLeft/e.press.breakGoal,3);
+        }
+        g.restore();
       }
       if(e.kind==='bastion' && e.plate>0){
         const x=SX(e.x), y=SY(e.y)-e.h*.52;
