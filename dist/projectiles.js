@@ -309,8 +309,8 @@ function onBulletHit(b, e, field, time, altitude){
   const xu = s.elemMul > 1 && Math.random() < (s.elemMul - 1) ? s.elemMul : 1;
   if(b.boom) projectileExplosion(b, field, time, e, altitude);
   if(b.splitDamage) splitMissile(b, e, field, time, altitude);
-  if(b.w === 'flamer'){ setBurn(e, 2.6, 6 * s.burnMul * xu); }
-  else if(b.w === 'acid'){ setBurn(e, 3.0, 5 * s.burnMul * xu); projectileSplash(b, field, time, 26, b.dmg * .38, e); }
+  if(b.w === 'flamer'){ setBurn(e, 2.6, 6 * xu); }
+  else if(b.w === 'acid'){ setBurn(e, 3.0, 5 * xu); projectileSplash(b, field, time, 26, b.dmg * .38, e); }
   else if(b.w === 'frost'){
     e.slowT = Math.max(e.slowT || 0, 1.6 * xu);
     e.slowAmt = Math.max(e.slowAmt || 0, .45 * xu);
@@ -319,7 +319,7 @@ function onBulletHit(b, e, field, time, altitude){
     projectileSplash(b, field, time, radius, b.dmg * .55, e);
     G.rings.push({ x:b.x, y:b.y, r:6, max:radius, life:.26, maxLife:.26, col:'#c08cff', w:2 });
   }
-  if(s.burn > 0) setBurn(e, 2.4, 3.2 * s.burn * s.burnMul * xu);
+  if(s.burn > 0) setBurn(e, 2.4, 3.2 * s.burn * xu);
   if(s.freeze > 0){ e.slowT = 1.3; e.slowAmt = Math.min(.78, .22 * s.freeze * xu); }
   if(s.blast > 0){
     const radius = (22 + 6 * s.blast) * s.boomMul;

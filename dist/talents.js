@@ -78,17 +78,18 @@ const TALENTS = (function(){
     if(!target) return false;
 
     const weak = G.buff.weak > 0 ? .65 : 1;
-    const dmg = (s.dmg * 2.6 + 12) * weak;
+    const blade = HEXES.bayonet;
+    const dmg = (s.dmg * blade.damage + blade.flat) * weak;
     const angle = Math.atan2(target.y - p.y, target.x - p.x);
     const crit = Math.random() < s.crit;
     const before = target.hp;
-    p.fireT = .55;
+    p.fireT = blade.interval;
     p.atkT = .2;
     hitFX(target.x, target.y - 4, angle, majors.bayonet.c, true);
     if(target === boss) damageBoss(target, dmg, crit, target.x, target.y);
     else applyDamage(target, dmg, crit, target.x, target.y);
     const dealt = Math.max(0,before - Math.max(0,target.hp));
-    if(dealt > 0 && G.mode === 'play' && p.hp > 0) heal(Math.min(6,dealt * .12));
+    if(dealt > 0 && G.mode === 'play' && p.hp > 0) heal(Math.min(blade.drainLimit,dealt * blade.drain / 100));
     return true;
   }
 

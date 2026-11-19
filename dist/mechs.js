@@ -26,7 +26,7 @@ function equippedMech(id){
 }
 
 function currentMech(){ return MECHS[G.mechId]; }
-function mechAttackPower(){ return G.buff.weak > 0 ? .65 : 1; }
+function mechAttackPower(){ return (G.buff.weak > 0 ? .65 : 1) * G.st.mechPower; }
 function mechBarragePower(){ return G.st.barragePower ?? 1; }
 
 function resetMech(){
@@ -54,14 +54,14 @@ function summonMech(){
   resetMech();
   const mech = currentMech(), p = G.p;
   G.energy = 0;
-  G.mechT = mech.time;
+  G.mechT = mech.time + G.st.mechDuration;
   G.shake = 10;
   p.fireT = 0;
   addFlash(p.x,p.y,175,mech.color,.75);
   G.rings.push({x:p.x,y:p.y,r:8,max:115,life:.55,maxLife:.55,col:mech.color,w:4});
   spark(p.x,p.y,24,mech.color,200);
   SFX.mech();
-  banner(mech.name + ' · 启动',mech.time + ' 秒作战 · 再按 F 释放' + mech.skill.name,1.2);
+  banner(mech.name + ' · 启动',G.mechT + ' 秒作战 · 再按 F 释放' + mech.skill.name,1.2);
   return true;
 }
 
@@ -77,10 +77,11 @@ function updateMech(dt){
   if(G.st.mechLocked || G.mechT <= dt){
     const locked = G.st.mechLocked, p = G.p;
     endMech();
+    const refunded = locked ? 0 : HEXES.onMechExpiry();
     G.eb.length = 0;
     G.rings.push({x:p.x,y:p.y,r:6,max:90,life:.5,maxLife:.5,col:currentMech().color,w:3});
     p.inv = Math.max(p.inv,1.2);
-    banner(locked ? '机甲已锁定' : '能量耗尽','驾驶员形态恢复',1.1);
+    banner(locked ? '机甲已锁定' : '能量耗尽','驾驶员形态恢复' + (refunded ? ' · 返还能量 ' + refunded : ''),1.1);
     return;
   }
   G.mechT -= dt;

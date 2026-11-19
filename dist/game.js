@@ -2940,6 +2940,7 @@ function baseStats(){
     barrage:0, bigMul:1, fleet:0,
     skillPower:1, skillCooldown:1, barragePower:1, barrageExtra:0,
     bodyScale:1, gunRangeMul:1, mechLocked:false,
+    pierceRetention:.7, mechPower:1, mechDuration:0,
     /* 共鸣与被动扩展位 */
     lifeAdd:0, spreadMul:1, bspdMul:1, boomMul:1, elemMul:1,
     burnMul:1, selfBurn:0, dmgTaken:0, noMedkit:false
@@ -3501,6 +3502,7 @@ function weaponSkill(){
   if(G.wcd > 0) return false;
   const w = WEP(), p = G.p;
   G.wcd = G.wcdMax = abilityCooldown(w.sk.cd);
+  HEXES.onSkillCast('ccd');
   G.shake = Math.max(G.shake, 6);
   addFlash(p.x, p.y, 130, w.c, .7);
   G.rings.push({ x:p.x, y:p.y, r:6, max:70, life:.34, maxLife:.34, col:w.c, w:3 });
@@ -3846,7 +3848,7 @@ function updateWeapon(dt){
 function setBurn(unit, dur, dps){
   if(!unit || unit.dead) return;
   unit.burnT = Math.max(unit.burnT || 0, dur);
-  unit.burnDps = Math.max(unit.burnDps || 0, dps);
+  unit.burnDps = Math.max(unit.burnDps || 0, dps * G.st.burnMul);
 }
 
 const CSK = {
@@ -4221,6 +4223,7 @@ function charSkill(){
   const p = G.p, fn = CSK[sk.id];
   if(!fn) return false;
   G.ccd = G.ccdMax = abilityCooldown(sk.act.cd);
+  HEXES.onSkillCast('wcd');
   G.shake = Math.max(G.shake, 5);
   addFlash(p.x, p.y, 108, sk.flow, .55);
   G.rings.push({ x:p.x, y:p.y, r:6, max:64, life:.32, maxLife:.32, col:sk.flow, w:3 });
@@ -4306,7 +4309,7 @@ function calcDamage(base, attacker, target, opt){
   const crit = (typeof opt.crit === 'boolean') ? opt.crit : (Math.random() < (s.crit || 0));
   if(crit) dmg *= (opt.critMul || s.critMul || 2);
   const pi = opt.pierceIndex || 0;
-  if(pi > 0) dmg *= Math.pow(.7, pi);
+  if(pi > 0) dmg *= Math.pow(s.pierceRetention, pi);
   return { dmg: Math.max(1, Math.round(dmg)), crit: crit };
 }
 
