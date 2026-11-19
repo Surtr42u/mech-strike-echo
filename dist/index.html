@@ -42,6 +42,8 @@
       <div class="hud-sector" id="hudSector"></div>
       <strong id="waveName"></strong><small id="waveDetail"></small>
       <div class="meter wave-meter"><i id="waveFill"></i></div>
+      <small id="wavePressure" class="wave-pressure" hidden></small>
+      <div id="threatHealth" class="meter threat-meter" aria-label="指挥精英生命及外甲" hidden><i id="threatFill"></i></div>
       <b id="comboText"></b>
       <small id="fieldObjective" class="field-objective" hidden></small>
       <small id="fieldTransmission" class="field-transmission" role="status" hidden></small>
@@ -185,7 +187,7 @@
     <div><dt>满槽时保留所有技能，放弃本次强化</dt><dd><kbd>X</kbd></dd></div>
     <div><dt>暂停 / 继续</dt><dd><kbd>P</kbd> / <kbd>Esc</kbd></dd></div>
   </dl><p class="touch-note"><canvas class="icon" data-icon="touch"></canvas>触屏可在左侧拖动移动，点右下按钮释放技能或使用道具。替换技能时可滑动列表。</p></div>
-  <div id="guideRoute" role="tabpanel" aria-labelledby="manualRoute" tabindex="0" hidden><p>每个战区有十四波敌潮，五区合计七十波。落日废土的地表与地下各有敌群，乘梯共用波次进度。落日废土和冰封矿场在第五波后有守卫，击败守卫即可继续第六波。击败关底首领后，进入传送门前往下一站。</p><ol id="routeList" class="route-list"></ol></div>
+  <div id="guideRoute" role="tabpanel" aria-labelledby="manualRoute" tabindex="0" hidden><p>每个战区有十四波敌潮，五区合计七十波。落日废土的地表与地下各有敌群，乘梯共用波次进度。侦察、受压、休整与波峰交替。落日废土和冰封矿场在第五波后有守卫。其他战区的指挥精英在本波内迎击，击破后进入休整。击败关底首领后，进入传送门前往下一站。</p><ol id="routeList" class="route-list"></ol></div>
   <section id="guideHexes" role="tabpanel" aria-labelledby="manualHexes" hidden>
     <p>开局、第一战区第 4 波，以及进入第三、第五战区时可选海克斯。每轮三张同档牌，档位在当轮选牌时揭晓。</p>
     <details class="hex-guide-rules"><summary>质变与升彩</summary><p>拿到质变牌会随机获得一项高一档的海克斯。已购买的金变彩整备有机会在金色选牌时提供「本轮升彩」，可改为棱彩三选一，也可继续选金。升彩不消耗刷新次数。</p></details>

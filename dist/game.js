@@ -415,14 +415,18 @@ function grantPoints(n, label){
 const EK = {
   runner: { n:'冲锋兵', hp:17, hpw:2,  spd:76, r:9,  dmg:7,  xp:2, h:26, c:'#c8463c' },
   gunner: { n:'枪兵',   hp:24, hpw:3,  spd:48, r:9,  dmg:6,  xp:3, h:26, c:'#c9723c', shoot:1.9 },
-  tank:   { n:'重甲兵', hp:78, hpw:8,  spd:33, r:14, dmg:15, xp:6, h:30, c:'#8d7a52' },
+  tank:   { n:'重甲兵', hp:78, hpw:3.35, spd:33, r:14, dmg:15, xp:6, h:30, c:'#8d7a52' },
   drone:  { n:'无人机', hp:18, hpw:2,  spd:66, r:8,  dmg:5,  xp:3, h:20, c:'#5e8fb8', fly:true, shoot:2.1 },
   bomber: { n:'自爆虫', hp:22, hpw:3,  spd:92, r:10, dmg:26, xp:4, h:20, c:'#b8402f', boom:true },
   caster: { n:'术士',   hp:34, hpw:4,  spd:40, r:10, dmg:9,  xp:5, h:28, c:'#7a5cc4', shoot:2.4 },
   sniper: { n:'狙击手', hp:30, hpw:3,  spd:36, r:9,  dmg:13, xp:4, h:26, c:'#4f7a6a', shoot:2.9, beam:true },
   brute:  { n:'蛮兵',   hp:150, hpw:12, spd:42, r:17, dmg:19, xp:9, h:38, c:'#7a4a3a' },
-  shieldguard:{ n:'护盾支援兵', hp:46, hpw:4, spd:60, r:12, dmg:7, xp:5, h:31, c:'#85edd7' },
-  conjurer:{ n:'裂隙召唤师', hp:39, hpw:3.4, spd:52, r:10, dmg:6, xp:5, h:31, c:'#edb0ff' }
+  burrower:{ n:'裂泥虫', hp:19, hpw:2, spd:87, r:9, dmg:6, xp:2, h:23, c:'#d8a485' },
+  shellback:{ n:'壳卫', hp:87, hpw:3.5, spd:39, r:13, dmg:13, xp:6, h:27, c:'#85a28f' },
+  lancer:{ n:'锁线枪手', hp:47, hpw:2.2, spd:50, r:14, dmg:13, xp:5, h:34, c:'#ffab85' },
+  shieldguard:{ n:'护盾支援兵', hp:48, hpw:2.1, spd:54, r:13, dmg:7, xp:5, h:32, c:'#85edd7' },
+  bastion:{ n:'锚甲重装', hp:106, hpw:3.5, spd:37, r:20, dmg:19, xp:8, h:45, c:'#ffc887' },
+  conjurer:{ n:'裂隙召唤师', hp:74, hpw:2.7, spd:42, r:17, dmg:8, xp:7, h:43, c:'#edb0ff' }
 };
 /* 同屏敌人上限：超出时移除最早生成的非 Boss 敌人（不掉经验/道具） */
 const ENEMY_CAP = 45;
@@ -3062,6 +3066,7 @@ function newRun(){
 function setScene(i){
   G.stage = i;
   G.floorSpawnSerial = 0;
+  ThreatPacing.reset();
   FieldMaps.begin(i);
   SectorClimate.begin(i);
   const sc = SCENES[i];
@@ -3097,10 +3102,15 @@ function startWave(spawnDelay = .5, announce = true){
   G.phase = 'wave';
   G.waveT = waveDuration(G.wave);
   G.waveDur = G.waveT;
-  G.spawnT = spawnDelay;
+  ThreatPacing.beginWave();
+  const pacing=ThreatPacing.at();
+  G.spawnT = Math.max(spawnDelay,pacing.delay || 0);
   TALENTS.queueMilestone();
-  if(announce) banner('WAVE ' + G.wave + ' / ' + WAVES_PER_STAGE,
-         SCENES[G.stage].name + ' · ' + SCENES[G.stage].code.split('·')[0].trim(), .9);
+  if(announce){
+    const command=ThreatPacing.commander()?.spec;
+    banner('WAVE ' + G.wave + ' / ' + WAVES_PER_STAGE + ' · ' + pacing.label,
+      command ? command.name+'接近 · '+command.hint : SCENES[G.stage].name, .95);
+  }
   if(G.wave % 3 === 0 && G.crates.length === 0){
     G.jobs.push({ t:.9, fn:function(){
       if(G.phase === 'wave' && G.crates.length === 0) spawnCrate();
@@ -3109,7 +3119,7 @@ function startWave(spawnDelay = .5, announce = true){
 }
 
 function endWave(){
-  if(G.phase !== 'wave') return;
+  if(G.phase !== 'wave' || !ThreatPacing.canFinish()) return;
   /* 波次结束不再清场：剩余敌人保留，与下一波叠加（解除「时间到就消灭怪物」机制） */
   if(G.wave >= WAVES_PER_STAGE){
     /* 进入 Boss 战前才清一次场，保证首领战干净利落 */
@@ -3158,6 +3168,7 @@ function spawnBoss(kind){
     dmg: def.dmg || 16
   };
   G.boss = b;
+  ThreatPacing.addBossEscort(b);
   G.rings.push({ x:b.x, y:b.y, r:6, max:150, life:.7, maxLife:.7, col:def.col, w:3 });
   G.shake = 10;
 }
@@ -4316,6 +4327,8 @@ function applyDamage(e, dmg, crit, hx, hy, opt){
   const source = opt?.source ?? 'player';
   const r = calcDamage(dmg, source, e, Object.assign({ crit: crit }, opt || {}));
   if(EnemyTactics.supported(e)) r.dmg = Math.max(1, Math.round(r.dmg * .52));
+  r.dmg=EnemyTactics.absorb(e,r.dmg);
+  if(r.dmg<=0){ e.flash=.07; SFX.hit(true); return; }
   EnemyTactics.interrupt(e);
   if(source === 'player') HEXES.onAttackDamage(Math.min(e.hp,r.dmg));
   e.hp -= r.dmg;
@@ -4336,6 +4349,7 @@ function killEnemy(e, playerKill = true){
   e.dead = true;
   e.deadT = 0;
   EnemyTactics.detach(e);
+  ThreatPacing.onEnemyDown(e);
   if(e.noReward || !playerKill){
     boom(e.x, e.y, false);
     return;
@@ -4441,7 +4455,11 @@ function playerDown(){
     // 清掉身边敌人
     for(let i=G.enemies.length-1;i>=0;i--){
       const e = G.enemies[i];
-      if(dst(e.x, e.y, G.p.x, G.p.y) < 130){ boom(e.x, e.y, true); G.enemies.splice(i,1); }
+      if(!e.commander && dst(e.x,e.y,G.p.x,G.p.y)<130){
+        EnemyTactics.detach(e);
+        boom(e.x,e.y,true);
+        G.enemies.splice(i,1);
+      }
     }
     explodeFX(G.p.x, G.p.y, 120);
     G.shake = 14; G.flash = .6;
@@ -4901,9 +4919,12 @@ function gainXp(v, showReward = true){
 /* ── 敌人 ── */
 /* 移除最早生成的非 Boss 敌人（同屏上限用）：不掉经验、不掉道具、不计击杀 */
 function cullOldestEnemy(){
+  const dead=G.enemies.findIndex(e=>e.dead);
+  if(dead>=0){ G.enemies.splice(dead,1); return true; }
   for(let i=0;i<G.enemies.length;i++){
     const e = G.enemies[i];
-    if(e.dead) continue;
+    if(e.commander) continue;
+    EnemyTactics.detach(e);
     G.enemies.splice(i, 1);
     for(let k=0;k<4;k++){
       G.parts.push({ x:e.x + rnd(-6,6), y:e.y - rnd(0,10), vx:rnd(-20,20), vy:-rnd(10,34),
@@ -4911,14 +4932,13 @@ function cullOldestEnemy(){
     }
     return true;
   }
-  G.enemies.length = 0;
   return false;
 }
 
 function enemyTypeStats(kind, profile, elite, hpMul){
   const k = EK[kind];
   return {
-    hp:(k.hp + k.hpw * profile.hpGrowth) * hpMul * (elite ? 2.35 : 1),
+    hp:(k.hp + k.hpw * CampaignEnemies.healthGrowth(kind,profile)) * hpMul * (elite ? 2.35 : 1),
     r:k.r * (elite ? 1.24 : 1), h:k.h * (elite ? 1.18 : 1),
     dmg:k.dmg * profile.damageMul * (elite ? 1.3 : 1),
     spd:k.spd * (1 + .045 * G.stage) * (elite ? .92 : 1),
@@ -4929,15 +4949,17 @@ function enemyTypeStats(kind, profile, elite, hpMul){
 }
 
 function spawnEnemy(kind, x, y, opt = {}){
-  if(G.enemies.length >= ENEMY_CAP) cullOldestEnemy();
+  if(G.enemies.length >= ENEMY_CAP && !cullOldestEnemy()) return null;
   const k = EK[kind], waveOrigin = opt.waveOrigin ?? G.wave;
   const profile = CampaignBalance.at(G.stage,waveOrigin);
-  const elite = !!opt.elite || (!opt.noElite && G.wave >= 3 &&
+  const elite = !!opt.elite || (!opt.noElite && G.wave >= 3 && CampaignEnemies.rank(kind)<3 &&
     Math.random() < profile.eliteChance + (G.waveEliteBoost || 0) * .06);
   const hpMul = opt.hpMul || 1;
   const stats = enemyTypeStats(kind,profile,elite,hpMul);
+  const plate=kind==='bastion' ? Math.round(stats.hp*(opt.commander?.name ? .26 : .22)) : 0;
   const e = {
     ...stats, kind:kind, x:x, y:y, vx:0, vy:0, maxHp:stats.hp, elite:elite,
+    commander:opt.commander || null, plate:plate, maxPlate:plate,
     waveOrigin:waveOrigin, variantRoll:opt.variantRoll, hpMul:hpMul,
     xp:k.xp * (1 + .10 * G.stage) * (elite ? 3 : 1),
     rewardXP:Math.round((profile.xpValue + (k.xp-2) * .28) * (elite ? 2.8 : 1)),
@@ -4947,7 +4969,7 @@ function spawnEnemy(kind, x, y, opt = {}){
     dead:false, deadT:0, wob:rnd(0,TAU)
   };
   if(!e.fly) FieldMaps.clearRails(e,e.r);
-  if(kind !== 'shieldguard' && kind !== 'conjurer') markEliteVariant(e);
+  if(G.stage>0 && CampaignEnemies.rank(kind)===1 && !e.commander) markEliteVariant(e);
   G.enemies.push(e);
   G.rings.push({ x:e.x, y:e.y, r:2, max:16, life:.3, maxLife:.3, col:SCENES[G.stage].accent, w:1.5 });
   return e;
@@ -4969,7 +4991,7 @@ function reformWaveEnemies(floor){
       Object.assign(e,stats,{kind:kind,maxHp:stats.hp,hp:stats.hp * health});
       const cooldown = e.eliteCooldown;
       e.eliteAct = e.eliteVariant = null;
-      if(kind !== 'shieldguard' && kind !== 'conjurer'){
+      if(G.stage>0 && CampaignEnemies.rank(kind)===1){
         markEliteVariant(e);
         if(cooldown !== undefined) e.eliteCooldown = cooldown;
       }
@@ -6210,19 +6232,21 @@ function nextStage(){
 /* ── 波次 ── */
 function updateWaves(dt){
   if(G.phase !== 'wave') return;
-  G.waveT -= dt;
+  G.waveT = Math.max(0,G.waveT-dt);
+  ThreatPacing.update();
 
-  const curve = CampaignBalance.at();
-  const cap = curve.cap;
-  if(G.waveT > 0 && G.enemies.length < cap){
+  const curve = CampaignBalance.at(), pacing = ThreatPacing.at();
+  const cap = ThreatPacing.enemyCap();
+  const chance=pacing.delay ? 0 : curve.extraChance;
+  if(G.waveT > 0 && !ThreatPacing.commander()?.down && G.enemies.length < cap){
     G.spawnT -= dt;
     if(G.spawnT <= 0){
-      G.spawnT = curve.interval * rnd(.84, 1.12);
-      const count = Math.min(cap - G.enemies.length,1 + (Math.random() < curve.extraChance ? 1 : 0));
+      G.spawnT = curve.interval*pacing.interval*rnd(.84,1.12);
+      const count = Math.min(cap-G.enemies.length,1+(Math.random()<chance ? 1 : 0));
       for(let i=0;i<count;i++){
         const pt = spawnPointNear();
         const variantRoll = Math.random();
-        const kind = CampaignEnemies.kind(G.stage,G.wave,FieldMaps.floorId(),variantRoll);
+        const kind = ThreatPacing.nextKind(variantRoll);
         spawnEnemy(kind, pt.x, pt.y,{variantRoll:variantRoll});
         if(pt.deco) spawnPuff(pt.x, pt.y);   // 从道具/角落钻出时扬一层粉尘
       }
@@ -8266,14 +8290,17 @@ function drawEnemy(e){
   const c = e.col;
   const kind = CampaignEnemies.sprite(e);
   const mw = MON_W[kind] || 30;
-  const sc = clamp(e.r * 2.62 / mw, .45, 2.4);
+  const distinct = CampaignEnemies.rank(e.kind)>1;
+  const top = MON_GY-(MON_TOP[kind] || 12);
+  const sc = clamp(e.r*(distinct ? 2 : 2.62)/mw,.45,2.4);
+  const heightScale=distinct ? e.h/top : sc;
   const fi = Math.floor(e.anim * 1.7) % 4;
   const name = 'm_' + kind + '_' + fi;
   const deadK = e.dead ? clamp(e.deadT / .5, 0, 1) : 0;
-  const dw = 40 * sc * (1 - deadK * .12), dh = 40 * sc * (1 - deadK * .28);
+  const dw = 40 * sc * (1 - deadK * .12), dh = 40 * heightScale * (1 - deadK * .28);
   const dx = sx - dw / 2;
-  const dy = sy - MON_GY * sc * (1 - deadK * .28) + bob;
-  const topY = sy - (MON_GY - (MON_TOP[kind] || 12)) * sc;
+  const dy = sy - MON_GY * heightScale * (1 - deadK * .28) + bob;
+  const topY = sy - top*heightScale;
   const fade = e.dead ? Math.max(0, 1 - e.deadT / .5) : (e.spawnT > 0 ? .55 : 1);
 
   /* 接触阴影 */
@@ -8295,7 +8322,8 @@ function drawEnemy(e){
     return;
   }
 
-  drawFrame(name, dx, dy, sc);
+  const frame=SPRM.frames[name];
+  if(frame) ctx.drawImage(frame.img,frame.x,frame.y,frame.w,frame.h,dx,dy,dw,dh);
   if(QLEVEL > 0 || e.elite) rimLight(name, dx, dy, dw, dh, SCENES[G.stage].accent, e.dead ? .05 : .13);
 
   /* 受击：整体瞬间闪白（死亡后不再闪，避免尸体变成白影） */
