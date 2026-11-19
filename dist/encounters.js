@@ -1,6 +1,5 @@
 'use strict';
 
-const PLAYER_HAZARD_RADIUS = 8;
 const SHOCKWAVE_HALF_WIDTH = 10;
 const MID_BOSSES = {
   0: { wave:5, kind:'bulwark', score:220 },
@@ -150,7 +149,7 @@ function makeBossCharge(b, spec){
       unit.x = lerp(sx, target.x, next);
       unit.y = lerp(sy, target.y, next);
       if(!action.hit && encounterDistanceSq(0, 0, p0.x - x0, p0.y - y0,
-        p1.x - unit.x, p1.y - unit.y) <= (b.r + PLAYER_HAZARD_RADIUS) ** 2){
+        p1.x - unit.x, p1.y - unit.y) <= (b.r + playerRadius()) ** 2){
         action.hit = true;
         hurtPlayer(b.dmg);
       }
@@ -182,7 +181,7 @@ function makeBossLaser(b, wind, cooldown, beams){
 }
 
 function resolveGroundBlast(x, y, radius, dmg){
-  if(d2(G.p.x, G.p.y, x, y) <= (radius + PLAYER_HAZARD_RADIUS) ** 2) hurtPlayer(dmg);
+  if(d2(G.p.x, G.p.y, x, y) <= (radius + playerRadius()) ** 2) hurtPlayer(dmg);
   explodeFX(x, y, radius);
   SFX.boom();
 }
@@ -193,7 +192,7 @@ function advanceEncounterBeam(h, dt){
   h.ang += h.rot * duration;
   const p0 = h.born === G.t ? G.p : playerAlongEncounterStep(0);
   const p1 = h.born === G.t || !dt ? G.p : playerAlongEncounterStep(duration / dt);
-  const hitRadius = h.wide + PLAYER_HAZARD_RADIUS;
+  const hitRadius = h.wide + playerRadius();
   const reach = Math.min(h.len + hitRadius, Math.max(dst(h.x, h.y, p0.x, p0.y), dst(h.x, h.y, p1.x, p1.y)));
   const travel = Math.abs(h.ang - before) * reach + dst(p0.x, p0.y, p1.x, p1.y);
   const samples = Math.max(1, Math.ceil(travel / Math.max(2, h.wide * .33)));
@@ -217,7 +216,7 @@ function advanceEncounterWave(h, dt){
   const p0 = h.born === G.t ? G.p : playerAlongEncounterStep(0);
   const p1 = h.born === G.t || !dt ? G.p : playerAlongEncounterStep(Math.min(1, (h.life + dt) / dt));
   const older = clamp((h.t - dt) / h.max, 0, 1);
-  const band = SHOCKWAVE_HALF_WIDTH + PLAYER_HAZARD_RADIUS;
+  const band = SHOCKWAVE_HALF_WIDTH + playerRadius();
   const samples = Math.max(1, Math.ceil(dst(p0.x, p0.y, p1.x, p1.y) / (band * .5)));
   let previous = dst(p0.x, p0.y, h.x, h.y) - oldRadius;
   for(let i=1;i<=samples;i++){
@@ -375,7 +374,7 @@ function updateEliteVariant(e, dt, distance){
     const oldX = e.x, oldY = e.y;
     e.x = lerp(a.x, a.goal.x, f);
     e.y = lerp(a.y, a.goal.y, f);
-    if(!a.hit && encounterDistanceSq(G.p.x, G.p.y, oldX, oldY, e.x, e.y) <= (e.r + PLAYER_HAZARD_RADIUS) ** 2){
+    if(!a.hit && encounterDistanceSq(G.p.x, G.p.y, oldX, oldY, e.x, e.y) <= (e.r + playerRadius()) ** 2){
       a.hit = true;
       hurtPlayer(e.dmg);
     }

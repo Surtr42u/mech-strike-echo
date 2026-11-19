@@ -307,6 +307,7 @@ function wireTerminal() {
   byId('btnEvt').onclick = closeEvent;
   byId('lvCancel').onclick = TALENTS.cancelSwap;
   byId('lvRefresh').onclick = TALENTS.refreshCards;
+  byId('lvAscend').onclick = TALENTS.ascendCards;
   byId('btnMech').onclick = useMechAction;
   wireMechSelect();
   byId('charAction').onclick = charSkill;
@@ -399,6 +400,7 @@ function paintInstruments(force) {
   const active = [['over','过载'],['magnet','磁吸'],['stasis','停滞'],['fleet','疾风'],['rad','辐射'],['luck','幸运'],['weak','虚弱']];
   putText(instrument('hudBuffs'),active.filter(([k])=>G.buff[k]>0).map(([k,n])=>n+' '+Math.ceil(G.buff[k])+'s').join(' · '));
   putText(instrument('hudEnhancements'),[...TALENTS.status(),PREPARATIONS.lockStatus()].filter(Boolean).join(' · '));
+  putText(instrument('hudHexPlan'),HEXES.planLabel());
   const live = G.mechT > 0;
   const shapeLock = live ? '机甲形态期间暂停使用' : '';
   paintAbility('charAction',pilot.act.n,live ? '暂停' : G.ccd>0 ? Math.ceil(G.ccd)+'s' : pilot.act.ic,shapeLock || (pilot.act.n + ' · ' + pilot.act.t),!live && G.ccd<=0,pilot.flow);

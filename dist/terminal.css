@@ -166,6 +166,8 @@ button.wallet:hover{background:#3b3023;border-color:#a37c4e}
 .slot-count:empty{display:none}.level-actions{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px}
 .level-actions button{margin-top:12px}.level-actions .slot-count{margin-top:12px}
 #lvRefresh:disabled{opacity:.62;cursor:default}
+#lvAscend{border-color:#b292d4;color:#f0dcff}
+#hudHexPlan{flex-basis:100%;color:var(--pale)}
 #evtBox{margin:15px 0 20px}.evtIco{font-size:2.2rem}.evtName{font-size:1.42rem;font-weight:750;margin:.2em 0}.evtDesc{color:#c6cfc6;line-height:1.6}
 .report-sheet{width:min(100%,470px)}.stats{display:grid;grid-template-columns:1fr 1fr;gap:0 22px;margin:12px 0 21px}
 .stats>div{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:.9rem;padding:8px 0;border-bottom:1px solid var(--line);color:#b7c1b9}

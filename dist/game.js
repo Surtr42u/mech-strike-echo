@@ -2939,6 +2939,7 @@ function baseStats(){
     drone:0, turret:0, mine:0, boom:0,
     barrage:0, bigMul:1, fleet:0,
     skillPower:1, skillCooldown:1, barragePower:1, barrageExtra:0,
+    bodyScale:1, gunRangeMul:1, mechLocked:false,
     /* 共鸣与被动扩展位 */
     lifeAdd:0, spreadMul:1, bspdMul:1, boomMul:1, elemMul:1,
     burnMul:1, selfBurn:0, dmgTaken:0, noMedkit:false
@@ -3089,6 +3090,8 @@ function setScene(i){
 
 function waveDuration(w){ return CampaignBalance.at(G.stage,w).duration; }
 
+function playerRadius(base = 8){ return base * (G.st?.bodyScale ?? 1); }
+
 function startWave(spawnDelay = .5, announce = true){
   G.phase = 'wave';
   G.waveT = waveDuration(G.wave);
@@ -3184,22 +3187,23 @@ function updatePlayer(dt){
   else p.anim += dt * 2;
 
   // 边界
-  p.x = clamp(p.x, 30, ARENA.w - 30);
-  p.y = clamp(p.y, 34, ARENA.h - 26);
+  const feetRadius = playerRadius(9), extraRadius = feetRadius - 9;
+  p.x = clamp(p.x, 30 + extraRadius, ARENA.w - 30 - extraRadius);
+  p.y = clamp(p.y, 34 + extraRadius, ARENA.h - 26 - extraRadius);
 
   // 障碍推开
   for(let i=0;i<G.props.length;i++){
     const pr = G.props[i];
     if(!pr.solid) continue;
     const dd = dst(p.x, p.y, pr.x, pr.y);
-    const rr = pr.r + 9;
+    const rr = pr.r + feetRadius;
     if(dd < rr && dd > .01){
       p.x += (p.x - pr.x) / dd * (rr - dd);
       p.y += (p.y - pr.y) / dd * (rr - dd);
     }
   }
 
-  FieldMaps.clearRails(p,9);
+  FieldMaps.clearRails(p,feetRadius);
   // 朝向：优先看目标，否则看移动（8 方向）
   const tgt = G.mechT > 0 ? mechTarget(currentMech().reach) : nearestEnemy(p.x,p.y,weaponReach(WEP(),s));
   let fa = p.faceAngle;
@@ -3306,7 +3310,7 @@ function gunMuzzleLength(w){
 
 function gunMuzzle(p, w, angle){
   const dx = Math.cos(angle), dy = Math.sin(angle);
-  const reach = gunMuzzleLength(w) / Math.hypot(dx, dy * KZ);
+  const reach = gunMuzzleLength(w) * G.st.bodyScale / Math.hypot(dx, dy * KZ);
   return { x:p.x + dx * reach, y:p.y + dy * reach };
 }
 
@@ -4263,7 +4267,7 @@ function updateBullets(dt, previous){
     if(b.life <= 0 || b.x < -30 || b.x > ARENA.w + 30 || b.y < -30 || b.y > ARENA.h + 30){
       G.eb.splice(i, 1); continue;
     }
-    if(G.p.inv <= 0 && d2(b.x, b.y, G.p.x, G.p.y) < (b.r + 8) * (b.r + 8)){
+    if(G.p.inv <= 0 && d2(b.x, b.y, G.p.x, G.p.y) < (b.r + playerRadius()) ** 2){
       hurtPlayer(b.dmg);
       G.eb.splice(i, 1);
     }
@@ -4307,6 +4311,7 @@ function applyDamage(e, dmg, crit, hx, hy, opt){
   const r = calcDamage(dmg, 'player', e, Object.assign({ crit: crit }, opt || {}));
   if(EnemyTactics.supported(e)) r.dmg = Math.max(1, Math.round(r.dmg * .52));
   EnemyTactics.interrupt(e);
+  HEXES.onAttackDamage(Math.min(e.hp,r.dmg));
   e.hp -= r.dmg;
   e.flash = .11;
   if(r.crit) G.hitStop = Math.max(G.hitStop, .028);
@@ -4358,7 +4363,7 @@ function killEnemy(e){
   }
   if(EK[e.kind].boom){
     const d = dst(e.x, e.y, G.p.x, G.p.y);
-    if(d < 34) hurtPlayer(EK[e.kind].dmg);
+    if(d < 26 + playerRadius()) hurtPlayer(EK[e.kind].dmg);
     explodeFX(e.x, e.y, 40);
     aoe(e.x, e.y, 30, 12, e);
   }
@@ -4367,7 +4372,9 @@ function killEnemy(e){
 }
 
 function damageBoss(b, dmg, crit, hx, hy, opt){
+  if(!b || b.dead) return;
   const r = calcDamage(dmg, 'player', b, Object.assign({ crit: crit }, opt || {}));
+  HEXES.onAttackDamage(Math.min(b.hp,r.dmg));
   b.hp -= r.dmg;
   b.flash = .09;
   if(Math.random() < .6 || r.crit){
@@ -5250,7 +5257,7 @@ function updateEnemies(dt){
 
     if(!e.fly) FieldMaps.clearRails(e,e.r);
     // 接触伤害
-    if(d < e.r + 9){
+    if(d < e.r + playerRadius(9)){
       if(G.st.thorns > 0){
         applyDamage(e, G.st.thorns, false, e.x, e.y - 8);
       }
@@ -5421,7 +5428,7 @@ function updateHazards(dt){
     h.t = (h.t || 0) + elapsed;
     h.life -= elapsed;
     if(h.kind === 'pool'){
-      if(h.t >= h.arm && d2(p.x, p.y, h.x, h.y) <= (h.r + PLAYER_HAZARD_RADIUS) ** 2) hurtPlayer(h.dmg);
+      if(h.t >= h.arm && d2(p.x, p.y, h.x, h.y) <= (h.r + playerRadius()) ** 2) hurtPlayer(h.dmg);
     } else if(h.kind === 'frost'){
       for(let j = 0; j < G.enemies.length; j++){
         const e = G.enemies[j];
@@ -5523,7 +5530,7 @@ function updateBoss(dt){
   b.tele = !!(b.act && !b.act.fired && b.act.wind);
 
   // 接触伤害
-  if(b.act?.kind !== 'charge' && dst(b.x, b.y, p.x, p.y) <= b.r + PLAYER_HAZARD_RADIUS) hurtPlayer(b.dmg * .8);
+  if(b.act?.kind !== 'charge' && dst(b.x, b.y, p.x, p.y) <= b.r + playerRadius()) hurtPlayer(b.dmg * .8);
 }
 
 /* ══════════ Boss 三阶段 ══════════
@@ -8757,11 +8764,18 @@ function drawPlayer(){
   if(!G.p) return;
   const p = G.p;
   const sx = SX(p.x), sy = SY(p.y);
+  const scale = G.st.bodyScale, scaled = scale !== 1;
+  if(scaled){
+    ctx.save();
+    ctx.translate(sx*(1-scale),sy*(1-scale));
+    ctx.scale(scale,scale);
+  }
   if(G.mechT > 0){
     drawMechSprite(sx, sy, p.faceAngle, p.moving, p.anim, p.atkT);
   } else {
     drawHero(sx, sy, p.faceAngle, p.moving, p.anim);
   }
+  if(scaled) ctx.restore();
 }
 
 function bTrail(len, wid, col, a){
@@ -9326,7 +9340,8 @@ function startGame(){
   newRun();
   updateLoadout();
   paintInstruments(true);
-  wakeGame();
+  if(openReward()) render();
+  else wakeGame();
 }
 
 /* ══════════════════════════════════════════
@@ -9627,7 +9642,8 @@ window.__dbg = {
   GUNART:GUNART, weaponIconURL:weaponIconURL, storeSet:storeSet, storeGet:storeGet,
   GIFT_PTS:GIFT_PTS,
   EVENTS:EVENTS, triggerEvent:triggerEvent, closeEvent:closeEvent, maybeEvent:maybeEvent,
-  rollCards:rollCards, renderCards:renderCards, talents:TALENTS, openReward:openReward, unlockCrate:unlockCrate,
+  rollCards:rollCards, renderCards:renderCards, talents:TALENTS, hexes:HEXES, playerRadius:playerRadius,
+  openReward:openReward, unlockCrate:unlockCrate,
   GROUND:GROUND, buildGround:buildGround, buildProps:buildProps, STAGE3D:STAGE3D,
   FARFX:FARFX, FOREFX:FOREFX, BREATH_LIGHTS:BREATH_LIGHTS, addScar:addScar,
   spawnPointNear:spawnPointNear, collectLights:collectLights, LIGHTS:LIGHTS,

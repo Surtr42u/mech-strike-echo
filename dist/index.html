@@ -13,6 +13,7 @@
   <script defer src="growth.js"></script>
   <script defer src="preparations.js"></script>
   <script defer src="terminal.js"></script>
+  <script defer src="hexes.js"></script>
   <script defer src="talents.js"></script>
   <script defer src="projectiles.js"></script>
   <script defer src="mechs.js"></script>
@@ -32,7 +33,7 @@
       <div class="meter hp-meter"><i id="hpFill"></i></div>
       <div class="meter xp-meter" aria-label="升级经验"><i id="xpFill"></i></div>
       <div class="vitals-meta"><span>击破 <b id="hudKills">0</b></span><span>得分 <b id="hudScore">0</b></span></div>
-      <div class="hud-status"><span id="hudLives"></span><span id="hudBuffs"></span><span id="hudGrowth" class="hud-growth" hidden></span><span id="hudEnhancements"></span></div>
+      <div class="hud-status"><span id="hudLives"></span><span id="hudBuffs"></span><span id="hudGrowth" class="hud-growth" hidden></span><span id="hudHexPlan"></span><span id="hudEnhancements"></span></div>
     </div>
     <div id="wavePanel" class="wave-panel combat-panel">
       <div class="hud-sector" id="hudSector"></div>
@@ -137,6 +138,7 @@
     <div class="menu-sheet level-sheet"><div class="section-kicker"><i></i><span id="lvKicker">等级提升</span></div><div class="sheet-head"><h2 id="levelTitle">选择强化</h2><span class="lv-num" id="lvNum"></span></div>
     <p class="sheet-note" id="lvNote"></p><div class="cards" id="cards"></div><div class="slot-count" id="lvSlots"></div>
     <div class="level-actions">
+      <button type="button" class="secondary" id="lvAscend" hidden>本轮升彩 · 棱彩三选一</button>
       <button type="button" class="secondary" id="lvRefresh" hidden><span id="lvRefreshLabel"></span><kbd>R</kbd></button>
       <span class="slot-count" id="lvRefreshNote" role="status"></span>
       <button type="button" class="secondary" id="lvCancel" hidden>返回强化选择 <kbd>Esc</kbd></button>
@@ -173,7 +175,9 @@
     <div><dt>满槽时选一项替换</dt><dd><kbd>1</kbd>–<kbd>9</kbd> / <kbd>0</kbd>（第 10 项）</dd></div>
     <div><dt>暂停 / 继续</dt><dd><kbd>P</kbd> / <kbd>Esc</kbd></dd></div>
   </dl><p class="touch-note"><canvas class="icon" data-icon="touch"></canvas>触屏可在左侧拖动移动，点右下按钮释放技能或使用道具。替换技能时可滑动列表。</p></div>
-  <div id="guideRoute" hidden><p>每个战区有十四波敌潮，五区合计七十波。落日废土的地表与地下各有敌群，乘梯共用波次进度。落日废土和冰封矿场在第五波后有守卫，击败守卫即可继续第六波。击败关底首领后，进入传送门前往下一站。</p><ol id="routeList" class="route-list"></ol></div>
+  <div id="guideRoute" hidden><p>每个战区有十四波敌潮，五区合计七十波。落日废土的地表与地下各有敌群，乘梯共用波次进度。落日废土和冰封矿场在第五波后有守卫，击败守卫即可继续第六波。击败关底首领后，进入传送门前往下一站。</p>
+    <p>海克斯在出击、第一战区第 4 波、进入第三与第五战区各选一次。同轮三张牌同档。出击时锁定本局的全银、全金、全彩或混合牌池。</p>
+    <p>质变牌随机获得一项高档海克斯。金变彩装置触发时，可主动升为棱彩三选一，也可照常选金。升彩不消耗刷新次数。</p><ol id="routeList" class="route-list"></ol></div>
 </dialog>
 <dialog id="fieldMapDialog" class="terminal-dialog field-map-dialog" aria-labelledby="fieldMapTitle">
   <div class="dialog-head"><h2 id="fieldMapTitle">战区地图</h2><button class="icon-button dialog-close" aria-label="关闭地图"><canvas class="icon" data-icon="close"></canvas></button></div>

@@ -11,26 +11,13 @@ const TALENTS = (function(){
   const weaponTags = {
     rifle:'fire', shotgun:'fire', heavy:'control', precise:'fire', elemental:'control', tech:'control'
   };
-  const majors = {
-    stipend: { n:'军费补助', ic:'▤', c:'#ffd08a', d:'立即获得 600 补给站积分，记入账户。', risk:'消耗本次大强化选择。' },
-    bayonet: { n:'亮剑', ic:'⚔', c:'#ff9979', d:'贴近敌人时用刺刀重击，每次有效刺击回复 3 点生命。', risk:'常规射击射程 -35%。' },
-    tank: { n:'坦克引擎', ic:'▣', c:'#a9c4e1', d:'每击破 8 个普通或精英敌人，生命上限 +3，最多 +60。', risk:'移动速度 -8%。' },
-    basics: { n:'回归基本功', ic:'✧', c:'#b9f2ff', d:'武器技能与角色必杀强度 +25%，冷却时间 -30%。', risk:'本局余下战斗无法充能或变身机甲。' }
-  };
-  const milestones = ['0:4', '2:1'];
+  const { cards:majors, queueMilestone, roll:rollMilestone, applyStats, onKill, status } = HEXES;
   const bayonetReach = 38;
-  const tankStep = 8;
-  const tankLimit = 20;
-  const cooldownMul = .7;
 
   function reset(){
-    G.enhancements = { chosen:[], offered:[], pending:null, tankKills:0 };
+    G.enhancements = HEXES.createRun();
     G._cards = [];
     G._swap = null;
-  }
-
-  function has(id){
-    return G.enhancements.chosen.includes(id);
   }
 
   function regularOptions(){
@@ -76,76 +63,8 @@ const TALENTS = (function(){
     return [main, flex, pivot];
   }
 
-  function queueMilestone(){
-    const key = G.stage + ':' + G.wave;
-    if(milestones.includes(key) && !G.enhancements.offered.includes(key)) G.enhancements.pending = key;
-  }
-
-  function milestoneOptions(){
-    return G.enhancements.pending ? Object.keys(majors).filter(id => !has(id)) : [];
-  }
-
-  function rollMilestone(previous = []){
-    const cards = milestoneOptions();
-    while(cards.length > 3){
-      const existing = cards.filter(id => previous.some(card => card.id === id));
-      const removable = existing.length ? existing : cards;
-      const omitted = removable[Math.floor(Math.random() * removable.length)];
-      cards.splice(cards.indexOf(omitted),1);
-    }
-    return cards.map(id => ({ id, kind:'major' }));
-  }
-
-  function chooseMajor(id){
-    G.enhancements.offered.push(G.enhancements.pending);
-    G.enhancements.pending = null;
-    G.enhancements.chosen.push(id);
-    if(id === 'stipend') grantPoints(600, '军费补助');
-    if(id === 'basics'){
-      G.energy = 0;
-      endMech();
-      G.wcd *= cooldownMul;
-      G.ccd *= cooldownMul;
-      G.wcdMax *= cooldownMul;
-      G.ccdMax *= cooldownMul;
-    }
-    recalc();
-  }
-
-  function applyStats(s){
-    s.gunRangeMul = has('bayonet') ? .65 : 1;
-    s.mechLocked = has('basics');
-    if(s.mechLocked){
-      s.skillCooldown *= cooldownMul;
-      s.skillPower *= 1.25;
-    }
-    if(has('tank')){
-      s.spdMul *= .92;
-      s.maxHp += Math.floor(G.enhancements.tankKills / tankStep) * 3;
-    }
-  }
-
-  function onKill(){
-    if(!has('tank') || G.enhancements.tankKills >= tankStep * tankLimit) return;
-    G.enhancements.tankKills++;
-    if(G.enhancements.tankKills % tankStep !== 0) return;
-    recalc({ fillNewCapacity:false });
-    floatText(G.p.x, G.p.y, '生命上限 +3', majors.tank.c, true);
-  }
-
-  function status(){
-    return G.enhancements.chosen.map(id => {
-      if(id === 'tank'){
-        const kills = G.enhancements.tankKills;
-        const stacks = Math.floor(kills / tankStep);
-        return majors.tank.n + ' +' + (stacks * 3) + (stacks < tankLimit ? '（' + kills % tankStep + '/' + tankStep + '）' : '（满）');
-      }
-      return majors[id].n + (id === 'stipend' ? '已到账' : '');
-    });
-  }
-
   function tryBayonet(){
-    if(!has('bayonet')) return false;
+    if(!HEXES.has('bayonet')) return false;
     const p = G.p, s = G.st;
     const distance = enemy => Math.hypot(p.x - enemy.x, p.y - enemy.y) - enemy.r;
     let target = null, reach = bayonetReach;
@@ -162,12 +81,14 @@ const TALENTS = (function(){
     const dmg = (s.dmg * 2.6 + 12) * weak;
     const angle = Math.atan2(target.y - p.y, target.x - p.x);
     const crit = Math.random() < s.crit;
+    const before = target.hp;
     p.fireT = .55;
     p.atkT = .2;
     hitFX(target.x, target.y - 4, angle, majors.bayonet.c, true);
     if(target === boss) damageBoss(target, dmg, crit, target.x, target.y);
     else applyDamage(target, dmg, crit, target.x, target.y);
-    if(G.mode === 'play' && p.hp > 0) heal(3);
+    const dealt = Math.max(0,before - Math.max(0,target.hp));
+    if(dealt > 0 && G.mode === 'play' && p.hp > 0) heal(Math.min(6,dealt * .12));
     return true;
   }
 
@@ -192,18 +113,21 @@ const TALENTS = (function(){
   function renderCards(options = rollCards(), focusId){
     G._cards = options;
     const major = options[0].kind === 'major';
-    byId('lvKicker').textContent = major ? '战区里程碑' : '等级提升';
-    byId('levelTitle').textContent = major ? '选择大强化' : '选择强化';
+    const tier = major ? HEXES.currentTier() : null;
+    byId('lvKicker').textContent = major ? '海克斯 · ' + HEXES.tierNames[tier] : '等级提升';
+    byId('lvKicker').style.color = major ? HEXES.tierColors[tier] : '';
+    byId('levelTitle').textContent = major ? '选择海克斯' : '选择强化';
     byId('lvNum').textContent = major ? '战区 ' + (G.stage + 1) : 'LV ' + (G.lv - G.pending + 1);
-    byId('lvNote').textContent = major ? '本里程碑可选择一项。' : '重复选择同一天赋可以提升等级。';
+    byId('lvNote').textContent = major ? HEXES.planLabel() : '重复选择同一天赋可以提升等级。';
     byId('lvSlots').textContent = major ? status().join(' · ') :
       '已持有 ' + G.slots.length + ' / ' + G.skillLimit + (G.slots.length >= G.skillLimit ? ' · 满槽可替换' : '');
     byId('lvCancel').hidden = true;
+    byId('lvAscend').hidden = !major || !HEXES.canAscend();
     renderRefresh();
     const cards = byId('cards');
     cards.classList.remove('swap-options');
     cards.replaceChildren(...options.map((o, i) => {
-      if(major) return cardButton({ ...majors[o.id], label:'大强化' }, i, () => chooseCard(o));
+      if(major) return cardButton({ ...majors[o.id], label:HEXES.tierNames[tier] + '海克斯' }, i, () => chooseCard(o));
       const skill = SK[o.id], level = o.lv + 1;
       const action = o.kind === 'swap' ? '替换 · Lv1' : o.kind === 'new' ? '新天赋' : 'Lv' + o.lv + ' → Lv' + level;
       const card = { ...skill, label:groups[o.tag].n + ' · ' + action, d:skill.d(level), risk:skill.risk?.(level) };
@@ -215,7 +139,7 @@ const TALENTS = (function(){
 
   function hasAlternative(cards){
     if(!cards.length) return false;
-    const eligible = cards[0].kind === 'major' ? milestoneOptions() : regularOptions().available.map(card => card.id);
+    const eligible = cards[0].kind === 'major' ? HEXES.offerIds() : regularOptions().available.map(card => card.id);
     return eligible.some(id => !cards.some(card => card.id === id));
   }
 
@@ -240,6 +164,13 @@ const TALENTS = (function(){
     G.preparations.refreshLeft--;
     renderCards(cards);
     SFX.pick();
+    return true;
+  }
+
+  function ascendCards(){
+    if(G.mode !== 'level' || G._swap || G._cards[0]?.kind !== 'major' || !HEXES.ascend()) return false;
+    renderCards(rollMilestone());
+    SFX.lvl();
     return true;
   }
 
@@ -303,7 +234,7 @@ const TALENTS = (function(){
   function chooseCard(o){
     if(G.mode !== 'level' || G._swap || !G._cards.includes(o)) return;
     if(o.kind === 'major'){
-      chooseMajor(o.id);
+      if(!HEXES.choose(o.id)) return;
     } else {
       if(o.kind === 'swap'){ startSwap(o); return; }
       G.skills[o.id] = o.lv + 1;
@@ -312,6 +243,7 @@ const TALENTS = (function(){
       G.pending--;
     }
     finishChoice();
+    if(o.kind === 'major' && G.mode === 'play') banner(G.enhancements.result,HEXES.planLabel(),1.8);
   }
 
   function chooseReplacement(id){
@@ -339,5 +271,5 @@ const TALENTS = (function(){
   }
 
   return { groups, pool, majors, reset, rollCards, queueMilestone, rollMilestone, applyStats, onKill, status, tryBayonet,
-    renderCards, openLevel, openReward, chooseCard, chooseReplacement, cancelSwap, refreshCards, handleKey };
+    renderCards, openLevel, openReward, chooseCard, chooseReplacement, cancelSwap, refreshCards, ascendCards, handleKey };
 })();

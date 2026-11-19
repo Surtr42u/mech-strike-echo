@@ -175,11 +175,12 @@ function mechDash(){
   const angle = Math.hypot(moveX,moveY) > .15 ? Math.atan2(moveY,moveX) : mechAim(350);
   const x = p.x, y = p.y, ca = Math.cos(angle), sa = Math.sin(angle);
   const minX = 30, maxX = ARENA.w-30, minY = 34, maxY = ARENA.h-26;
+  const bodyRadius = playerRadius(9);
   const obstacles = G.props.filter(prop => prop.solid);
   for(let d=10;d<=150;d+=10){
     const nx = x+ca*d, ny = y+sa*d;
     if(nx < minX || nx > maxX || ny < minY || ny > maxY) break;
-    if(FieldMaps.blocksMovement(nx,ny,9) || obstacles.some(pr => d2(nx,ny,pr.x,pr.y) < (pr.r+9)**2)) break;
+    if(FieldMaps.blocksMovement(nx,ny,bodyRadius) || obstacles.some(pr => d2(nx,ny,pr.x,pr.y) < (pr.r+bodyRadius)**2)) break;
     p.x = nx;
     p.y = ny;
   }

@@ -105,7 +105,7 @@ const FieldMaps = (() => {
     G.parts.length = G.rings.length = G.lightsFx.length = G.texts.length = 0;
     STAGE3D.invalidateGround();
     G.sceneFx = .32;
-    clearRails(G.p,9);
+    clearRails(G.p,playerRadius(9));
     for(const crate of G.crates) clearRails(crate,18);
     if(exchange) reformWaveEnemies(floorId());
   }
@@ -152,7 +152,7 @@ const FieldMaps = (() => {
     }
     return true;
   }
-  function dashDistance(p,ax,ay,distance,r=9){
+  function dashDistance(p,ax,ay,distance,r=playerRadius(9)){
     if(!underground()) return distance;
     let open = 0;
     while(open < distance) {
