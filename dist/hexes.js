@@ -191,7 +191,8 @@ const HEXES = (function(){
       d:`施放 Q/E 补 1 层护盾，最多补至 ${mirror.layers} 层，间隔 ${mirror.interval} 秒。护盾挡伤时返还 Q/E 各自剩余冷却的 ${mirror.refund*100}%，间隔 ${mirror.blockInterval} 秒。`},
     pandora: { tier:'prism', n:'潘多拉的盒子', ic:'◇',
       d:'将已持有的白银、黄金海克斯逐一换成随机棱彩，本轮再获得 1 项随机棱彩。原有棱彩保留，结果互不重复。',
-      risk:'需要持有白银或黄金才会出现。被替换效果与层数移除，已到账军费保留，每局至多选一次。' }
+      risk:'需要持有白银或黄金才会出现。被替换效果与层数移除，已到账军费保留，每局至多选一次。' },
+    ...HEX_EXPANSION.cards
   };
   const tags = {
     relay:['fire'], plating:['guard'], pathfinder:['mobility'], collector:['supplies','mobility'],
@@ -209,7 +210,7 @@ const HEXES = (function(){
   };
   for(const [id,card] of Object.entries(cards)){
     card.c = tierColors[card.tier];
-    card.tags = tags[id];
+    card.tags ??= tags[id];
   }
 
   function weighted(entries, rng){
@@ -232,7 +233,7 @@ const HEXES = (function(){
 
   function createRun(){
     return { plan:makePlan(hexFortuneBonus(),goldPrismChance()), chosen:[], used:new Set(), offered:[], pending:null, hand:null,
-      ascended:new Set(), tankKills:0, activations:{}, result:'' };
+      ascended:new Set(), tankKills:0, activations:{}, expansion:{}, result:'' };
   }
 
   function queueMilestone(){
@@ -336,8 +337,9 @@ const HEXES = (function(){
     if(s.mechLocked && has('mechRelay')) s.skillCooldown *= mechRelay.lockedCooldown;
   }
 
-  function onKill(){
+  function onKill(enemy){
     const state = G.enhancements;
+    HEX_EXPANSION.onKill(enemy);
     if(has('cell')){
       if(!G.st.mechLocked) addEnergy(cell.energy);
       else if(hasCooldown() && ready('cell',cell.interval)) refundSkills(cell.refund);
@@ -371,8 +373,9 @@ const HEXES = (function(){
     G.shieldFx = .5;
   }
 
-  function onAttackDamage(actual,target,critical){
+  function onAttackDamage(actual,target,critical,opt){
     if(actual <= 0 || G.mode !== 'play') return;
+    HEX_EXPANSION.onDamage(target,critical,opt);
     if(hasCooldown() && has('mystic') && ready('mystic',punch.interval)) refundSkills(punch.refund);
     awardShield('guard',guard);
     if(target?.noReward) return;
@@ -396,9 +399,11 @@ const HEXES = (function(){
     if(has('link') && G[other] > 0 && ready('link',link.interval)) G[other] *= 1 - link.percent / 100;
     awardShield('aegis',aegis);
     awardShield('mirror',mirror);
+    HEX_EXPANSION.onSkill();
   }
 
   function onShieldBlock(){
+    HEX_EXPANSION.onShieldBlock();
     if(!has('mirror') || !hasCooldown() || !ready('mirrorBlock',mirror.blockInterval)) return;
     G.wcd *= 1 - mirror.refund;
     G.ccd *= 1 - mirror.refund;
@@ -413,10 +418,12 @@ const HEXES = (function(){
   }
 
   function moveMultiplier(p){
-    return has('chase') && p.hp <= p.maxHp * chase.threshold ? 1 + chase.speed : 1;
+    const chaseSpeed=has('chase') && p.hp <= p.maxHp * chase.threshold ? 1 + chase.speed : 1;
+    return chaseSpeed*HEX_EXPANSION.speed();
   }
 
   function onMechExpiry(){
+    HEX_EXPANSION.onMechExpiry();
     if(!has('reactor')) return 0;
     const before = G.energy;
     addEnergy(reactor.refund);

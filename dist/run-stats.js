@@ -1,13 +1,14 @@
 /* Snapshot the live combat values only while the pause panel is open. */
 function showRunStats(){
   if(G.mode !== 'pause') return;
-  const s=G.st, p=G.p, w=WEP(), mech=currentMech(), volley=weaponVolley(w,s);
+  const s=G.st, p=G.p, w=WEP(), mech=currentMech(), volley=weaponVolley(w,s,p);
   const format=new Intl.NumberFormat('zh-CN',{maximumFractionDigits:2});
   const n=value=>format.format(value);
   const pct=value=>n(value*100)+'%';
   const mult=value=>'×'+n(value);
   const cd=(remaining,total)=>n(Math.max(0,remaining))+' / '+n(total)+' 秒';
-  const shot=crit=>calcDamage(volley.damage,'player',null,{crit,pct:volley.pct}).dmg;
+  const shot=(damage,crit)=>calcDamage(damage,'player',null,{crit,pct:volley.pct}).dmg;
+  const hits=damage=>shot(damage,false)+' / '+shot(damage,true);
   function group(title,rows){
     const section=node('section','run-stat-group'), list=node('dl');
     section.append(node('h3','',title),list);
@@ -22,13 +23,27 @@ function showRunStats(){
     mechRows.push(['单次变身',n(mech.time+s.mechDuration)+' 秒'],['机甲攻击倍率',mult(mechAttackPower())],
       ['机甲技冷却',cd(G.mechCd,mech.skill.cooldown)]);
   }
+  const single=volley.count===1;
+  const boostedDamage=volley.primaryDamage!==volley.damage;
+  const boostedPierce=volley.primaryPierce!==volley.pierce;
+  const weaponRows=[
+    [single&&boostedDamage ? '下一发命中 / 暴击' : '单弹命中 / 暴击',hits(single ? volley.primaryDamage : volley.damage)],
+    ['暴击率 / 倍率',pct(s.crit)+' / '+mult(s.critMul)],
+    ['每秒开火',n(1/volley.interval)+' 次'],['每次主弹',volley.count+' 枚'],
+    [single&&boostedPierce ? '下一发额外穿透目标' : '额外穿透目标',(single ? volley.primaryPierce : volley.pierce)+' 个'],
+    ['自动瞄准射程',n(weaponReach(w,s))+' 单位']
+  ];
+  if(!single && (boostedDamage || boostedPierce)){
+    const next=[];
+    if(boostedDamage) next.push('命中 / 暴击 '+hits(volley.primaryDamage));
+    if(boostedPierce) next.push('额外穿透 '+volley.primaryPierce+' 个');
+    weaponRows.push(['下一次普攻 · 1 枚主弹',next.join(' · ')]);
+  }
+  const long=volley.primary?.long;
+  if(long) weaponRows.push(['远距标尺','1 枚主弹直击距发射位置 ≥ '+n(long.range)+'，伤害 +'+pct(long.bonus)]);
   byId('runStatLoadout').textContent=SKIN().name+' · '+w.n+' · '+mech.name;
   byId('runStatGroups').replaceChildren(
-    group('驾驶员主武器',[
-      ['单弹命中 / 暴击',shot(false)+' / '+shot(true)],['暴击率 / 倍率',pct(s.crit)+' / '+mult(s.critMul)],
-      ['每秒开火',n(1/volley.interval)+' 次'],['每次主弹',volley.count+' 枚'],
-      ['额外穿透目标',volley.pierce+' 个'],['自动瞄准射程',n(weaponReach(w,s))+' 单位']
-    ]),
+    group('驾驶员主武器',weaponRows),
     group('技能与弹幕',[
       ['技能强度',mult(scaleSkill(1))],['武器技冷却',cd(G.wcd,abilityCooldown(w.sk.cd))],
       ['驾驶员必杀冷却',cd(G.ccd,abilityCooldown(SKIN().act.cd))],['弹幕伤害倍率',mult(s.barragePower)],

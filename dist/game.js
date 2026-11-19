@@ -3189,6 +3189,7 @@ function currentMoveSpeed(p, s){
 
 function updatePlayer(dt){
   const p = G.p, s = G.st;
+  const previousX=p.x, previousY=p.y;
   updateMech(dt);
 
   let ix = 0, iy = 0;
@@ -3229,6 +3230,8 @@ function updatePlayer(dt){
   }
 
   FieldMaps.clearRails(p,feetRadius);
+  HEX_EXPANSION.move(mag>.12 ? Math.hypot(p.x-previousX,p.y-previousY) : 0,dt,
+    mag>.12 || Math.hypot(p.vx,p.vy)>6);
   // 朝向：优先看目标，否则看移动（8 方向）
   const tgt = G.mechT > 0 ? mechTarget(currentMech().reach) : nearestEnemy(p.x,p.y,weaponReach(WEP(),s));
   let fa = p.faceAngle;
@@ -3339,13 +3342,15 @@ function gunMuzzle(p, w, angle){
   return { x:p.x + dx * reach, y:p.y + dy * reach };
 }
 
-function weaponVolley(w, s){
+function weaponVolley(w, s, p = G.p){
   const over = G.buff.over > 0, focus = G.wbuff.focus > 0, heat = G.wbuff.heat > 0;
   const damage = s.dmg * (G.buff.weak > 0 ? .65 : 1);
+  const pierce = w.pierce + s.pierce + (focus ? 2 : 0) + (heat ? 2 : 0);
+  const primary = HEX_EXPANSION.peekShot(p);
   return {
-    interval:s.baseRate / s.rateMul / (over ? 1.55 : 1) / (focus ? 2.4 : 1) / (heat ? 2.8 : 1),
+    interval:s.baseRate / (s.rateMul * HEX_EXPANSION.rate()) / (over ? 1.55 : 1) / (focus ? 2.4 : 1) / (heat ? 2.8 : 1),
     count:w.count + s.extra, damage, pct:over ? .25 : 0,
-    pierce:w.pierce + s.pierce + (focus ? 2 : 0) + (heat ? 2 : 0),
+    pierce, primary, primaryDamage:damage * (primary?.power ?? 1), primaryPierce:pierce + (primary?.pierce ?? 0),
     barrageCount:s.barrage * 2 + s.barrageExtra, barrageDamage:damage * .8 * s.barragePower
   };
 }
@@ -3359,7 +3364,7 @@ function fire(target){
   const ang = Math.atan2(t.y - p.y, t.x - p.x);
   const muzzle = gunMuzzle(p, w, ang);
   const oved = G.buff.over > 0;
-  const volley = weaponVolley(w,s);
+  const volley = weaponVolley(w,s,p);
   p.fireT = volley.interval;
   p.flashT = .07;
   p.atkT = .16;
@@ -3368,6 +3373,7 @@ function fire(target){
   const n = volley.count;
   const railFork=w.id==='sniper' && WeaponLinks.railEnabled();
   const emberSeed=w.id==='flamer' && WeaponLinks.emberEnabled();
+  const primaryIndex=Math.floor(n/2);
   const step = (w.count > 1 ? w.spread : .075) * s.spreadMul;
   const sp = w.spd * (oved ? 1.1 : 1) * s.bspdMul;
   for(let i=0;i<n;i++){
@@ -3377,20 +3383,22 @@ function fire(target){
       : (i - (n - 1) / 2) * step;
     const spread = w.count > 1 || n > 1 ? .014 : w.spread * s.spreadMul * .24;
     const a = ang + off + rnd(-spread, spread);
+    const isPrimary=i===primaryIndex;
     const bullet = {
       x:muzzle.x, y:muzzle.y, fromX:p.x, fromY:p.y,
       vx:Math.cos(a) * sp, vy:Math.sin(a) * sp,
-      dmg:volley.damage, pct:volley.pct,
-      pierce:volley.pierce,
+      dmg:isPrimary ? volley.primaryDamage : volley.damage, pct:volley.pct,
+      pierce:isPrimary ? volley.primaryPierce : volley.pierce, hexPrimary:isPrimary ? volley.primary : null,
       hits:[], life:(w.life + s.lifeAdd) * s.gunRangeMul, crit:Math.random() < s.crit,
       r:w.br * s.bigMul, over:oved, w:w.id, boom:!!w.boom, fuse:!!w.boom,
       homing:w.id === 'micromissile', turn:w.id === 'micromissile' ? 5 : 0,
-      railFork:railFork && i===Math.floor(n/2), emberSeed,
+      railFork:railFork && isPrimary, emberSeed,
       splitDamage:w.id==='micromissile' && i===0 && s.barrage>0 ? volley.damage * .45 * s.barragePower : 0
     };
     if(w.boom) lobProjectile(bullet, t);
     G.bullets.push(bullet);
   }
+  HEX_EXPANSION.commitShot(volley.primary);
   /* 弹幕风暴：额外散射子弹 */
   const bn = volley.barrageCount;
   for(let i=0;i<bn;i++){
@@ -4364,7 +4372,7 @@ function applyDamage(e, dmg, crit, hx, hy, opt){
   r.dmg=EnemyTactics.absorb(e,r.dmg);
   if(r.dmg<=0){ e.flash=.07; SFX.hit(true); return; }
   EnemyTactics.interrupt(e,r.dmg);
-  if(source === 'player') HEXES.onAttackDamage(Math.min(e.hp,r.dmg),e,r.crit);
+  if(source === 'player' && !opt?.hexSecondary) HEXES.onAttackDamage(Math.min(e.hp,r.dmg),e,r.crit,opt);
   e.hp -= r.dmg;
   e.flash = .11;
   if(r.crit) G.hitStop = Math.max(G.hitStop, .028);
@@ -4394,7 +4402,7 @@ function killEnemy(e, playerKill = true, emberSeed = false){
   G.combo++; G.comboT = 2.2;
   addEnergy(e.elite ? 8 : 5);
   if(G.st.leech > 0) heal(G.st.leech);
-  TALENTS.onKill();
+  TALENTS.onKill(e);
   /* 疾风：连杀攒移速爆发 */
   if(G.st.fleet > 0){
     G.fleetKill = (G.fleetKill || 0) + 1;
@@ -4431,7 +4439,7 @@ function damageBoss(b, dmg, crit, hx, hy, opt){
   if(!b || b.dead) return;
   const source = opt?.source ?? 'player';
   const r = calcDamage(dmg, source, b, Object.assign({ crit: crit }, opt || {}));
-  if(source === 'player') HEXES.onAttackDamage(Math.min(b.hp,r.dmg),b,r.crit);
+  if(source === 'player' && !opt?.hexSecondary) HEXES.onAttackDamage(Math.min(b.hp,r.dmg),b,r.crit,opt);
   b.hp -= r.dmg;
   b.flash = .09;
   if(Math.random() < .6 || r.crit){
@@ -5384,7 +5392,7 @@ function syncCompanions(dt){
         const ang = Math.atan2(t.y - d.y, t.x - d.x);
         G.bullets.push({
           x:d.x, y:d.y, vx:Math.cos(ang) * 460, vy:Math.sin(ang) * 460,
-          dmg: s.dmg * .55 * s.deployPower, pierce:s.deployPierce, hits: [], life: .9,
+          dmg:s.dmg*.55*s.deployPower*HEX_EXPANSION.companionShot(d), pierce:s.deployPierce, hits:[], life:.9, hexCompanion:true,
           crit: Math.random() < s.crit, r: 2.2
         });
         d.cd = .66 * s.deployCooldown; d.flash = .08;
@@ -5415,7 +5423,7 @@ function syncCompanions(dt){
         tu.ang = ang;
         G.bullets.push({
           x:tu.x, y:tu.y, vx:Math.cos(ang) * 440, vy:Math.sin(ang) * 440,
-          dmg: s.dmg * .75 * s.deployPower, pierce:s.deployPierce, hits: [], life: 1,
+          dmg:s.dmg*.75*s.deployPower*HEX_EXPANSION.companionShot(tu), pierce:s.deployPierce, hits:[], life:1, hexCompanion:true,
           crit: Math.random() < s.crit, r: 2.4
         });
         tu.cd = .5 * s.deployCooldown; tu.flash = .08;

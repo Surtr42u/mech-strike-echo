@@ -316,7 +316,8 @@ function onBulletHit(b, e, field, time, altitude){
   const s = G.st;
   hitFX(b.x, altitude === undefined ? b.y - 4 : b.y, Math.atan2(b.vy, b.vx),
     b.boom ? '#ffb060' : '#ffe6c0', !!b.boom, altitude);
-  hitProjectileTarget(b,e,b.dmg,b.crit,b.x,b.y,{pct:b.pct || 0,pierceIndex:b.hits.length-1,emberSeed:b.emberSeed});
+  hitProjectileTarget(b,e,b.dmg*HEX_EXPANSION.contactPower(b),b.crit,b.x,b.y,
+    {pct:b.pct || 0,pierceIndex:b.hits.length-1,emberSeed:b.emberSeed,hexPrimary:b.hexPrimary,hexCompanion:b.hexCompanion});
   if(b.railFork) WeaponLinks.splitRail(b,field,time);
 
   const xu = s.elemMul > 1 && Math.random() < (s.elemMul - 1) ? s.elemMul : 1;
@@ -336,8 +337,8 @@ function onBulletHit(b, e, field, time, altitude){
   const effects = PROJECTILE_EFFECTS;
   if(s.burn > 0) setBurn(e,effects.burnSeconds,effects.burnPerLevel*s.burn*xu,flameSource);
   if(s.freeze > 0){
-    e.slowT = effects.slowSeconds;
-    e.slowAmt = Math.min(effects.slowLimit,effects.slowPerLevel * s.freeze * xu);
+    e.slowT = Math.max(e.slowT || 0,effects.slowSeconds);
+    e.slowAmt = Math.max(e.slowAmt || 0,Math.min(effects.slowLimit,effects.slowPerLevel*s.freeze*xu));
   }
   if(s.blast > 0){
     const radius = (effects.blastBaseRadius + effects.blastRadiusPerLevel * s.blast) * s.boomMul;
