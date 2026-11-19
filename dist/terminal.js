@@ -247,7 +247,9 @@ function toggleSound() {
 }
 function renderHexGuide(tier) {
   const cards = Object.entries(HEXES.cards);
-  const shown = tier === 'all' ? cards : cards.filter(([,card]) => card.tier === tier);
+  const tag = byId('hexGuideTag').value;
+  const shown = cards.filter(([,card]) => (tier === 'all' || card.tier === tier) &&
+    (tag === 'all' || card.tags.includes(tag)));
   const list = byId('hexGuideList');
   byId('hexGuideFilters').querySelectorAll('[data-hex-tier]').forEach(button => {
     button.setAttribute('aria-pressed',String(button.dataset.hexTier === tier));
@@ -262,7 +264,7 @@ function renderHexGuide(tier) {
     icon.setAttribute('aria-hidden','true');
     const heading = node('div','hex-guide-heading');
     heading.append(icon,node('h3','',card.n),node('span','hex-guide-tier',HEXES.tierNames[card.tier]));
-    entry.append(heading,node('p','hex-guide-effect',card.d));
+    entry.append(heading,node('div','hex-guide-tags',HEXES.tagLabel(card.tags)),node('p','hex-guide-effect',card.d));
     if(card.risk){
       const risk = node('p','hex-guide-risk');
       risk.append(node('strong','','代价'),document.createTextNode(card.risk));
@@ -325,6 +327,10 @@ function wireManual() {
     tabs[next].click();
     tabs[next].focus({preventScroll:true});
   });
+  for(const [key,label] of Object.entries(HEXES.tagLabels)){
+    const choice=node('option','',label);choice.value=key;byId('hexGuideTag').append(choice);
+  }
+  byId('hexGuideTag').onchange = () => renderHexGuide(byId('hexGuideFilters').querySelector('[aria-pressed="true"]').dataset.hexTier);
   byId('hexGuideFilters').querySelectorAll('[data-hex-tier]').forEach(button => {
     button.onclick = () => renderHexGuide(button.dataset.hexTier);
   });

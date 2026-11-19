@@ -183,7 +183,8 @@ button.wallet:hover{background:#3b3023;border-color:#a37c4e}
 .hex-guide-rules{margin:7px 0 12px;color:var(--pale);font-size:.84rem}
 .hex-guide-rules summary{cursor:pointer;width:fit-content;padding:5px 0}
 .hex-guide-rules p{padding:4px 0 0 13px;border-left:1px solid var(--line);font-size:.85rem}
-.hex-guide-toolbar{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:8px}
+.hex-guide-toolbar{display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.hex-tag-filter{display:flex;align-items:center;gap:5px;margin-left:auto;font-size:.81rem;color:var(--muted)}.hex-tag-filter select{font:inherit;color:var(--text);background:#222c29;border:1px solid var(--line);padding:5px;min-height:36px}.hex-guide-tags{color:var(--pale);font-size:.78rem;margin-bottom:4px}
 .hex-guide-filters button{min-height:44px;white-space:nowrap}
 .hex-guide-count{color:#b7c6be;font-size:.82rem;white-space:nowrap}
 .hex-guide-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0;padding:4px;list-style:none;max-height:min(49dvh,540px);overflow-y:auto;touch-action:pan-y;overscroll-behavior-y:contain;scrollbar-color:#6b756d #151c1d}
