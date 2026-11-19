@@ -71,6 +71,9 @@ button.wallet:hover{background:#3b3023;border-color:#a37c4e}
 .english-title em{font-style:normal;color:var(--amber);letter-spacing:.24em}
 .brief{color:#d2d9d2;font-size:clamp(.938rem,1.04vw,1.07rem);line-height:1.8;margin:clamp(13px,2.4vh,26px) 0 clamp(18px,3.1vh,40px);text-shadow:0 1px 5px #0a1818}
 .hero-actions{gap:12px;flex-wrap:wrap}
+.tower-entry{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;margin-top:10px;color:#d2c2ee;font-size:.8rem}
+.tower-entry .secondary{min-height:44px;border-color:#b99ce688;background:#1f1930;color:#ede2ff}
+.tower-entry .secondary:disabled{opacity:.65;cursor:default}
 .primary,.secondary{justify-content:center;gap:10px;min-height:46px;line-height:1.2;padding:12px 22px;font-size:.96rem;font-weight:700;letter-spacing:.05em}
 .primary{background:var(--amber);color:#181c19;border:1px solid #ffbe72;clip-path:polygon(0 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%);transition:background .15s}
 .primary:focus-visible{outline:0;box-shadow:inset 0 0 0 3px #151b19,inset 0 0 0 5px #fff}

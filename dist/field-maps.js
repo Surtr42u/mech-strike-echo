@@ -468,7 +468,8 @@ const FieldMaps = (() => {
     const floor = underground() ? (field.mine?' · 冻晶矿井':' · 地下检修廊') : field?' · 地表':'';
     putText(byId('fieldMapTitle'),SCENES[G.stage].name + floor);
     drawMap(byId('openFieldMap'),true);
-    CampaignStory.paintLog();
+    byId('fieldLog').hidden = TOWER.active();
+    if(!TOWER.active()) CampaignStory.paintLog();
     byId('fieldMapDialog').showModal();
     return true;
   }

@@ -30,6 +30,7 @@
   <script defer src="stage-events.js"></script>
   <script defer src="boss-models.js"></script>
   <script defer src="boss-effects.js"></script>
+  <script defer src="endless.js"></script>
   <script defer src="game.js"></script>
 </head>
 <body>
@@ -101,6 +102,10 @@
             <button class="primary launch" id="btnStart" disabled><canvas class="icon" data-icon="play"></canvas>开始出击<kbd>ENTER</kbd></button>
             <button class="secondary" id="btnShop"><canvas class="icon" data-icon="supply"></canvas>补给站</button>
           </div>
+          <div class="tower-entry">
+            <button class="secondary" id="btnTower" aria-describedby="towerRecord" disabled>无尽爬塔</button>
+            <span id="towerRecord">完成五区战役后解锁</span>
+          </div>
         </div>
         <button class="zone-label" id="openRoute" aria-label="查看五个战区的路线">
           <canvas class="icon" data-icon="target"></canvas><span><small>SECTOR 01 <i>/</i> 05</small><b>落日废土</b></span>
@@ -170,7 +175,7 @@
   </section>
   <section class="ov veil hide" id="ovOver" role="dialog" aria-modal="true" aria-labelledby="overTitle">
     <div class="menu-sheet report-sheet"><div class="section-kicker"><i></i><span id="overTag">行动报告</span></div><h2 id="overTitle">行动结束</h2><p id="overFieldResult" hidden></p><div class="stats" id="overStats"></div>
-      <button class="primary wide" id="btnRetry"><canvas class="icon" data-icon="play"></canvas>再次出击</button><div class="pause-tools"><button class="secondary" id="btnHome">返回大厅</button><button class="secondary" id="btnShop2">前往补给站</button></div>
+      <button class="primary wide" id="btnRetry"><canvas class="icon" data-icon="play"></canvas><span id="retryLabel">再次出击</span></button><div class="pause-tools"><button class="secondary" id="btnHome">返回大厅</button><button class="secondary" id="btnShop2">前往补给站</button></div>
     </div>
   </section>
 </main>
@@ -199,7 +204,9 @@
     <div><dt>满槽时保留所有技能，放弃本次强化</dt><dd><kbd>X</kbd></dd></div>
     <div><dt>暂停 / 继续</dt><dd><kbd>P</kbd> / <kbd>Esc</kbd></dd></div>
   </dl><p class="touch-note"><canvas class="icon" data-icon="touch"></canvas>触屏可在左侧拖动移动，点右下按钮释放技能或使用道具。替换技能时可滑动列表。</p></div>
-  <div id="guideRoute" role="tabpanel" aria-labelledby="manualRoute" tabindex="0" hidden><p>每个战区有十四波敌潮，五区合计七十波。落日废土的地表与地下各有敌群，乘梯共用波次进度。侦察、受压、休整与波峰交替。落日废土和冰封矿场在第五波后有守卫。其他战区的指挥精英在本波内迎击，击破后进入休整。击败关底首领后，进入传送门前往下一站。</p><ol id="routeList" class="route-list"></ol></div>
+  <div id="guideRoute" role="tabpanel" aria-labelledby="manualRoute" tabindex="0" hidden><p>每个战区有十四波敌潮，五区合计七十波。落日废土的地表与地下各有敌群，乘梯共用波次进度。侦察、受压、休整与波峰交替。落日废土和冰封矿场在第五波后有守卫。其他战区的指挥精英在本波内迎击，击破后进入休整。击败关底首领后，进入传送门前往下一站。</p><ol id="routeList" class="route-list"></ol>
+    <details class="hex-guide-rules"><summary>无尽塔</summary><p>通关五区战役后解锁，从第 1 层重新挑战。每层三波，场景轮换，追猎、重装和落区改变敌群与场上压力。每三层迎战一名首领，通关后走跃点继续。武装保留并回复 15% 生命。每通关一层结算 50 积分，每局最多 1000。</p><p>塔内技能槽比战役多 2 格，第 5 层和第 10 层各再增加 1 格，最多 12 格。最后两格可用 <kbd>-</kbd> 和 <kbd>=</kbd> 选择。第 1 层起每隔三层获得一轮海克斯，最多持有 8 项，满了可以选一项替换。</p></details>
+  </div>
   <section id="guideHexes" role="tabpanel" aria-labelledby="manualHexes" hidden>
     <p>开局、第一战区第 4 波，以及进入第三、第五战区时可选海克斯。每轮五张同档牌，档位在当轮选牌时揭晓。</p>
     <details class="hex-guide-rules"><summary>质变与升彩</summary><p>拿到质变牌会随机获得一项高一档的海克斯。已购买的金变彩整备有机会在金色选牌时提供「本轮升彩」，可改为棱彩五选一，也可继续选金。升彩不消耗刷新次数。</p></details>

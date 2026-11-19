@@ -15,6 +15,12 @@ const TALENTS = (function(){
   const pool = Object.entries(groups).flatMap(([tag, group]) =>
     group.ids.map(id => ({ id, tag, tags:tags[id] }))
   );
+  const towerPool = pool.concat([
+    {id:'thorns',tag:'defense',tags:['guard']},
+    {id:'gigantism',tag:'fire',tags:['fire'],max:3}
+  ]);
+  const runPool = () => TOWER.active() ? towerPool : pool;
+  const choiceKeys = ['1','2','3','4','5','6','7','8','9','0','-','='];
   const { cards:majors, queueMilestone, roll:rollMilestone, applyStats, onKill, status } = HEXES;
   const bayonetReach = 38;
 
@@ -26,9 +32,9 @@ const TALENTS = (function(){
 
   function regularOptions(){
     const full = G.slots.length >= G.skillLimit;
-    return pool.flatMap(card => {
+    return runPool().flatMap(card => {
       const lv = G.skills[card.id] || 0;
-      if(lv >= SK[card.id].max) return [];
+      if(lv >= (card.max ?? SK[card.id].max)) return [];
       if(card.id === 'crit' && G.st?.crit >= .95 ||
         card.id === 'freeze' && G.st?.freeze * PROJECTILE_EFFECTS.slowPerLevel >= PROJECTILE_EFFECTS.slowLimit) return [];
       return [{ ...card, lv, kind:lv ? 'up' : full ? 'swap' : 'new' }];
@@ -36,7 +42,7 @@ const TALENTS = (function(){
   }
 
   function buildProfile(){
-    const talents = pool.filter(card => G.skills[card.id] > 0).map(card => ({...card,lv:G.skills[card.id]}));
+    const talents = runPool().filter(card => G.skills[card.id] > 0).map(card => ({...card,lv:G.skills[card.id]}));
     return BUILD_DRAFT.profile(WEP(),talents,G.enhancements.chosen.map(id => majors[id]));
   }
 
@@ -78,7 +84,7 @@ const TALENTS = (function(){
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'card';
-    const key = (i + 1) % 10;
+    const key = choiceKeys[i];
     button.setAttribute('aria-keyshortcuts',String(key));
     button.innerHTML =
       '<span class="bar" style="background:' + card.c + '"></span>' +
@@ -99,7 +105,7 @@ const TALENTS = (function(){
     byId('lvKicker').textContent = major ? '海克斯 · ' + HEXES.tierNames[tier] : '等级提升';
     byId('lvKicker').style.color = major ? HEXES.tierColors[tier] : '';
     byId('levelTitle').textContent = major ? '选择海克斯' : '选择强化';
-    byId('lvNum').textContent = major ? '战区 ' + (G.stage + 1) : 'LV ' + (G.lv - G.pending + 1);
+    byId('lvNum').textContent = major ? (TOWER.active() ? '第 ' + G.tower.floor + ' 层' : '战区 ' + (G.stage + 1)) : 'LV ' + (G.lv - G.pending + 1);
     byId('lvNote').textContent = major ? HEXES.planLabel() : '重复选择同一天赋可以提升等级。';
     byId('lvSlots').textContent = major ? status().join(' · ') :
       '已持有 ' + G.slots.length + ' / ' + G.skillLimit + (G.slots.length >= G.skillLimit ? ' · 可替换，也可保留原技能' : '');
@@ -197,6 +203,24 @@ const TALENTS = (function(){
     cards.firstElementChild?.focus({ preventScroll:true });
   }
 
+  function startMajorSwap(option){
+    G._swap = option;
+    renderRefresh();
+    byId('levelTitle').textContent = '选择替换海克斯';
+    byId('lvNote').textContent = '海克斯已满。选择一项卸下，再结算「' + majors[option.id].n + '」。';
+    byId('lvSlots').textContent = '被替换的效果与累积层数会移除。';
+    byId('lvAscend').hidden = true;
+    byId('lvCancel').hidden = false;
+    const cards = byId('cards');
+    cards.classList.add('swap-options');
+    cards.replaceChildren(...G.enhancements.chosen.map((id,i) => {
+      const card = majors[id];
+      return cardButton({...card,label:HEXES.tierNames[card.tier] + ' · 已持有'},i,() => chooseReplacement(id));
+    }));
+    cards.scrollTop = 0;
+    cards.firstElementChild?.focus({preventScroll:true});
+  }
+
   function cancelSwap(){
     if(G.mode !== 'level' || !G._swap) return false;
     const focusId = G._swap.id;
@@ -230,6 +254,7 @@ const TALENTS = (function(){
   function chooseCard(o){
     if(G.mode !== 'level' || G._swap || !G._cards.includes(o)) return;
     if(o.kind === 'major'){
+      if(HEXES.needsReplacement()){ startMajorSwap(o); return; }
       if(!HEXES.choose(o.id)) return;
     } else {
       if(o.kind === 'swap'){ startSwap(o); return; }
@@ -244,6 +269,12 @@ const TALENTS = (function(){
 
   function chooseReplacement(id){
     if(G.mode !== 'level' || !G._swap) return;
+    if(G._swap.kind === 'major'){
+      if(!HEXES.choose(G._swap.id,id)) return;
+      finishChoice();
+      if(G.mode === 'play') banner(G.enhancements.result,HEXES.planLabel(),1.8);
+      return;
+    }
     const slot = G.slots.indexOf(id);
     if(slot < 0) return;
     const replacement = G._swap.id;
@@ -260,13 +291,14 @@ const TALENTS = (function(){
     if(key === 'escape') return cancelSwap();
     if(key === 'x') return skipReward();
     if(key === 'r') return refreshCards();
-    if(!/^[0-9]$/.test(key)) return false;
-    const button = byId('cards').children[(Number(key) || 10) - 1];
+    const index = choiceKeys.indexOf(key);
+    if(index < 0) return false;
+    const button = byId('cards').children[index];
     if(!button) return false;
     button.click();
     return true;
   }
 
   return { groups, pool, majors, reset, rollCards, queueMilestone, rollMilestone, applyStats, onKill, status, tryBayonet, buildProfile,
-    renderCards, openLevel, openReward, chooseCard, chooseReplacement, cancelSwap, skipReward, refreshCards, ascendCards, handleKey };
+    renderCards, openLevel, openReward, chooseCard, chooseReplacement, cancelSwap, skipReward, refreshCards, ascendCards, handleKey, regularOptions };
 })();

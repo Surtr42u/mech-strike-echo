@@ -59,6 +59,9 @@ function updateLoadout() {
   byId('weaponName').textContent = weapon.n;
   byId('weaponMove').textContent = 'Lv.' + weaponGrade(weapon.id) + ' · ' + weapon.sk.n;
   byId('moduleLoadout').textContent = activeHangarCount() + ' 项生效 · ' + skillCapacity() + ' 技能槽';
+  byId('btnTower').disabled = !PROF.tower.unlocked;
+  byId('towerRecord').textContent = !PROF.tower.unlocked ? '完成五区战役后解锁' :
+    PROF.tower.best ? '最高通关 ' + PROF.tower.best + ' 层' : '已解锁 · 从第 1 层开始';
   byId('pilotImage').src = thumbnail('skin',PROF.skin);
   byId('hudPortrait').src = thumbnail('skin',G.skin);
   byId('weaponImage').src = thumbnail('weapon', weapon.id);
@@ -360,16 +363,20 @@ function showReport(win,withdrawn) {
   clearBanner();
   SFX.stopAmbience();
   byId('overTag').textContent = win ? 'MISSION COMPLETE' : 'AFTER ACTION REPORT';
-  byId('overTitle').textContent = win ? '五区突破' : withdrawn ? '已撤离战区' : '战斗结束';
+  const tower = TOWER.active();
+  byId('overTitle').textContent = tower ? (withdrawn ? '已撤离无尽塔' : '无尽塔挑战结束') :
+    win ? '五区突破' : withdrawn ? '已撤离战区' : '战斗结束';
+  byId('retryLabel').textContent = tower ? '再次爬塔' : '再次出击';
   const fieldResult = byId('overFieldResult');
   fieldResult.hidden = !win;
-  if(win) putText(fieldResult,CampaignStory.ending());
+  if(win) putText(fieldResult,CampaignStory.ending() + (PROF.tower.unlocked ? ' · 无尽塔已解锁' : ''));
   const points = settle(win);
   const values = [
-    ['战区',SCENES[G.stage].name],['波次',G.wave + ' / ' + WAVES_PER_STAGE],
+    tower ? ['到达',TOWER.label()] : ['战区',SCENES[G.stage].name],
+    tower ? ['本局通关',G.tower.cleared + ' 层'] : ['波次',G.wave + ' / ' + WAVES_PER_STAGE],
     ['击破',G.kills],['得分',numberFormat.format(G.score)],
     ['等级','LV ' + G.lv],['用时',Math.floor(G.time/60) + ':' + String(Math.floor(G.time%60)).padStart(2,'0')],
-    ['局内技能',G.slots.length + ' / ' + G.skillLimit],['最高得分',numberFormat.format(PROF.best)],
+    ['局内技能',G.slots.length + ' / ' + G.skillLimit],tower ? ['最高通关',PROF.tower.best + ' 层'] : ['最高得分',numberFormat.format(PROF.best)],
     ['获得积分','+' + numberFormat.format(points)],['积分余额',numberFormat.format(PROF.pts)]
   ];
   const stats = byId('overStats');
@@ -384,7 +391,9 @@ function showReport(win,withdrawn) {
 }
 function wireTerminal() {
   document.querySelectorAll('canvas[data-icon]').forEach(c => inkIcon(c,c.dataset.icon));
-  byId('btnStart').onclick = byId('btnRetry').onclick = startGame;
+  byId('btnStart').onclick = () => startGame();
+  byId('btnTower').onclick = () => startGame(true);
+  byId('btnRetry').onclick = () => startGame(TOWER.active());
   byId('btnShop').onclick = byId('btnShop2').onclick = byId('wallet').onclick = byId('selectPilot').onclick = () => openShop('skin');
   byId('selectWeapon').onclick = () => openShop('weapon');
   byId('selectModules').onclick = () => openShop('growth');
@@ -487,17 +496,19 @@ function paintInstruments(force) {
   }
   instrument('hpFill').parentElement.classList.toggle('low',hp < .3);
   meterFill('hpFill',hp); meterFill('xpFill',G.xp/G.need);
-  putText(instrument('hudSector'),'S' + pad2(G.stage+1) + ' / ' + SCENES[G.stage].name + SectorClimate.skyLabel());
+  const tower = TOWER.active();
+  putText(instrument('hudSector'),(tower ? TOWER.label() : 'S' + pad2(G.stage+1)) + ' / ' + SCENES[G.stage].name + SectorClimate.skyLabel());
   FieldMaps.paintHud();
   CampaignStory.paintHud();
   instrument('wavePanel').classList.toggle('boss',!!boss);
   const clear = G.phase === 'clear';
-  putText(instrument('waveName'),boss ? boss.name : clear ? '战区肃清' : G.phase === 'boss' ? '首领接近' : '敌潮 ' + pad2(G.wave) + ' / ' + WAVES_PER_STAGE);
+  putText(instrument('waveName'),boss ? boss.name : clear ? (tower ? '本层通关 · 前往下一层' : '战区肃清') :
+    G.phase === 'boss' ? '首领接近' : '敌潮 ' + pad2(G.wave) + ' / ' + (tower ? TOWER.waves : WAVES_PER_STAGE));
   putText(instrument('waveDetail'),boss ? '阶段 ' + boss.phase + ' / ' + BOSS_PHASES[boss.kind].phases.length : G.phase === 'wave' ? Math.max(0,Math.ceil(G.waveT)) + 's' : '');
   meterFill('waveFill',boss ? boss.hp/boss.maxHp : G.phase === 'wave' ? G.waveT/G.waveDur : 1);
   const command=ThreatPacing.commander();
   const pressure=instrument('wavePressure'), threat=instrument('threatHealth');
-  const phaseText=G.phase==='wave' ? ThreatPacing.at().label : '';
+  const phaseText=G.phase==='wave' ? (tower ? TOWER.rule().name : ThreatPacing.at().label) : '';
   pressure.hidden=!phaseText;
   putText(pressure,command?.spec && !command.down ? command.spec.name+(command.body?'':'接近') : phaseText);
   threat.hidden=!command?.body || command.down;

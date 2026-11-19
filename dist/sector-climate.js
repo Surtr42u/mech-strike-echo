@@ -103,7 +103,7 @@ const SectorClimate = (() => {
         banner('冷却阀泄压','十秒内阀区持续清除熔池、减速敌人',1.6);
       }
     }
-    CampaignStory.complete();
+    if(!TOWER.active()) CampaignStory.complete();
     SFX.pick();paintInstruments(true);return true;
   }
 

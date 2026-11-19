@@ -352,7 +352,7 @@ const PROF = {
   skin:0, weapon:'rifle', mech:DEFAULT_MECH,
   ownSkins:[0], ownWeapons:['rifle'],
   growth:{ levels:{}, weaponLevels:{} },
-  preparations:{}
+  preparations:{}, tower:{unlocked:false,best:0}
 };
 let loadedProf = null;
 function loadProf(){
@@ -386,6 +386,7 @@ function loadProf(){
     if(typeof o.weapon === 'string' && PROF.ownWeapons.indexOf(o.weapon) >= 0) PROF.weapon = o.weapon;
     PROF.growth = readGrowth(o.growth);
     PROF.preparations = PREPARATIONS.read(o.preparations);
+    PROF.tower = TOWER.read(o.tower);
     PROF.mech = equippedMech(o.mech);
   }catch(e){}
 }
@@ -400,6 +401,7 @@ function ownWep(id){ return PROF.ownWeapons.indexOf(id) >= 0; }
 /* 随机事件奖励的「真积分」：直接进补给站余额并立即落盘。
    局内分数 G.score 只参与本局结算，事件里写「积分」就必须走这里。 */
 function grantPoints(n, label){
+  if(TOWER.active()) return 0;
   n = Math.max(0, Math.round(n));
   if(!n) return 0;
   PROF.pts += n;
@@ -1778,6 +1780,7 @@ function watchPerf(dt){
 /* ── 全局状态 ── */
 const G = {
   mode:'title',          // title | play | map | level | pause | over | win
+  runMode:'campaign', tower:null, campaignClears:new Set(),
   phase:'wave',          // wave | boss | clear
   stage:0, wave:1, waveT:0, waveDur:0, spawnT:0,
   t:0, cam:{x:ARENA.w/2, y:ARENA.h/2},
@@ -3010,15 +3013,19 @@ function scaleSkill(value){ return value * (G.st?.skillPower ?? 1); }
 function abilityCooldown(seconds){ return seconds * (G.st?.skillCooldown ?? 1); }
 
 /* ── 开局 / 场景 ── */
-function newRun(){
+function newRun(tower = false){
   EnemyEffects.clear();
   G.mode = 'play'; G.phase = 'wave';
+  G.runMode = tower ? 'tower' : 'campaign';
+  G.tower = tower ? TOWER.fresh() : null;
+  G.campaignClears.clear();
   G.stage = 0; G.wave = 1;
   G.t = 0; G.time = 0;
   G.score = 0; G.kills = 0; G.combo = 0; G.comboT = 0;
   G.xp = 0; G.lv = 1; G.need = 10; G.pending = 0;
   G.skills = {}; G.slots = []; G.growth = growthSnapshot();
   G.skillLimit = skillCapacity(G.growth);
+  if(tower) G.skillLimit = TOWER.skillLimit(G.skillLimit,1);
   TALENTS.reset();
   CampaignStory.reset();
   StageEvents.reset();
@@ -3074,7 +3081,7 @@ function setScene(i){
   G.stage = i;
   G.floorSpawnSerial = 0;
   ThreatPacing.reset();
-  FieldMaps.begin(i);
+  FieldMaps.begin(TOWER.active() ? -1 : i);
   SectorClimate.begin(i);
   const sc = SCENES[i];
   /* 先说清道具，再算补给投放候选点，最后烘焙地面：
@@ -3098,7 +3105,7 @@ function setScene(i){
   G.picks.length = 0; G.crates.length = 0; G.jobs.length = 0;
   G.lightsFx.length = 0;
   if(G.p){ G.p.x = ARENA.w/2; G.p.y = ARENA.h/2 + 40; G.cam.x = G.p.x; G.cam.y = G.p.y; }
-  CampaignStory.begin(i);
+  if(!TOWER.active()) CampaignStory.begin(i);
   StageEvents.begin(i);
 }
 
@@ -3107,6 +3114,7 @@ function waveDuration(w){ return CampaignBalance.at(G.stage,w).duration; }
 function playerRadius(base = 8){ return base * (G.st?.bodyScale ?? 1); }
 
 function startWave(spawnDelay = .5, announce = true){
+  if(TOWER.active()) return TOWER.startWave(spawnDelay,announce);
   G.phase = 'wave';
   G.waveT = waveDuration(G.wave);
   G.waveDur = G.waveT;
@@ -3127,6 +3135,7 @@ function startWave(spawnDelay = .5, announce = true){
 }
 
 function endWave(){
+  if(TOWER.active()) return TOWER.endWave();
   if(G.phase !== 'wave' || !ThreatPacing.canFinish()) return;
   /* 波次结束不再清场：剩余敌人保留，与下一波叠加（解除「时间到就消灭怪物」机制） */
   if(G.wave >= WAVES_PER_STAGE){
@@ -3175,8 +3184,9 @@ function spawnBoss(kind){
     orbit: rnd(0, TAU),
     dmg: def.dmg || 16
   };
+  if(TOWER.active()) TOWER.scaleBoss(b);
   G.boss = b;
-  ThreatPacing.addBossEscort(b);
+  if(!TOWER.active()) ThreatPacing.addBossEscort(b);
   G.rings.push({ x:b.x, y:b.y, r:6, max:150, life:.7, maxLife:.7, col:def.col, w:3 });
   G.shake = 10;
 }
@@ -4998,7 +5008,7 @@ function enemyTypeStats(kind, profile, elite, hpMul){
 function spawnEnemy(kind, x, y, opt = {}){
   if(G.enemies.length >= ENEMY_CAP && !cullOldestEnemy()) return null;
   const k = EK[kind], waveOrigin = opt.waveOrigin ?? G.wave;
-  const profile = CampaignBalance.at(G.stage,waveOrigin);
+  const profile = CampaignBalance.at(TOWER.active() ? 0 : G.stage,waveOrigin);
   const elite = !!opt.elite || (!opt.noElite && G.wave >= 3 && CampaignEnemies.rank(kind)<3 &&
     Math.random() < profile.eliteChance + (G.waveEliteBoost || 0) * .06);
   const hpMul = opt.hpMul || 1;
@@ -5015,6 +5025,7 @@ function spawnEnemy(kind, x, y, opt = {}){
     slowT:0, slowAmt:0, burnT:0, burnDps:0, stun:0,
     dead:false, deadT:0, wob:rnd(0,TAU)
   };
+  if(TOWER.active()) TOWER.scaleEnemy(e);
   if(!e.fly) FieldMaps.clearRails(e,e.r);
   if(G.stage>0 && CampaignEnemies.rank(kind)===1 && !e.commander) markEliteVariant(e);
   G.enemies.push(e);
@@ -6113,6 +6124,7 @@ function bossDown(b){
   dropLoot(b.x, b.y, guard ? 2 : 4, true);
   G.jobs.push({ t: .9, fn: function(){
     if(G.phase !== 'boss' || G.bossEncounter !== encounter) return;
+    if(TOWER.active()){ TOWER.complete(b); return; }
     if(guard){
       G.boss = null;
       G.bossEncounter = null;
@@ -6121,6 +6133,7 @@ function bossDown(b){
       banner(b.name + ' 已击败', '继续第 ' + G.wave + ' 波', 1.45);
       return;
     }
+    G.campaignClears.add(G.stage);
     G.phase = 'clear';
     CampaignStory.clear(b);
     banner('区域肃清', CampaignStory.approachRoute(), 1.6);
@@ -6259,9 +6272,11 @@ function maybeEvent(){
 
 function nextStage(){
   if(G.mode !== 'play') return;
+  if(TOWER.active()) return TOWER.advance();
   endMech();
   const s = G.stage;
   if(s >= SCENES.length - 1){
+    if(G.phase === 'clear' && G.portal && G.campaignClears.size === SCENES.length) TOWER.unlock();
     G.mode = 'win';
     showOver(true);
     return;
@@ -6283,6 +6298,7 @@ function nextStage(){
 
 /* ── 波次 ── */
 function updateWaves(dt){
+  if(TOWER.active()) return TOWER.update(dt);
   if(G.phase !== 'wave') return;
   G.waveT = Math.max(0,G.waveT-dt);
   ThreatPacing.update();
@@ -9062,6 +9078,7 @@ function showOver(win){ showReport(win,false); }
 function settle(win){
   if(G.settled) return 0;
   G.settled = true;
+  if(TOWER.active()) return TOWER.settle();
   const depth = G.stage + (G.phase === 'clear' ? 1 : 0);
   const pts = Math.round(
     G.kills * 1.1 +
@@ -9096,7 +9113,7 @@ function togglePause(){
     joyEnd();
     clearBanner();
     SFX.stopAmbience();
-    byId('pauseProgress').textContent = SCENES[G.stage].name + ' · 第 ' + G.wave + ' 波 · 得分 ' + numberFormat.format(G.score);
+    byId('pauseProgress').textContent = (TOWER.active() ? TOWER.label() : SCENES[G.stage].name) + ' · 第 ' + G.wave + ' 波 · 得分 ' + numberFormat.format(G.score);
     elPause.classList.remove('hide');
     byId('btnResume').focus({preventScroll:true});
   } else if(G.mode === 'pause'){
@@ -9108,8 +9125,8 @@ function togglePause(){
 }
 
 let stageInitialized = false;
-function startGame(){
-  if(!['title','over','win'].includes(G.mode) || byId('btnStart').disabled) return;
+function startGame(tower = false){
+  if(!['title','over','win'].includes(G.mode) || byId('btnStart').disabled || (tower && !PROF.tower.unlocked)) return;
   SFX.unlock();
   document.activeElement?.blur();
   for(const el of [elTitle,elOver,elLevel,elPause,elEvent]) el.classList.add('hide');
@@ -9118,7 +9135,7 @@ function startGame(){
     stageInitialized = true;
     if(STAGE3D.init()) STAGE3D.setStageSize(Math.max(1,Math.round(VW/2)),Math.max(1,Math.round(VH/2)));
   }
-  newRun();
+  newRun(tower);
   updateLoadout();
   paintInstruments(true);
   if(openReward()) render();
@@ -9168,6 +9185,7 @@ function step(dt){
   if(G.mode !== 'play') return;
   tickBuff(dt);
   syncCompanions(dt);
+  if(TOWER.active()) TOWER.limitParticles();
   updateParts(dt);
   updateEnv(dt);
   FARFX.update(dt);
@@ -9239,9 +9257,9 @@ window.addEventListener('keydown', function(e){
   } else if(G.mode === 'event' && (k === 'enter' || k === ' ')){
     closeEvent(); e.preventDefault();
   } else if(G.mode === 'title' && (k === 'enter' || k === ' ')){
-    startGame(); e.preventDefault();
+    startGame(document.activeElement === byId('btnTower')); e.preventDefault();
   } else if((G.mode === 'over' || G.mode === 'win') && (k === 'r' || k === 'enter')){
-    startGame(); e.preventDefault();
+    startGame(TOWER.active()); e.preventDefault();
   }
 });
 window.addEventListener('keyup', function(e){
@@ -9433,5 +9451,5 @@ window.__dbg = {
   LANDMARKS:LANDMARKS, drawLandmark:drawLandmark, LM_PAL:LM_PAL,
   RESONANCE:RESONANCE, BOSS_PHASES:BOSS_PHASES, calcDamage:calcDamage,
   addZone:addZone, cullOldestEnemy:cullOldestEnemy, ENEMY_CAP:ENEMY_CAP,
-  CampaignBalance:CampaignBalance, totalWave:campaignWaveIndex
+  CampaignBalance:CampaignBalance, totalWave:campaignWaveIndex, tower:TOWER
 };

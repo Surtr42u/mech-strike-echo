@@ -232,8 +232,10 @@ const HEXES = (function(){
   }
 
   function createRun(){
-    return { plan:makePlan(hexFortuneBonus(),goldPrismChance()), chosen:[], used:new Set(), offered:[], pending:null, hand:null,
-      ascended:new Set(), tankKills:0, activations:{}, expansion:{}, result:'' };
+    return { plan:TOWER.active() ? null : makePlan(hexFortuneBonus(),goldPrismChance()),
+      chosen:[], used:new Set(), offered:[], pending:null, hand:null,
+      ascended:new Set(), tankKills:0, activations:{}, expansion:{}, result:'',
+      extra:null, queuedExtra:null, externalSources:new Set(), towerRounds:0, towerFloor:0 };
   }
 
   function queueMilestone(){
@@ -241,23 +243,57 @@ const HEXES = (function(){
     if(!state.pending && milestones.includes(key) && !state.offered.includes(key)) state.pending = key;
   }
 
+  function queueTower(floor){
+    const state = G.enhancements;
+    if(floor <= state.towerFloor || state.pending) return false;
+    const bonus = hexFortuneBonus(), goldBonus = bonus * HEX_FORTUNE_GOLD_SHARE;
+    const weights = [['silver',.50-bonus],['gold',.35+goldBonus],['prism',.15+bonus-goldBonus]];
+    const tier = weighted(weights.filter(([id]) => actualPool(id,state).length >= DRAFT_CHOICES),Math.random);
+    state.towerFloor = floor;
+    state.pending = 'tower:' + floor;
+    state.extra = { tier, mode:'tower', upgrade:tier === 'gold' && Math.random() < goldPrismChance() };
+    return true;
+  }
+
+  function queueExternal(tier,source = 'treasure'){
+    const state = G.enhancements;
+    if(!state || !Object.hasOwn(tierNames,tier) || state.externalSources.size) return false;
+    const available = actualPool(tier,state).filter(id => id !== 'stipend').length;
+    const possiblePandora = state.pending && tier === 'prism' && (currentTier(state) === 'prism' || canAscend(state));
+    const reserve = possiblePandora && !state.used.has('pandora') ?
+      state.chosen.filter(id => cards[id].tier !== 'prism').length + 1 : state.pending ? 1 : 0;
+    if(available < DRAFT_CHOICES + reserve) return false;
+    state.externalSources.add(source);
+    state.queuedExtra = { tier, source, mode:'external', upgrade:false };
+    return true;
+  }
+
+  function promoteExternal(state){
+    if(state.pending || !state.queuedExtra) return;
+    state.extra = state.queuedExtra;
+    state.queuedExtra = null;
+    state.pending = 'extra:' + state.extra.source;
+  }
+
   function tankStacks(state){
     return Math.floor(state.tankKills / tank.kills);
   }
 
   function currentTier(state = G.enhancements){
+    if(state.extra) return state.extra.ascended ? 'prism' : state.extra.tier;
     return state.ascended.has(state.pending) ? 'prism' : state.plan.tiers[milestones.indexOf(state.pending)];
   }
 
   function actualPool(tier,state){
     return Object.keys(cards).filter(id => cards[id].tier === tier && !cards[id].to &&
-      id !== 'pandora' && !state.used.has(id));
+      id !== 'pandora' && (TOWER.active() ? id !== 'stipend' && !state.chosen.includes(id) : !state.used.has(id)));
   }
 
   function offerIds(state = G.enhancements){
     if(!state.pending) return [];
     const tier = currentTier(state);
     const regular = actualPool(tier,state);
+    if(state.extra?.mode === 'external') return regular.filter(id => id !== 'stipend');
     if(!state.used.has('transmuteGold') && tier === 'silver' && actualPool('gold',state).length) regular.push('transmuteGold');
     if(!state.used.has('transmutePrism') && tier === 'gold' && actualPool('prism',state).length) regular.push('transmutePrism');
     if(tier === 'prism' && !state.used.has('pandora')){
@@ -275,6 +311,7 @@ const HEXES = (function(){
 
   function roll(previous = []){
     const state = G.enhancements;
+    promoteExternal(state);
     if(!previous.length && state.hand) return state.hand;
     const options = offerIds().map(id => ({id,kind:'major',tags:cards[id].tags}));
     const hand = BUILD_DRAFT.choose(options,TALENTS.buildProfile(),previous);
@@ -283,38 +320,52 @@ const HEXES = (function(){
   }
 
   function canAscend(state = G.enhancements){
-    return state.pending && currentTier(state) === 'gold' && state.plan.upgrades[milestones.indexOf(state.pending)] && actualPool('prism',state).length >= DRAFT_CHOICES;
+    const upgrade = state.extra ? state.extra.upgrade : state.plan?.upgrades[milestones.indexOf(state.pending)];
+    return state.pending && currentTier(state) === 'gold' && upgrade && actualPool('prism',state).length >= DRAFT_CHOICES;
   }
 
   function ascend(){
     if(!canAscend()) return false;
-    G.enhancements.ascended.add(G.enhancements.pending);
+    const state = G.enhancements;
+    if(state.extra) state.extra.ascended = true;
+    else state.ascended.add(state.pending);
     G.enhancements.hand = null;
     return true;
   }
 
-  function choose(id){
+  function needsReplacement(state = G.enhancements){
+    return TOWER.active() && state.chosen.length >= TOWER.hexLimit;
+  }
+
+  function choose(id,replaceId){
     const state = G.enhancements;
     if(!offerIds(state).includes(id)) return false;
+    const replaceIndex = state.chosen.indexOf(replaceId);
+    if(needsReplacement(state) ? replaceIndex < 0 : replaceId !== undefined) return false;
     const previousCooldown = G.st.skillCooldown;
     const previousLock = G.st.mechLocked;
-    state.offered.push(state.pending);
+    if(!state.extra) state.offered.push(state.pending);
+    if(state.extra?.mode === 'tower') state.towerRounds++;
     state.pending = null;
     state.hand = null;
+    state.extra = null;
     state.used.add(id);
     const card = cards[id];
+    const randomPool = id === 'pandora' ? actualPool('prism',state) : card.to ? actualPool(card.to,state) : null;
+    if(replaceIndex >= 0) state.chosen.splice(replaceIndex,1);
     if(id === 'pandora'){
       const retained = state.chosen.filter(picked => cards[picked].tier === 'prism');
       const converted = state.chosen.length - retained.length;
-      state.chosen = retained.concat(draw(actualPool('prism',state),converted+1));
+      state.chosen = retained.concat(draw(randomPool,converted+1));
       state.tankKills = 0;
       state.result = '潘多拉转化 ' + converted + ' 项并新增 1 项棱彩';
     } else {
-      const picked = card.to ? draw(actualPool(card.to,state),1)[0] : id;
+      const picked = card.to ? draw(randomPool,1)[0] : id;
       state.chosen.push(picked);
       state.result = card.to ? '质变获得「' + cards[picked].n + '」' : '已获得「' + card.n + '」';
       cards[picked].enter?.();
     }
+    if(!has('tank')) state.tankKills = 0;
     for(const picked of state.chosen) state.used.add(picked);
     recalc({ fillNewCapacity:false });
     const ratio = G.st.skillCooldown / previousCooldown;
@@ -431,6 +482,8 @@ const HEXES = (function(){
   }
 
   function planLabel(state = G.enhancements){
+    if(state.extra?.mode === 'external') return '额外海克斯 · 宝箱奖励';
+    if(TOWER.active()) return '海克斯 ' + state.chosen.length + '/' + TOWER.hexLimit + ' · 已完成 ' + state.towerRounds + ' 轮';
     return '海克斯 ' + state.offered.length + '/' + milestones.length;
   }
 
@@ -439,7 +492,7 @@ const HEXES = (function(){
       cards[id].n + (id === 'stipend' ? '已到账' : ''));
   }
 
-  return { makePlan, createRun, queueMilestone, offerIds, roll, canAscend, ascend, choose, has,
+  return { makePlan, createRun, queueMilestone, queueTower, queueExternal, offerIds, roll, canAscend, ascend, choose, has, needsReplacement,
     currentTier, applyStats, onKill, onAttackDamage, onSkillCast, onShieldBlock, onMechStart, onMechSkill, onMechExpiry,
     moveMultiplier, planLabel, status, tierNames, tierColors, cards, bayonet, tagLabels:BUILD_TAGS, tagLabel:BUILD_DRAFT.label };
 })();
