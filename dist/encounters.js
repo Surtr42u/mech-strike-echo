@@ -356,17 +356,19 @@ function updateEliteVariant(e, dt, distance){
   if(!a){
     if(e.eliteCooldown > 0 || distance > spec.range || distance < e.r + 12) return false;
     const angle = Math.atan2(G.p.y - e.y, G.p.x - e.x);
-    const goal = e.eliteVariant === 'ram' ? chargeEndpoint(e.x, e.y, angle, 136) : {
-      x:e.x + 318 * Math.cos(angle), y:e.y + 318 * Math.sin(angle)
-    };
-    a = e.eliteAct = { x:e.x, y:e.y, goal:goal, angle:angle, t:0, hit:false };
+    const ram = e.eliteVariant === 'ram';
+    const dx = Math.cos(angle), dy = Math.sin(angle);
+    const reach = FieldMaps.dashDistance(e,dx,dy,ram ? 136 : 318,ram ? e.r : 5);
+    if(reach < 50 || (!ram && reach < distance)) return false;
+    const goal = ram ? chargeEndpoint(e.x,e.y,angle,reach) : {x:e.x+reach*dx,y:e.y+reach*dy};
+    a = e.eliteAct = { x:e.x, y:e.y, goal:goal, angle:angle, reach:reach, t:0, hit:false };
     e.vx = e.vy = 0;
     return true;
   }
   a.t += dt;
   if(a.t < spec.wind) return true;
   if(e.eliteVariant === 'lance'){
-    addBeam(e.x, e.y, a.angle, 318, 7, e.dmg, .25, 0, spec.col);
+    addBeam(e.x, e.y, a.angle, a.reach, 7, e.dmg, .25, 0, spec.col);
     e.shootT = Math.max(e.shootT, 1);
   } else {
     const f = clamp((a.t - spec.wind) / .34, 0, 1);

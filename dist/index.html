@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#101516">
-  <meta name="description" content="机甲突袭 · 回响。选择驾驶员与武器，穿越五个战区，在十波敌潮后迎击首领。">
+  <meta name="description" content="机甲突袭 · 回响。选择驾驶员与武器，穿越五个战区，每区迎击十四波敌潮后挑战首领。">
   <title>机甲突袭 · 回响</title>
   <link rel="icon" href="assets/emblem.png">
   <link rel="stylesheet" href="terminal.css">
@@ -18,6 +18,7 @@
   <script defer src="mechs.js"></script>
   <script defer src="encounters.js"></script>
   <script defer src="field-maps.js"></script>
+  <script defer src="campaign.js"></script>
   <script defer src="game.js"></script>
 </head>
 <body>
@@ -45,6 +46,9 @@
       <button id="btnMute" class="icon-button sound-toggle" aria-label="关闭音效" title="关闭音效"><canvas class="icon" data-icon="sound"></canvas></button>
       <button id="btnPause" class="icon-button" aria-label="暂停战斗" title="暂停战斗（P）"><canvas class="icon" data-icon="pause"></canvas></button>
     </div>
+    <button id="fieldMapButton" class="field-map-button" type="button" aria-label="展开战区地图（M）">
+      <canvas id="miniFieldMap" width="140" height="93"></canvas><span>地图 <kbd>M</kbd></span>
+    </button>
     <div id="skillRack" class="skill-rack" role="group" aria-label="局内技能"></div>
     <div id="actionDock">
       <button id="fieldInteract" class="field-interact" type="button" hidden></button>
@@ -78,7 +82,7 @@
           <div class="campaign-tag"><i aria-hidden="true"></i>单人生存战役<span></span><small>ROGUELIKE</small></div>
           <h1 id="gameTitle"><span>机甲突袭</span><span class="echo-title">回响<i aria-hidden="true"></i></span></h1>
           <div class="english-title" lang="en">MECH STRIKE <em>/</em> ECHO</div>
-          <p class="brief">迎击十波敌潮，突破五个战区。<br>拾取经验强化武装，蓄满能量启动机甲。</p>
+          <p class="brief">每区十四波敌潮，突破五个战区。<br>拾取经验强化武装，蓄满能量启动机甲。</p>
           <div class="hero-actions">
             <button class="primary launch" id="btnStart" disabled><canvas class="icon" data-icon="play"></canvas>开始出击<kbd>ENTER</kbd></button>
             <button class="secondary" id="btnShop"><canvas class="icon" data-icon="supply"></canvas>补给站</button>
@@ -158,13 +162,19 @@
     <div><dt>角色必杀 / 武器技</dt><dd><kbd>E</kbd> / <kbd>Q</kbd></dd></div>
     <div><dt>满能量变身 / 变身后释放机甲技</dt><dd><kbd>F</kbd></dd></div>
     <div><dt>使用战术道具</dt><dd><kbd>1</kbd> / <kbd>2</kbd></dd></div>
+    <div><dt>展开战区地图</dt><dd><kbd>M</kbd> 或点小地图</dd></div>
     <div><dt>操作战场机关</dt><dd>靠近按 <kbd>R</kbd> 或点机关按钮</dd></div>
     <div><dt>选择升级强化</dt><dd><kbd>1</kbd>–<kbd>3</kbd></dd></div>
     <div><dt>刷新强化选项（需解锁）</dt><dd><kbd>R</kbd></dd></div>
     <div><dt>满槽时选一项替换</dt><dd><kbd>1</kbd>–<kbd>9</kbd> / <kbd>0</kbd>（第 10 项）</dd></div>
     <div><dt>暂停 / 继续</dt><dd><kbd>P</kbd> / <kbd>Esc</kbd></dd></div>
   </dl><p class="touch-note"><canvas class="icon" data-icon="touch"></canvas>触屏可在左侧拖动移动，点右下按钮释放技能或使用道具。替换技能时可滑动列表。</p></div>
-  <div id="guideRoute" hidden><p>每个战区有十波敌潮。落日废土和冰封矿场在第五波后有守卫，击败守卫即可继续第六波。击败关底首领后，进入传送门前往下一站。</p><ol id="routeList" class="route-list"></ol></div>
+  <div id="guideRoute" hidden><p>每个战区有十四波敌潮，五区合计七十波。落日废土的地表与地下各有敌群，乘梯共用波次进度。落日废土和冰封矿场在第五波后有守卫，击败守卫即可继续第六波。击败关底首领后，进入传送门前往下一站。</p><ol id="routeList" class="route-list"></ol></div>
+</dialog>
+<dialog id="fieldMapDialog" class="terminal-dialog field-map-dialog" aria-labelledby="fieldMapTitle">
+  <div class="dialog-head"><h2 id="fieldMapTitle">战区地图</h2><button class="icon-button dialog-close" aria-label="关闭地图"><canvas class="icon" data-icon="close"></canvas></button></div>
+  <canvas id="openFieldMap" width="540" height="360" aria-label="当前地形、敌群和机关位置"></canvas>
+  <div class="field-map-legend"><span>当前位置</span><span>机关</span><span>敌群</span></div>
 </dialog>
 <dialog id="mechDialog" class="terminal-dialog mech-dialog" aria-labelledby="mechDialogTitle">
   <div class="dialog-head"><h2 id="mechDialogTitle">出战机甲</h2><button class="icon-button dialog-close" aria-label="关闭机甲选择"><canvas class="icon" data-icon="close"></canvas></button></div>

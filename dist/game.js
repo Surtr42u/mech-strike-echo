@@ -26,33 +26,33 @@ function angLerp(a,b,t){
 
 /* ── 世界常量 ── */
 const KZ = 0.62;                    // 深度压缩：斜俯视的关键
-const ARENA = { w: 1040, h: 720 };
+const ARENA = { w: 1440, h: 960 };
 const VIEW_W = 480, VIEW_H = 280;   // 逻辑视口（缩放基准）
 const BULLET_H = 15;                // 子弹离地高度（视觉）
-const WAVES_PER_STAGE = 10;
+const WAVES_PER_STAGE = 14;
 
 /* ── 五个场景 ── */
 const SCENES = [
   { name:'落日废土', code:'S01 · WASTELAND',
     g:['#4a3427','#3a281e','#57402f','#2d1f18'], line:'rgba(255,170,110,.09)',
     accent:'#ff9a5c', prop:['rock','crate'], deco:'dust',
-    enemies:['runner','gunner','tank','drone'], boss:'crusher' },
+    boss:'crusher' },
   { name:'霓虹雨夜', code:'S02 · NEON RAIN',
     g:['#1c2542','#151c33','#26325a','#101627'], line:'rgba(90,220,255,.13)',
     accent:'#57e0ff', prop:['crate','pillar'], deco:'neon',
-    enemies:['runner','drone','sniper','gunner','bomber'], boss:'hive' },
+    boss:'hive' },
   { name:'冰封矿场', code:'S03 · FROZEN MINE',
     g:['#2b3d4c','#1f2d39','#3a5264','#17232c'], line:'rgba(180,240,255,.12)',
     accent:'#9fe8ff', prop:['crystal','rock'], deco:'ice',
-    enemies:['runner','tank','caster','bomber'], boss:'frost' },
+    boss:'frost' },
   { name:'熔岩工厂', code:'S04 · MELTDOWN',
     g:['#3b2620','#2a1a15','#4d3125','#1e120e'], line:'rgba(255,120,60,.12)',
     accent:'#ff7a3c', prop:['pipe','crate'], deco:'lava',
-    enemies:['bomber','brute','gunner','drone'], boss:'molten' },
+    boss:'molten' },
   { name:'虚空核心', code:'S05 · VOID CORE',
     g:['#241838','#180f28','#33214d','#100a1c'], line:'rgba(200,130,255,.14)',
     accent:'#c77dff', prop:['crystal','pillar'], deco:'void',
-    enemies:['runner','brute','sniper','caster','drone'], boss:'void' }
+    boss:'void' }
 ];
 
 /* 关卡环境色：overlay/soft-light 统一色调 */
@@ -73,11 +73,11 @@ const HERO_SEP = [
    kind 与道具共用同一套系统，只是多一个 lm:true 标记；
    h/r 是屏幕像素尺度的身高与占地，位置避开中央开阔区。 */
 const LANDMARKS = [
-  { kind:'wreck',     name:'坠毁机甲',   x:236, y:566, r:74, h:104 },
-  { kind:'billboard', name:'霓虹广告牌', x:846, y:214, r:46, h:124 },
-  { kind:'drill',     name:'废弃钻塔',   x:242, y:216, r:42, h:138 },
-  { kind:'furnace',   name:'熔炉残骸',   x:822, y:548, r:64, h:112 },
-  { kind:'obelisk',   name:'虚空核心碑', x:714, y:190, r:36, h:138 }
+  { kind:'wreck',     name:'坠毁机甲',   x:327, y:755, r:74, h:104 },
+  { kind:'billboard', name:'霓虹广告牌', x:1171, y:285, r:46, h:124 },
+  { kind:'drill',     name:'废弃钻塔',   x:335, y:288, r:42, h:138 },
+  { kind:'furnace',   name:'熔炉残骸',   x:1138, y:731, r:64, h:112 },
+  { kind:'obelisk',   name:'虚空核心碑', x:989, y:253, r:36, h:138 }
 ];
 
 /* 道具成组样式：箱=堆叠、石=围圈、晶=同基点丛生、柱/管=并排 */
@@ -420,10 +420,10 @@ const EK = {
   bomber: { n:'自爆虫', hp:22, hpw:3,  spd:92, r:10, dmg:26, xp:4, h:20, c:'#b8402f', boom:true },
   caster: { n:'术士',   hp:34, hpw:4,  spd:40, r:10, dmg:9,  xp:5, h:28, c:'#7a5cc4', shoot:2.4 },
   sniper: { n:'狙击手', hp:30, hpw:3,  spd:36, r:9,  dmg:13, xp:4, h:26, c:'#4f7a6a', shoot:2.9, beam:true },
-  brute:  { n:'蛮兵',   hp:150, hpw:12, spd:42, r:17, dmg:19, xp:9, h:38, c:'#7a4a3a' }
+  brute:  { n:'蛮兵',   hp:150, hpw:12, spd:42, r:17, dmg:19, xp:9, h:38, c:'#7a4a3a' },
+  shieldguard:{ n:'护盾支援兵', hp:46, hpw:4, spd:60, r:12, dmg:7, xp:5, h:31, c:'#85edd7' },
+  conjurer:{ n:'裂隙召唤师', hp:39, hpw:3.4, spd:52, r:10, dmg:6, xp:5, h:31, c:'#edb0ff' }
 };
-/* 每关血量系数（第 1..5 关） */
-const STAGE_HP_COEF = [1.0, 1.15, 1.3, 1.5, 1.7];
 /* 同屏敌人上限：超出时移除最早生成的非 Boss 敌人（不掉经验/道具） */
 const ENEMY_CAP = 45;
 
@@ -1776,7 +1776,7 @@ function watchPerf(dt){
 
 /* ── 全局状态 ── */
 const G = {
-  mode:'title',          // title | play | level | pause | over | win
+  mode:'title',          // title | play | map | level | pause | over | win
   phase:'wave',          // wave | boss | clear
   stage:0, wave:1, waveT:0, waveDur:0, spawnT:0,
   t:0, cam:{x:ARENA.w/2, y:ARENA.h/2},
@@ -3062,6 +3062,7 @@ function newRun(){
 
 function setScene(i){
   G.stage = i;
+  G.floorSpawnSerial = 0;
   FieldMaps.begin(i);
   const sc = SCENES[i];
   /* 先说清道具，再算补给投放候选点，最后烘焙地面：
@@ -3086,18 +3087,18 @@ function setScene(i){
   if(G.p){ G.p.x = ARENA.w/2; G.p.y = ARENA.h/2 + 40; G.cam.x = G.p.x; G.cam.y = G.p.y; }
 }
 
-function waveDuration(w){ return 11 + w * 1.0; }
+function waveDuration(w){ return CampaignBalance.at(G.stage,w).duration; }
 
-function startWave(){
+function startWave(spawnDelay = .5, announce = true){
   G.phase = 'wave';
   G.waveT = waveDuration(G.wave);
   G.waveDur = G.waveT;
-  G.spawnT = .5;
-  banner('WAVE ' + G.wave + ' / ' + WAVES_PER_STAGE,
+  G.spawnT = spawnDelay;
+  TALENTS.queueMilestone();
+  if(announce) banner('WAVE ' + G.wave + ' / ' + WAVES_PER_STAGE,
          SCENES[G.stage].name + ' · ' + SCENES[G.stage].code.split('·')[0].trim(), .9);
-  // 第 3 / 6 / 9 波空投补给箱
   if(G.wave % 3 === 0 && G.crates.length === 0){
-    G.jobs.push({ t: .9, fn: function(){
+    G.jobs.push({ t:.9, fn:function(){
       if(G.phase === 'wave' && G.crates.length === 0) spawnCrate();
     }});
   }
@@ -3118,11 +3119,11 @@ function endWave(){
     if(queueMidBoss()) return;
     G.wave++;
     startWave();
-    TALENTS.queueMilestone();
   }
 }
 
 function startBoss(kind = SCENES[G.stage].boss, resumeWave = null){
+  FieldMaps.returnForEncounter();
   const encounter = { kind:kind, resumeWave:resumeWave };
   G.bossEncounter = encounter;
   G.phase = 'boss';
@@ -3140,7 +3141,8 @@ function startBoss(kind = SCENES[G.stage].boss, resumeWave = null){
 
 function spawnBoss(kind){
   const def = BOSSES[kind];
-  const origin = bossSpawnPoint();
+  const point = bossSpawnPoint();
+  const origin = FieldMaps.safePoint(point.x,point.y,def.r);
   const b = {
     kind: kind, name: def.n, r: def.r, h: def.h,
     maxHp: def.hp, hp: def.hp,
@@ -4303,6 +4305,8 @@ function calcDamage(base, attacker, target, opt){
 function applyDamage(e, dmg, crit, hx, hy, opt){
   if(!e || e.dead) return;
   const r = calcDamage(dmg, 'player', e, Object.assign({ crit: crit }, opt || {}));
+  if(EnemyTactics.supported(e)) r.dmg = Math.max(1, Math.round(r.dmg * .52));
+  EnemyTactics.interrupt(e);
   e.hp -= r.dmg;
   e.flash = .11;
   if(r.crit) G.hitStop = Math.max(G.hitStop, .028);
@@ -4320,6 +4324,11 @@ function killEnemy(e){
   if(e.dead) return;
   e.dead = true;
   e.deadT = 0;
+  EnemyTactics.detach(e);
+  if(e.noReward){
+    boom(e.x, e.y, false);
+    return;
+  }
   G.kills++;
   G.score += Math.round(e.xp * 14);
   G.combo++; G.comboT = 2.2;
@@ -4335,8 +4344,7 @@ function killEnemy(e){
     }
   }
   boom(e.x, e.y, e.elite);
-  const th = MON_THEME[G.stage] || MON_THEME[0];
-  addDissolve(e, 'm_' + (th[e.kind] || 'scav') + '_0');
+  addDissolve(e, 'm_' + CampaignEnemies.sprite(e) + '_0');
   addScar(e.x, e.y);        // 装饰附近死亡 → 留下短暂地面痕迹
   SFX.kill();
   if(e.elite) G.hitStop = Math.max(G.hitStop, .04);
@@ -4345,7 +4353,7 @@ function killEnemy(e){
   for(let i=0;i<n;i++){
     G.orbs.push({
       x: e.x, y: e.y, vx: rnd(-50,50), vy: rnd(-40,40),
-      val: e.elite ? 3 : 1, t: 0
+      val: (e.rewardXP ?? (e.elite ? 12 : 2)) / n, t: 0
     });
   }
   if(EK[e.kind].boom){
@@ -4893,44 +4901,67 @@ function cullOldestEnemy(){
   return false;
 }
 
-function spawnEnemy(kind, x, y, opt){
-  opt = opt || {};
-  const K = EK[kind];
-  const sc = SCENES[G.stage];
-  /* 同屏上限：先腾位置，避免无限叠加 */
-  if(G.enemies.length >= ENEMY_CAP) cullOldestEnemy();
-  /* 成长曲线：总波次（跨关累计）× 每波固定血量 + 关卡系数 */
-  const tw = Math.max(1, G.stage * WAVES_PER_STAGE + G.wave);
-  const sf = STAGE_HP_COEF[Math.min(G.stage, STAGE_HP_COEF.length - 1)] || 1.7;
-  let hp = (K.hp + (K.hpw || 0) * (tw - 1) * sf) * (opt.hpMul || 1);
-  let elite = !!opt.elite;
-  let eliteP = .06 + .03 * G.stage + .004 * (G.wave - 1);
-  eliteP += (G.waveEliteBoost || 0) * .06;   /* 精英狩猎事件：精英几率上升 */
-  if(!opt.noElite && G.wave >= 3 && Math.random() < eliteP && !opt.elite) elite = true;
-  if(elite) hp *= 2.5;
-
-  /* 伤害随总波次微调，上限 2.5 倍基础值 */
-  const dmgMul = Math.min(2.5, 1 + .04 * (tw - 1));
-
-  const e = {
-    kind: kind, x: x, y: y, vx:0, vy:0,
-    hp: hp, maxHp: hp,
-    r: K.r * (elite ? 1.24 : 1), h: K.h * (elite ? 1.18 : 1),
-    dmg: K.dmg * dmgMul * (elite ? 1.35 : 1),
-    spd: K.spd * (1 + .055 * G.stage) * (elite ? .92 : 1),
-    xp: K.xp * (1 + .12 * G.stage) * (elite ? 3 : 1), elite: elite,
-    fly: !!K.fly,
-    shoot: K.shoot ? K.shoot * Math.max(.5, 1 - .09 * G.stage) : 0,
-    shootT: rnd(.6, 2),
-    beam: !!K.beam, boom: !!K.boom,
-    face: 1, anim: rnd(0, 10), spawnT: .45, flash:0,
-    slowT:0, slowAmt:0, burnT:0, burnDps:0,
-    dead:false, deadT:0, wob: rnd(0, TAU), col: K.c
+function enemyTypeStats(kind, profile, elite, hpMul){
+  const k = EK[kind];
+  return {
+    hp:(k.hp + k.hpw * profile.hpGrowth) * hpMul * (elite ? 2.35 : 1),
+    r:k.r * (elite ? 1.24 : 1), h:k.h * (elite ? 1.18 : 1),
+    dmg:k.dmg * profile.damageMul * (elite ? 1.3 : 1),
+    spd:k.spd * (1 + .045 * G.stage) * (elite ? .92 : 1),
+    fly:!!k.fly, boom:!!k.boom, beam:!!k.beam,
+    shoot:k.shoot ? k.shoot * (1 - .06 * G.stage) : 0,
+    col:k.c
   };
-  markEliteVariant(e);
+}
+
+function spawnEnemy(kind, x, y, opt = {}){
+  if(G.enemies.length >= ENEMY_CAP) cullOldestEnemy();
+  const k = EK[kind], waveOrigin = opt.waveOrigin ?? G.wave;
+  const profile = CampaignBalance.at(G.stage,waveOrigin);
+  const elite = !!opt.elite || (!opt.noElite && G.wave >= 3 &&
+    Math.random() < profile.eliteChance + (G.waveEliteBoost || 0) * .06);
+  const hpMul = opt.hpMul || 1;
+  const stats = enemyTypeStats(kind,profile,elite,hpMul);
+  const e = {
+    ...stats, kind:kind, x:x, y:y, vx:0, vy:0, maxHp:stats.hp, elite:elite,
+    waveOrigin:waveOrigin, variantRoll:opt.variantRoll, hpMul:hpMul,
+    xp:k.xp * (1 + .10 * G.stage) * (elite ? 3 : 1),
+    rewardXP:Math.round((profile.xpValue + (k.xp-2) * .28) * (elite ? 2.8 : 1)),
+    noReward:!!opt.noReward, shootT:rnd(.6,2), tacticsCd:rnd(1.1,2.3),
+    face:1, anim:rnd(0,10), spawnT:.45, flash:0,
+    slowT:0, slowAmt:0, burnT:0, burnDps:0, stun:0,
+    dead:false, deadT:0, wob:rnd(0,TAU)
+  };
+  if(!e.fly) FieldMaps.clearRails(e,e.r);
+  if(kind !== 'shieldguard' && kind !== 'conjurer') markEliteVariant(e);
   G.enemies.push(e);
-  G.rings.push({ x:x, y:y, r:2, max:16, life:.3, maxLife:.3, col:sc.accent, w:1.5 });
+  G.rings.push({ x:e.x, y:e.y, r:2, max:16, life:.3, maxLife:.3, col:SCENES[G.stage].accent, w:1.5 });
   return e;
+}
+
+function reformWaveEnemies(floor){
+  for(let i=G.enemies.length-1;i>=0;i--){
+    const e=G.enemies[i];
+    EnemyTactics.detach(e);
+    if(e.dead) G.enemies.splice(i,1);
+  }
+  for(const e of G.enemies){
+    e.variantRoll ??= (++G.floorSpawnSerial * .61803398875) % 1;
+    const wave = e.waveOrigin ?? G.wave;
+    const kind = CampaignEnemies.kind(G.stage,wave,floor,e.variantRoll);
+    if(kind !== e.kind){
+      const health = e.hp / e.maxHp;
+      const stats = enemyTypeStats(kind,CampaignBalance.at(G.stage,wave),e.elite,e.hpMul ?? 1);
+      Object.assign(e,stats,{kind:kind,maxHp:stats.hp,hp:stats.hp * health});
+      const cooldown = e.eliteCooldown;
+      e.eliteAct = e.eliteVariant = null;
+      if(kind !== 'shieldguard' && kind !== 'conjurer'){
+        markEliteVariant(e);
+        if(cooldown !== undefined) e.eliteCooldown = cooldown;
+      }
+    }
+    if(!e.fly) FieldMaps.clearRails(e,e.r);
+  }
 }
 
 /* ── 刷怪锚点：让敌人从「场景里」钻出来 ──
@@ -4978,6 +5009,7 @@ function spawnPuff(x, y){
 }
 
 function spawnPointNear(){
+  const open = (x,y) => FieldMaps.openPoint(x,y,22);
   /* ① 优先：场景装饰旁钻出（68%），落点仍需离玩家足够远 */
   const an = G.spawnAnchors;
   if(an && an.length > 2 && Math.random() < .68){
@@ -4990,7 +5022,7 @@ function spawnPointNear(){
       const x = a.x + Math.cos(ang) * rr;
       const y = a.y + Math.sin(ang) * rr * KZ;
       if(x < 48 || x > ARENA.w - 48 || y < 52 || y > ARENA.h - 48) continue;
-      if(dst(x, y, G.p.x, G.p.y) < 205) continue;      // 不贴脸生成
+      if(dst(x, y, G.p.x, G.p.y) < 205 || !open(x,y)) continue;      // 不贴脸生成
       return { x:x, y:y, deco:true };
     }
   }
@@ -5000,9 +5032,16 @@ function spawnPointNear(){
     const r = rnd(290, 400);
     const x = G.p.x + Math.cos(a) * r;
     const y = G.p.y + Math.sin(a) * r * .9;
-    if(x > 46 && x < ARENA.w - 46 && y > 50 && y < ARENA.h - 46) return { x:x, y:y };
+    if(x > 46 && x < ARENA.w - 46 && y > 50 && y < ARENA.h - 46 && open(x,y)) return { x:x, y:y };
   }
-  return { x: rnd(60, ARENA.w - 60), y: rnd(60, ARENA.h - 60) };
+  let fallback, far = -1;
+  for(let y=48;y<ARENA.h-46;y+=64){
+    for(let x=48;x<ARENA.w-46;x+=64){
+      const dd=d2(x,y,G.p.x,G.p.y);
+      if(dd>far && open(x,y)){ fallback={x,y}; far=dd; }
+    }
+  }
+  return fallback || FieldMaps.safePoint(ARENA.w/2,ARENA.h/2,22);
 }
 
 /* ── 死亡痕迹：在装饰附近留下的短暂地面记忆 ──
@@ -5140,13 +5179,24 @@ function updateEnemies(dt){
     const ux = dx / d, uy = dy / d;
     e.face = ux >= 0 ? 1 : -1;
     if(updateEliteVariant(e, dt, d)) continue;
+    const tactic = EnemyTactics.motion(e,dt,d);
 
     let sp = e.spd;
     if(e.slowT > 0) sp *= (1 - e.slowAmt);
     if(e.stun > 0) sp = 0;
 
     let mx = 0, my = 0;
-    if(e.shoot > 0){
+    if(tactic?.stop){
+      sp = 0;
+      e.vx = e.vy = 0;
+    } else if(tactic){
+      const dx = tactic.x - e.x, dy = tactic.y - e.y;
+      const distance = Math.max(.01,Math.hypot(dx,dy));
+      if(distance > tactic.keep){
+        mx = dx / distance;
+        my = dy / distance;
+      }
+    } else if(e.shoot > 0){
       const want = e.beam ? 250 : 175;
       if(d > want + 30){ mx = ux; my = uy; }
       else if(d < want - 30){ mx = -ux; my = -uy; }
@@ -5155,7 +5205,7 @@ function updateEnemies(dt){
         mx = -uy * .8; my = ux * .8;
       }
       e.shootT -= dt;
-      if(e.shootT <= 0 && d < 340 && !(e.stun > 0)){
+      if(e.shootT <= 0 && d < 340 && !(e.stun > 0) && FieldMaps.lineOpen(e.x,e.y,p.x,p.y)){
         e.shootT = e.shoot * rnd(.85, 1.2);
         enemyShoot(e, ux, uy);
       }
@@ -5172,7 +5222,7 @@ function updateEnemies(dt){
       // 自爆虫加速冲刺
       sp *= 1.55;
     }
-    const heading = FieldMaps.chase(e);
+    const heading = tactic?.stop ? null : FieldMaps.chase(e);
     if(heading){ mx = heading.x; my = heading.y; }
 
     e.vx = lerp(e.vx, mx * sp, 1 - Math.pow(.0015, dt));
@@ -5977,7 +6027,7 @@ function bossDown(b){
       return;
     }
     G.phase = 'clear';
-    G.portal = { x: b.x, y: b.y, t: 0 };
+    G.portal = {...FieldMaps.safePoint(b.x,b.y,26),t:0};
     banner('区域肃清', '走进光环前往下一区域', 1.6);
     SFX.portal();
   }});
@@ -6127,11 +6177,7 @@ function nextStage(){
   G.revives = Math.max(G.revives, 0);
   setScene(s + 1);
   G.wave = 1;
-  TALENTS.queueMilestone();
-  G.phase = 'wave';
-  G.waveT = waveDuration(1);
-  G.waveDur = G.waveT;
-  G.spawnT = 1.4;
+  startWave(1.4,false);
   G.eb.length = 0;
   const sc = SCENES[s + 1];
   banner(sc.name, sc.code, 2.2);
@@ -6147,19 +6193,18 @@ function updateWaves(dt){
   if(G.phase !== 'wave') return;
   G.waveT -= dt;
 
-  const sc = SCENES[G.stage];
-  /* 同屏上限固定 45，超出部分由 spawnEnemy 内部淘汰最老的非 Boss 敌人 */
-  const cap = ENEMY_CAP;
+  const curve = CampaignBalance.at();
+  const cap = curve.cap;
   if(G.waveT > 0 && G.enemies.length < cap){
     G.spawnT -= dt;
     if(G.spawnT <= 0){
-      const interval = clamp(1.2 - G.wave * .075 - G.stage * .05, .34, 1.2);
-      G.spawnT = interval * rnd(.75, 1.15);
-      const count = 1 + (Math.random() < .18 + G.wave * .04 ? 1 : 0);
+      G.spawnT = curve.interval * rnd(.84, 1.12);
+      const count = Math.min(cap - G.enemies.length,1 + (Math.random() < curve.extraChance ? 1 : 0));
       for(let i=0;i<count;i++){
         const pt = spawnPointNear();
-        const kind = sc.enemies[(Math.random() * sc.enemies.length) | 0];
-        spawnEnemy(kind, pt.x, pt.y);
+        const variantRoll = Math.random();
+        const kind = CampaignEnemies.kind(G.stage,G.wave,FieldMaps.floorId(),variantRoll);
+        spawnEnemy(kind, pt.x, pt.y,{variantRoll:variantRoll});
         if(pt.deco) spawnPuff(pt.x, pt.y);   // 从道具/角落钻出时扬一层粉尘
       }
     }
@@ -8198,8 +8243,7 @@ function drawEnemy(e){
   const bob = e.fly ? Math.sin(G.t * 3 + e.wob) * 2.5 : 0;
   const h = e.h;
   const c = e.col;
-  const theme = MON_THEME[G.stage] || MON_THEME[0];
-  const kind = theme[e.kind] || 'scav';
+  const kind = CampaignEnemies.sprite(e);
   const mw = MON_W[kind] || 30;
   const sc = clamp(e.r * 2.62 / mw, .45, 2.4);
   const fi = Math.floor(e.anim * 1.7) % 4;
@@ -9130,6 +9174,7 @@ function render(){
   drawBeams();
   drawLights(1);
   drawEncounterWarnings(ctx);
+  EnemyTactics.draw(ctx);
   drawParts();
   drawTexts();
 
@@ -9418,7 +9463,7 @@ document.addEventListener('visibilitychange', function(){
 
 // An actual page exit settles once; a cached page can resume the same run.
 window.addEventListener('pagehide', function(e){
-  if(!e.persisted && G.p && !G.settled && ['play','pause','level','event'].includes(G.mode)) settle(false);
+  if(!e.persisted && G.p && !G.settled && ['play','map','pause','level','event'].includes(G.mode)) settle(false);
 });
 
 /* 触屏摇杆 */
@@ -9589,5 +9634,5 @@ window.__dbg = {
   LANDMARKS:LANDMARKS, drawLandmark:drawLandmark, LM_PAL:LM_PAL,
   RESONANCE:RESONANCE, BOSS_PHASES:BOSS_PHASES, calcDamage:calcDamage,
   addZone:addZone, cullOldestEnemy:cullOldestEnemy, ENEMY_CAP:ENEMY_CAP,
-  STAGE_HP_COEF:STAGE_HP_COEF, totalWave:function(){ return G.stage * WAVES_PER_STAGE + G.wave; }
+  CampaignBalance:CampaignBalance, totalWave:campaignWaveIndex
 };
