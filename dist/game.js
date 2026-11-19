@@ -1025,20 +1025,21 @@ const MON_TOP = { hound:15, scav:7, scrappod:11, hackdrone:8, assassin:5,
 const MON_GY = 38;   // 精灵脚底线（40×40 格内）
 
 /* ── 受击反馈：朝受击方向的冲击弧 + 碎屑 ── */
-function hitFX(x, y, ang, col, big){
+function hitFX(x, y, ang, col, big, height){
   const n = big ? 3 : 2;
   for(let i = 0; i < n; i++){
     G.rings.push({
       x: x - Math.cos(ang) * (4 + i * 7), y: y - Math.sin(ang) * (4 + i * 7) * .7,
       r: 2, max: (big ? 20 : 13) + i * 5, life: .20 + i * .04, maxLife: .20 + i * .04,
-      col: col || '#ffe6c0', w: 1.6, arc: ang
+      col: col || '#ffe6c0', w: 1.6, arc: ang, height:height
     });
   }
   for(let i = 0; i < (big ? 9 : 5); i++){
     const a = ang + Math.PI + rnd(-.9, .9);
     const v = rnd(40, big ? 190 : 120);
     G.parts.push({
-      x: x, y: y - rnd(2, 12), vx: Math.cos(a) * v, vy: Math.sin(a) * v * .6 - rnd(10, 40),
+      x: x, y: height === undefined ? y - rnd(2, 12) : y, height:height,
+      vx: Math.cos(a) * v, vy: Math.sin(a) * v * .6 - rnd(10, 40),
       life: .22 + Math.random() * .18, max: .4, col: pick([col || '#ffd8a0', '#ffffff', '#ffb066']),
       r: rnd(1, 2.2), grav: 220
     });
@@ -3312,7 +3313,7 @@ function fire(target){
       : (i - (n - 1) / 2) * step;
     const spread = w.count > 1 || n > 1 ? .014 : w.spread * s.spreadMul * .24;
     const a = ang + off + rnd(-spread, spread);
-    G.bullets.push({
+    const bullet = {
       x:muzzle.x, y:muzzle.y, fromX:p.x, fromY:p.y,
       vx:Math.cos(a) * sp, vy:Math.sin(a) * sp,
       dmg:s.dmg * weakM, pct:oved ? .25 : 0,
@@ -3320,7 +3321,9 @@ function fire(target){
       hits:[], life:(w.life + s.lifeAdd) * s.gunRangeMul, crit:Math.random() < s.crit,
       r:w.br * s.bigMul, over:oved, w:w.id, boom:!!w.boom, fuse:!!w.boom,
       homing:w.id === 'micromissile', turn:w.id === 'micromissile' ? 5 : 0
-    });
+    };
+    if(w.boom) lobProjectile(bullet, t);
+    G.bullets.push(bullet);
   }
   /* 弹幕风暴：额外散射子弹 */
   const bn = s.barrage * 2 + s.barrageExtra;
@@ -3411,14 +3414,18 @@ const WSK_G = {
   salvo: function(w, p){
     const count = w.sk.count || 6;
     const aim = aimAngle(p, 700);
-    const muzzle = gunMuzzle(p, w, aim);
-    p.shotAngle = aim;
-    p.flashT = .07;
+    const muzzle = w.boom ? gunMuzzle(p, w, aim) : null;
+    if(muzzle){
+      p.shotAngle = aim;
+      p.flashT = .07;
+    }
     for(let i = 0; i < count; i++){
-      const a = aim + (i - (count - 1) / 2) * .18;
+      const a = aim + (i - (count - 1) / 2) * (muzzle ? .18 : .22);
+      const dx = Math.cos(a), dy = Math.sin(a);
       G.bullets.push({
-        x:muzzle.x, y:muzzle.y, fromX:p.x, fromY:p.y,
-        vx:Math.cos(a) * w.spd * 1.1, vy:Math.sin(a) * w.spd * 1.1,
+        x:muzzle ? muzzle.x : p.x + dx * 12, y:muzzle ? muzzle.y : p.y + dy * 12,
+        fromX:muzzle ? p.x : undefined, fromY:muzzle ? p.y : undefined,
+        vx:dx * w.spd * 1.1, vy:dy * w.spd * 1.1,
         dmg:scaleSkill(G.st.dmg * 2.4), pierce:w.boom ? 0 : 1, hits:[], life:1.6,
         crit:Math.random() < G.st.crit + .1, r:w.br * 1.2, w:w.id,
         boom:!!w.boom, fuse:!!w.boom, homing:true, turn:w.boom ? 5 : 3.4
@@ -6319,13 +6326,13 @@ function boom(x, y, big){
     col: big ? '#ffb74d' : '#ffe9a8', w: big ? 3 : 2 });
   G.shake = Math.max(G.shake, big ? 7 : 2.5);
 }
-function explodeFX(x, y, r){
+function explodeFX(x, y, r, height){
   G.rings.push({ x:x, y:y, r:6, max:r, life:.4, maxLife:.4, col:'#ffb060', w:4 });
   G.rings.push({ x:x, y:y, r:r * .25, max:r * 1.85, life:.55, maxLife:.55, col:'rgba(255,228,186,.42)', w:2 });
   addFlash(x, y, r * 1.1, '#ffa040', .60);
   for(let i=0;i<18;i++){
     const a = rnd(0, TAU), v = rnd(60, r * 3.4);
-    G.parts.push({ x:x, y:y, vx:Math.cos(a) * v, vy:Math.sin(a) * v * .7,
+    G.parts.push({ x:x, y:y, height:height, vx:Math.cos(a) * v, vy:Math.sin(a) * v * .7,
       life:rnd(.3,.6), max:.6, col: pick(['#fff3c4','#ffb74d','#ff6b4a']), r:rnd(2,4) });
   }
   G.shake = Math.max(G.shake, 6);
@@ -8970,13 +8977,27 @@ function drawBullets(){
   /* ── 玩家子弹 ── */
   for(let i = 0; i < G.bullets.length; i++){
     const b = G.bullets[i];
-    const ang = Math.atan2(b.vy, b.vx);
-    const sx = SX(b.x), sy = SY(b.y) - BULLET_H;
+    const height = projectileAltitude(b);
+    const sx = SX(b.x), groundY = SY(b.y), sy = groundY - height;
     const margin = 36 + b.r * 6;
-    if(sx < -margin || sx > VW + margin || sy < -margin || sy > VH + margin) continue;
+    if(sx < -margin || sx > VW + margin || groundY < -margin || sy > VH + margin) continue;
     const w = WP[b.w];
     const col = w ? w.c : '#ffd88a';
     ctx.save();
+    let vy = b.vy;
+    if(b.arc){
+      const scale = 1 - .32 * clamp(height / (BULLET_H + b.arcH), 0, 1);
+      ctx.fillStyle = 'rgba(18,15,24,' + (.35 * scale).toFixed(2) + ')';
+      ctx.beginPath();
+      ctx.ellipse(sx, groundY, b.r * scale, b.r * scale * KZ, 0, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,228,193,.24)';
+      ctx.lineWidth = .75;
+      ctx.stroke();
+      const sample = Math.min(.016, b.life - b.landAt);
+      if(sample > 0) vy -= (projectileAltitude(b, b.life - sample) - height) / (sample * KZ);
+    }
+    const ang = Math.atan2(vy, b.vx);
     ctx.translate(sx, sy);
     ctx.scale(1, KZ);
     ctx.rotate(ang);
@@ -9017,7 +9038,7 @@ function drawRings(){
     ctx.strokeStyle = r.col;
     ctx.lineWidth = r.w || 2;
     ctx.beginPath();
-    ctx.ellipse(SX(r.x), SY(r.y), rad, rad * KZ, 0, 0, TAU);
+    ctx.ellipse(SX(r.x), SY(r.y) - (r.height ?? 0), rad, rad * KZ, 0, 0, TAU);
     ctx.stroke();
     ctx.globalAlpha = 1;
   }

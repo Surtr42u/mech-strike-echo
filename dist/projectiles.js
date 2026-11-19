@@ -16,6 +16,47 @@ function projectileContact(x0, y0, x1, y1, radius){
   return t <= 1 ? t : null;
 }
 
+/* The altitude is measured in rendered pixels above the projectile's ground shadow. */
+function lobProjectile(b, target){
+  const speedSq = b.vx * b.vx + b.vy * b.vy;
+  const targetTime = ((target.x - b.x) * b.vx + (target.y - b.y) * b.vy) / speedSq;
+  const flight = clamp(targetTime, Math.min(.33, b.life), b.life);
+  b.arc = flight;
+  b.arcH = 28;
+  b.landAt = b.life - flight;
+}
+
+function projectileAltitude(b, life = b.life){
+  if(!b.arc) return BULLET_H;
+  const t = clamp(life - b.landAt, 0, b.arc) / b.arc;
+  const progress = 1 - t;
+  const landing = b.r * KZ;
+  const apex = b.arcH + (BULLET_H - landing) * .5;
+  return lerp(BULLET_H, landing, progress) + 4 * apex * progress * (1 - progress);
+}
+
+function aerialContact(b, e, entry, duration, x0, y0, x1, y1, r){
+  const top = (e.h ?? e.r * 2) + b.r * KZ;
+  if(projectileAltitude(b, b.life - duration * entry) <= top) return entry;
+
+  const dx = x1 - x0, dy = y1 - y0;
+  const a = dx * dx + dy * dy;
+  const dot = x0 * dx + y0 * dy;
+  const c = x0 * x0 + y0 * y0 - r * r;
+  // Intersect only while the ground footprint still overlaps the moving target.
+  const exit = a ? Math.min(1, (-dot + Math.sqrt(Math.max(0, dot * dot - a * c))) / a) : 1;
+  if(projectileAltitude(b, b.life - duration * exit) > top) return null;
+
+  // From a point above the target to a point below its top, the arc is descending.
+  let low = entry, high = exit;
+  for(let i = 0; i < 14; i++){
+    const t = (low + high) * .5;
+    if(projectileAltitude(b, b.life - duration * t) > top) low = t;
+    else high = t;
+  }
+  return high;
+}
+
 function projectileTargets(){
   return G.boss ? [...G.enemies, G.boss] : G.enemies;
 }
@@ -95,15 +136,19 @@ function projectileDuration(b, step){
   if(b.x < 0 || b.x > ARENA.w || b.y < 0 || b.y > ARENA.h) return 0;
   const xExit = b.vx > 0 ? (ARENA.w - b.x) / b.vx : b.vx < 0 ? -b.x / b.vx : Infinity;
   const yExit = b.vy > 0 ? (ARENA.h - b.y) / b.vy : b.vy < 0 ? -b.y / b.vy : Infinity;
-  return Math.min(step, b.life, xExit, yExit);
+  const remaining = b.arc ? b.life - b.landAt : b.life;
+  return Math.min(step, Math.max(0, remaining), xExit, yExit);
 }
 
-function sweepProjectile(field, b, x0, y0, x1, y1, start, end, contacts){
+function sweepProjectile(field, b, x0, y0, x1, y1, start, end, contacts, duration=0){
   contacts.length = 0;
   field.query(x0, y0, x1, y1, b.r, p => {
     if(b.hits.includes(p.e) || (p.e === G.boss && b.bossHit)) return;
-    const t = projectileContact(x0 - p.x - p.dx * start, y0 - p.y - p.dy * start,
-      x1 - p.x - p.dx * end, y1 - p.y - p.dy * end, b.r + p.e.r);
+    const dx0 = x0 - p.x - p.dx * start, dy0 = y0 - p.y - p.dy * start;
+    const dx1 = x1 - p.x - p.dx * end, dy1 = y1 - p.y - p.dy * end;
+    const radius = b.r + p.e.r;
+    let t = projectileContact(dx0, dy0, dx1, dy1, radius);
+    if(t !== null && b.arc) t = aerialContact(b, p.e, t, duration, dx0, dy0, dx1, dy1, radius);
     if(t !== null) contacts.push({ e:p.e, t:t });
   });
   if(contacts.length > 1) contacts.sort((a, b) => a.t - b.t);
@@ -113,7 +158,8 @@ function sweepProjectile(field, b, x0, y0, x1, y1, start, end, contacts){
     b.x = lerp(x0, x1, contact.t);
     b.y = lerp(y0, y1, contact.t);
     b.hits.push(e);
-    onBulletHit(b, e, field, lerp(start, end, contact.t));
+    const altitude = b.arc ? projectileAltitude(b, b.life - duration * contact.t) : undefined;
+    onBulletHit(b, e, field, lerp(start, end, contact.t), altitude);
     if(b.pierce <= 0) return false;
     b.pierce--;
   }
@@ -148,10 +194,10 @@ function advancePlayerProjectile(b, dt, field, contacts){
     elapsed += travel;
     const end = dt ? elapsed / dt : 0;
     if(!sweepProjectile(field, b, b.x, b.y, b.x + b.vx * travel, b.y + b.vy * travel,
-      start, end, contacts)) return false;
+      start, end, contacts, travel)) return false;
     b.life -= travel;
-    if(travel < step || b.life <= 0){
-      if(b.fuse) projectileExplosion(b, field, end, null);
+    if(travel < step || b.life <= (b.landAt ?? 0)){
+      if(b.fuse) projectileExplosion(b, field, end, null, b.arc ? projectileAltitude(b) : undefined);
       return false;
     }
   } while(elapsed < dt);
@@ -207,10 +253,12 @@ function projectileSplash(b, field, time, radius, damage, skip){
   }
 }
 
-function projectileExplosion(b, field, time, skip){
-  const radius = (b.w === 'micromissile' ? 46 : 38) * G.st.boomMul;
-  projectileSplash(b, field, time, radius, b.dmg * .72, skip);
-  explodeFX(b.x, b.y, radius);
+function projectileExplosion(b, field, time, skip, altitude){
+  const landing = b.arc && !skip;
+  const radius = (landing || b.w === 'micromissile' ? 46 : 38) * G.st.boomMul;
+  projectileSplash(b, field, time, radius, b.dmg * (landing ? .8 : .72), skip);
+  explodeFX(b.x, b.y, radius, altitude);
+  if(skip && b.arc) addFlash(b.x, b.y, radius * 2.2, '#ff8a5c', .5);
   if(!skip) addBurn(b.x, b.y, 26);
 }
 
@@ -231,13 +279,14 @@ function projectileChain(b, e, field, time){
   }
 }
 
-function onBulletHit(b, e, field, time){
+function onBulletHit(b, e, field, time, altitude){
   const s = G.st;
-  hitFX(b.x, b.y - 4, Math.atan2(b.vy, b.vx), b.boom ? '#ffb060' : '#ffe6c0', !!b.boom);
+  hitFX(b.x, altitude === undefined ? b.y - 4 : b.y, Math.atan2(b.vy, b.vx),
+    b.boom ? '#ffb060' : '#ffe6c0', !!b.boom, altitude);
   hitProjectileTarget(b, e, b.dmg, b.crit, b.x, b.y, { pct:b.pct || 0, pierceIndex:b.hits.length - 1 });
 
   const xu = s.elemMul > 1 && Math.random() < (s.elemMul - 1) ? s.elemMul : 1;
-  if(b.boom) projectileExplosion(b, field, time, e);
+  if(b.boom) projectileExplosion(b, field, time, e, altitude);
   if(b.w === 'flamer'){ setBurn(e, 2.6, 6 * s.burnMul * xu); }
   else if(b.w === 'acid'){ setBurn(e, 3.0, 5 * s.burnMul * xu); projectileSplash(b, field, time, 26, b.dmg * .38, e); }
   else if(b.w === 'frost'){
