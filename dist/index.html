@@ -21,6 +21,7 @@
   <script defer src="field-maps.js"></script>
   <script defer src="campaign.js"></script>
   <script defer src="sector-climate.js"></script>
+  <script defer src="campaign-story.js"></script>
   <script defer src="game.js"></script>
 </head>
 <body>
@@ -34,7 +35,7 @@
       <div class="meter hp-meter"><i id="hpFill"></i></div>
       <div class="meter xp-meter" aria-label="升级经验"><i id="xpFill"></i></div>
       <div class="vitals-meta"><span>击破 <b id="hudKills">0</b></span><span>得分 <b id="hudScore">0</b></span></div>
-      <div class="hud-status"><span id="hudLives"></span><span id="hudBuffs"></span><span id="hudGrowth" class="hud-growth" hidden></span><span id="hudHexPlan"></span><span id="hudEnhancements"></span></div>
+      <div class="hud-status"><span id="hudLives"></span><span id="hudBuffs"></span><span id="hudGrowth" class="hud-growth" hidden></span><span id="hudHexPlan"></span><span id="hudEnhancements"></span><span id="hudFieldGear" hidden></span></div>
     </div>
     <div id="wavePanel" class="wave-panel combat-panel">
       <div class="hud-sector" id="hudSector"></div>
@@ -42,6 +43,7 @@
       <div class="meter wave-meter"><i id="waveFill"></i></div>
       <b id="comboText"></b>
       <small id="fieldObjective" class="field-objective" hidden></small>
+      <small id="fieldTransmission" class="field-transmission" role="status" hidden></small>
     </div>
     </div>
     <div class="corner-controls">
@@ -157,7 +159,7 @@
     </div>
   </section>
   <section class="ov veil hide" id="ovOver" role="dialog" aria-modal="true" aria-labelledby="overTitle">
-    <div class="menu-sheet report-sheet"><div class="section-kicker"><i></i><span id="overTag">行动报告</span></div><h2 id="overTitle">行动结束</h2><div class="stats" id="overStats"></div>
+    <div class="menu-sheet report-sheet"><div class="section-kicker"><i></i><span id="overTag">行动报告</span></div><h2 id="overTitle">行动结束</h2><p id="overFieldResult" hidden></p><div class="stats" id="overStats"></div>
       <button class="primary wide" id="btnRetry"><canvas class="icon" data-icon="play"></canvas>再次出击</button><div class="pause-tools"><button class="secondary" id="btnHome">返回大厅</button><button class="secondary" id="btnShop2">前往补给站</button></div>
     </div>
   </section>
@@ -201,7 +203,8 @@
 <dialog id="fieldMapDialog" class="terminal-dialog field-map-dialog" aria-labelledby="fieldMapTitle">
   <div class="dialog-head"><h2 id="fieldMapTitle">战区地图</h2><button class="icon-button dialog-close" aria-label="关闭地图"><canvas class="icon" data-icon="close"></canvas></button></div>
   <canvas id="openFieldMap" width="540" height="360" aria-label="当前地形、敌群和机关位置"></canvas>
-  <div class="field-map-legend"><span>当前位置</span><span>机关</span><span>敌群</span></div>
+  <div class="field-map-legend"><span>当前位置</span><span>机关</span><span>敌群</span><span>路线</span></div>
+  <details id="fieldLog" class="field-log"><summary>回声通讯 · <span id="fieldGearLog"></span></summary><ol id="fieldLogEntries"></ol></details>
 </dialog>
 <dialog id="mechDialog" class="terminal-dialog mech-dialog" aria-labelledby="mechDialogTitle">
   <div class="dialog-head"><h2 id="mechDialogTitle">出战机甲</h2><button class="icon-button dialog-close" aria-label="关闭机甲选择"><canvas class="icon" data-icon="close"></canvas></button></div>

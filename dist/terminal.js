@@ -354,6 +354,9 @@ function showReport(win,withdrawn) {
   SFX.stopAmbience();
   byId('overTag').textContent = win ? 'MISSION COMPLETE' : 'AFTER ACTION REPORT';
   byId('overTitle').textContent = win ? '五区突破' : withdrawn ? '已撤离战区' : '战斗结束';
+  const fieldResult = byId('overFieldResult');
+  fieldResult.hidden = !win;
+  if(win) putText(fieldResult,CampaignStory.ending());
   const points = settle(win);
   const values = [
     ['战区',SCENES[G.stage].name],['波次',G.wave + ' / ' + WAVES_PER_STAGE],
@@ -417,7 +420,7 @@ function wireTerminal() {
     const guard = MID_BOSSES[i];
     const names = '关底 · ' + BOSSES[sc.boss].n + (guard ? '\n第' + guard.wave + '波后 · ' + BOSSES[guard.kind].n : '');
     line.append(node('span','sector-number','S' + pad2(i+1)),node('b','',sc.name),
-      node('small','',names + '\n' + SectorClimate.routeNotes[i]));
+      node('small','',names + '\n' + CampaignStory.routeNotes[i]));
     byId('routeList').append(line);
   });
   if(G.touch) byId('titleHint').textContent = '左侧拖动移动 · 右侧点按技能';
@@ -477,9 +480,10 @@ function paintInstruments(force) {
   meterFill('hpFill',hp); meterFill('xpFill',G.xp/G.need);
   putText(instrument('hudSector'),'S' + pad2(G.stage+1) + ' / ' + SCENES[G.stage].name + SectorClimate.skyLabel());
   FieldMaps.paintHud();
+  CampaignStory.paintHud();
   instrument('wavePanel').classList.toggle('boss',!!boss);
   const clear = G.phase === 'clear';
-  putText(instrument('waveName'),boss ? boss.name : clear ? '前往传送门' : G.phase === 'boss' ? '首领接近' : '敌潮 ' + pad2(G.wave) + ' / ' + WAVES_PER_STAGE);
+  putText(instrument('waveName'),boss ? boss.name : clear ? '战区肃清' : G.phase === 'boss' ? '首领接近' : '敌潮 ' + pad2(G.wave) + ' / ' + WAVES_PER_STAGE);
   putText(instrument('waveDetail'),boss ? '阶段 ' + boss.phase + ' / ' + BOSS_PHASES[boss.kind].phases.length : G.phase === 'wave' ? Math.max(0,Math.ceil(G.waveT)) + 's' : '');
   meterFill('waveFill',boss ? boss.hp/boss.maxHp : G.phase === 'wave' ? G.waveT/G.waveDur : 1);
   putText(instrument('comboText'),G.combo >= 5 ? G.combo + ' 连击' : '');

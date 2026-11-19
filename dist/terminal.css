@@ -318,3 +318,12 @@ button.wallet:hover{background:#3b3023;border-color:#a37c4e}
 .field-map-legend span::before{content:'●';margin-right:4px;color:#fff7da}
 .field-map-legend span:nth-child(2)::before{color:#f2c96e}
 .field-map-legend span:nth-child(3)::before{color:#d48d80}
+.field-map-legend span:nth-child(4)::before{color:#b7f0c6}
+.wave-panel .field-transmission{display:block;color:#ecd8a9;font:600 .69rem/1.38 var(--sans);border-top:1px solid #b8a47649;margin:5px 0 0;padding-top:4px}
+.field-transmission[hidden]{display:none!important}
+#hudFieldGear,#fieldGearLog{color:#b3e3c1}
+.field-log{margin-top:9px;border-top:1px solid #71857d70;padding-top:7px;color:#d4e3d9;font:600 .73rem/1.5 var(--sans)}
+.field-log summary{cursor:pointer}
+.field-log ol{list-style:none;margin:6px 0 0;padding:0;max-height:22dvh;overflow:auto}
+.field-log li{padding:5px 0;border-top:1px solid #8dac9e36}
+#overFieldResult{color:#b3e3c1;margin:0 0 10px;font:.88rem/1.45 var(--sans)}

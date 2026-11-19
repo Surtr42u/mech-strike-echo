@@ -1750,6 +1750,7 @@ function gradeFrame(){
   /* 近景遮挡层：画在暗角之后（不被压暗），像贴在镜头前的灰尘与角落剪影，
      制造「镜头在场景内部」的纵深；密度极低，不影响任何操作判定 */
   if(!FieldMaps.underground()) FOREFX.draw(SW, SH);
+  SectorClimate.drawWastelandWeather(ctx);
 
   // 全屏白闪（爆炸 / 受击 / 召唤）
   if(G.flash > 0 && !reducedEffects){
@@ -2988,7 +2989,7 @@ function recalc({ fillNewCapacity = true } = {}){
   if(b.extra > 0) s.extra += 2;
   TALENTS.applyStats(s);
   /* 生命上限兜底：易碎/玻璃大炮叠满也不至于变成 0 血 */
-  s.maxHp = Math.max(20, Math.round(s.maxHp));
+  s.maxHp = Math.max(20, Math.round(s.maxHp)) + CampaignStory.coreBonus();
   s.crit = clamp(s.crit, 0, .95);
 
   const oldMax = G.st ? G.st.maxHp : s.maxHp;
@@ -3014,6 +3015,7 @@ function newRun(){
   G.skills = {}; G.slots = []; G.growth = growthSnapshot();
   G.skillLimit = skillCapacity(G.growth);
   TALENTS.reset();
+  CampaignStory.reset();
   G.energy = 0; G.revives = 1;
   G.mechId = PROF.mech;
   resetMech();
@@ -3091,6 +3093,7 @@ function setScene(i){
   G.picks.length = 0; G.crates.length = 0; G.jobs.length = 0;
   G.lightsFx.length = 0;
   if(G.p){ G.p.x = ARENA.w/2; G.p.y = ARENA.h/2 + 40; G.cam.x = G.p.x; G.cam.y = G.p.y; }
+  CampaignStory.begin(i);
 }
 
 function waveDuration(w){ return CampaignBalance.at(G.stage,w).duration; }
@@ -6045,18 +6048,19 @@ function bossDown(b){
       return;
     }
     G.phase = 'clear';
-    G.portal = {...FieldMaps.safePoint(b.x,b.y,26),t:0};
-    banner('区域肃清', '走进光环前往下一区域', 1.6);
+    CampaignStory.clear(b);
+    banner('区域肃清', CampaignStory.approachRoute(), 1.6);
     SFX.portal();
   }});
 }
 
 function updatePortal(dt){
-  if(!G.portal) return;
-  G.portal.t += dt;
-  if(dst(G.p.x, G.p.y, G.portal.x, G.portal.y) < 34){
-    nextStage();
-  }
+  const portal = CampaignStory.visiblePortal();
+  if(!portal) return;
+  portal.t += dt;
+  const inside = d2(G.p.x,G.p.y,portal.x,portal.y) < 34**2;
+  if(!inside) portal.mustExit = false;
+  else if(!portal.mustExit) nextStage();
 }
 
 /* ── 随机事件（每关 10% 概率触发，一关最多一次） ── */
@@ -8740,21 +8744,22 @@ function drawDrone(d){
 function drawPortal(pt){
   const sx = SX(pt.x), sy = SY(pt.y);
   const t = pt.t;
+  const color = pt.color;
   const pulse = .6 + Math.sin(t * 3) * .4;
   ctx.save();
   ctx.globalAlpha = .45 + pulse * .3;
   const grd = ctx.createRadialGradient(sx, sy - 20, 4, sx, sy - 20, 44);
-  grd.addColorStop(0, 'rgba(255,240,190,.95)');
-  grd.addColorStop(.45, 'rgba(255,160,70,.55)');
-  grd.addColorStop(1, 'rgba(255,120,40,0)');
+  grd.addColorStop(0, hexA(color,.95));
+  grd.addColorStop(.45, hexA(color,.53));
+  grd.addColorStop(1, hexA(color,0));
   ctx.fillStyle = grd;
   ctx.beginPath(); ctx.ellipse(sx, sy - 18, 40, 26, 0, 0, TAU); ctx.fill();
   ctx.restore();
 
-  ctx.strokeStyle = 'rgba(255,225,170,' + (.55 + pulse * .4).toFixed(2) + ')';
+  ctx.strokeStyle = hexA(color,.55 + pulse * .4);
   ctx.lineWidth = 2.5;
   ctx.beginPath(); ctx.ellipse(sx, sy - 18, 22, 15, 0, 0, TAU); ctx.stroke();
-  ctx.strokeStyle = 'rgba(255,180,90,.7)';
+  ctx.strokeStyle = hexA(color,.7);
   ctx.lineWidth = 1.5;
   for(let i=0;i<3;i++){
     const a = t * 2.2 + i * TAU / 3;
@@ -8765,12 +8770,11 @@ function drawPortal(pt){
   ctx.fillStyle = 'rgba(255,250,230,.95)';
   ctx.beginPath(); ctx.ellipse(sx, sy - 18, 5, 4, 0, 0, TAU); ctx.fill();
 
-  if(Math.floor(t * 8) % 2){
-    ctx.fillStyle = 'rgba(255,230,180,.9)';
-    ctx.font = '700 7px ui-monospace, monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('NEXT', sx, sy - 44);
-  }
+  ctx.save();
+  ctx.fillStyle = color;ctx.strokeStyle='#10191b';ctx.lineWidth=3;
+  ctx.font = '700 9px sans-serif';ctx.textAlign = 'center';
+  ctx.strokeText(pt.name,sx,sy-44);ctx.fillText(pt.name,sx,sy-44);
+  ctx.restore();
 }
 
 function drawPlayer(){
@@ -9176,7 +9180,8 @@ function render(){
   for(let i=0;i<G.enemies.length;i++) DL.push({ y:G.enemies[i].y, k:1, o:G.enemies[i] });
   for(let i=0;i<G.drones.length;i++) DL.push({ y:G.drones[i].y, k:5, o:G.drones[i] });
   if(G.boss) DL.push({ y:G.boss.y, k:7, o:G.boss });
-  if(G.portal) DL.push({ y:G.portal.y, k:6, o:G.portal });
+  const portal = CampaignStory.visiblePortal();
+  if(portal) DL.push({ y:portal.y, k:6, o:portal });
   if(G.p) DL.push({ y:G.p.y, k:8, o:G.p });
   DL.sort(function(a,b){ return a.y - b.y; });
 

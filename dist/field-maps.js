@@ -1,7 +1,7 @@
 /* The lift changes the active floor. Both layouts share one combat clock and enemy budget. */
 const FieldMaps = (() => {
   const source = {
-    lift:{x:618,y:398}, breaker:{x:522,y:348}, relay:{x:752,y:226}
+    lift:{x:618,y:398}, breaker:{x:522,y:348}, core:{x:746,y:286}, relay:{x:752,y:226}
   };
   const railLayout = [
     {x:294,y:165,w:28,h:222}, {x:294,y:363,w:206,h:24},
@@ -10,7 +10,7 @@ const FieldMaps = (() => {
     {x:773,y:386,w:138,h:25}, {x:206,y:497,w:138,h:23}
   ];
   const step = 32;
-  let lift, breaker, relay, rails, cols, rows;
+  let lift, breaker, core, relay, rails, cols, rows;
   const point = (x,y) => ({x:x*ARENA.w/1040, y:y*ARENA.h/720});
   const offsets = [[1,0],[-1,0],[0,1],[0,-1]];
   const images = {};
@@ -41,6 +41,7 @@ const FieldMaps = (() => {
     field = stage === 0 ? {inside:false,power:false,vent:false,surface:null,tunnel:null,nav:null,target:-1,liftReady:0} : null;
     lift = point(source.lift.x,source.lift.y);
     breaker = point(source.breaker.x,source.breaker.y);
+    core = point(source.core.x,source.core.y);
     relay = point(source.relay.x,source.relay.y);
     rails = railLayout.map(({x,y,w,h})=>({...point(x,y),w:w*ARENA.w/1040,h:h*ARENA.h/720}));
     cols = Math.ceil(ARENA.w/step);
@@ -115,12 +116,13 @@ const FieldMaps = (() => {
     setFloor(false,false);
     Object.assign(G.p,{x:lift.x,y:lift.y,vx:0,vy:0});
     Object.assign(G.cam,{x:lift.x,y:lift.y});
+    CampaignStory.transmit('升降机已回到地表迎战。击破首领后仍可下井。');
   }
 
   function underground() { return !!field && field.inside; }
   function floorId(){ return underground() ? 'underground' : 'surface'; }
   function stations(){
-    return field ? {lift:{...lift},breaker:{...breaker},relay:{...relay}} : null;
+    return field ? {lift:{...lift},breaker:{...breaker},core:{...core},relay:{...relay}} : null;
   }
   function blocksMovement(x,y,r) {
     return underground() && rails.some(w =>
@@ -214,9 +216,10 @@ const FieldMaps = (() => {
   }
 
   function nearby() {
-    if(!field || G.mode!=='play' || G.phase!=='wave' || !G.p) return null;
+    if(!field || G.mode!=='play' || G.phase==='boss' || !G.p) return null;
     const near = s => Math.hypot(G.p.x-s.x,G.p.y-s.y)<43;
     if(!field.inside && !field.power && near(breaker)) return {label:'合上电闸',action:'power'};
+    if(field.inside && !CampaignStory.coreBonus() && near(core)) return {label:'回收稳压核心',action:'core'};
     if(field.inside && !field.vent && near(relay)) return {label:'启动排风',action:'vent'};
     if(field.power && G.t >= field.liftReady && near(lift)) return {label:field.inside?'返回地表':'进入地下', action:'lift'};
     return null;
@@ -228,13 +231,20 @@ const FieldMaps = (() => {
     if(use.action==='power') {
       field.power=true; G.shield++; G.shieldFx=.8;
       banner('地表电闸已合上','获得一层护盾 · 东侧升降机已供电',1.45);
+      CampaignStory.transmit('升降机供电。下井沿黄线找稳压核心和排风配电台。');
+    } else if(use.action==='core') {
+      CampaignStory.claimCore();
+      banner('稳压核心已回收','本局生命上限 +'+CampaignStory.coreBonus(),1.35);
     } else if(use.action==='vent') {
       field.vent=true; G.buff.stasis=Math.max(G.buff.stasis,5);
-      banner('排风系统启动','敌群减速 5 秒',1.3);
+      SectorClimate.clearDust();
+      CampaignStory.complete();
+      banner('排风系统启动','地表尘暴消散 · 敌群减速 5 秒',1.3);
     } else {
       setFloor(!field.inside);
       field.liftReady = G.t + .65;
-      banner(field.inside?'B1 · 地下检修廊':'F1 · 落日废土',field.inside?'沿黄线前往排风配电台':'沿地表继续当前波次',1.1);
+      banner(field.inside?'B1 · 地下检修廊':'F1 · 落日废土',field.inside?'沿黄线前往排风配电台':
+        field.vent?'尘暴已停 · 查看灯标':'地表尘暴持续',1.1);
     }
     SFX.pick(); paintInstruments(true);
     return true;
@@ -249,9 +259,11 @@ const FieldMaps = (() => {
     if(use) putText(button,'R  '+use.label);
     const hint=byId('fieldObjective');
     hint.hidden=false;
-    putText(hint,G.phase !== 'wave' ? 'F1 · 地表交战' : field.inside ?
-      (field.vent?'B1 · 排风已启动':'B1 · 沿黄线启动排风') :
-      (field.power?'F1 · 升降机可用':'F1 · 合上应急电闸'));
+    const route = CampaignStory.approachRoute();
+    const objective = field.inside ? (!CampaignStory.coreBonus()?'B1 · 回收稳压核心':
+      field.vent?'B1 · 乘梯返回地表':'B1 · 启动排风') : field.vent ? 'F1 · 尘暴已停，查看避雷棚信标' :
+      field.power?'F1 · 乘升降机下井':'F1 · 合上应急电闸';
+    putText(hint,G.phase==='boss'?'F1 · 迎战地表首领':route?(field.vent?route:route+' · 或下井检修'):objective);
   }
   function drawStation(point,label,lit,color,isLift) {
     const x=SX(point.x), y=SY(point.y);
@@ -272,18 +284,24 @@ const FieldMaps = (() => {
     ctx.fillStyle=lit?color:'#bdcbc9';ctx.fillText(label,0,-18);ctx.restore();
   }
   function draw() {
+    CampaignStory.drawBeacon();
+    const portal = CampaignStory.visiblePortal();
+    if(portal) drawEdgeGuide(portal,portal.color);
     if(!field){
       SectorClimate.drawStations();
-      const station=SectorClimate.guideMarker();
+      const station=portal?null:SectorClimate.guideMarker() || CampaignStory.beacon();
       if(station) drawEdgeGuide(station,station.color);
       return;
     }
     drawStation(lift,field.power?(field.inside?'地表升降机':'地下升降机'):'升降机 · 待供电',field.power,'#89d6ce',true);
-    if(field.inside) drawStation(relay,field.vent?'排风运转':'排风配电台',!field.vent,'#efc976',false);
-    else drawStation(breaker,field.power?'已供电':'应急电闸',!field.power,'#ffd17b',false);
-    if(G.phase !== 'wave') return;
-    const objective = field.inside ? (field.vent ? lift : relay) : (field.power ? lift : breaker);
-    drawEdgeGuide(objective,'#ffce83');
+    if(field.inside){
+      drawStation(relay,field.vent?'排风运转':'排风配电台',field.vent,'#efc976',false);
+      if(!CampaignStory.coreBonus()) drawStation(core,'稳压核心',true,'#aaf0cf',false);
+    } else drawStation(breaker,field.power?'已供电':'应急电闸',field.power,'#ffd17b',false);
+    if(G.phase==='boss' || portal) return;
+    const target = field.inside ? (!CampaignStory.coreBonus()?core:field.vent?lift:relay) :
+      CampaignStory.beacon() || (field.power?lift:breaker);
+    drawEdgeGuide(target,target.color || '#ffce83');
   }
 
   function drawEdgeGuide(objective,color){
@@ -333,12 +351,16 @@ const FieldMaps = (() => {
     const size=detail?5:2.5;
     if(field){
       mark(lift,'#99dcce',size,'升降机');
-      if(underground()) mark(relay,'#f2c96e',size,'排风配电台');
+      if(underground()){
+        mark(relay,'#f2c96e',size,'排风配电台');
+        if(!CampaignStory.coreBonus()) mark(core,'#aaf0cf',size,'稳压核心');
+      }
       else mark(breaker,'#f2c96e',size,'应急电闸');
     }
     for(const station of SectorClimate.mapMarkers()) mark(station,station.color,size,station.name);
     if(G.boss && !G.boss.dead) mark(G.boss,'#ff8573',size,'首领');
-    if(G.portal) mark(G.portal,'#9ff2ae',size,'传送门');
+    const route=CampaignStory.visiblePortal() || CampaignStory.beacon();
+    if(route) mark(route,route.color,size,route.name);
     g.lineWidth=detail?2:1;
     g.strokeStyle='#192122';g.fillStyle='#fff7da';
     g.beginPath();g.arc(x(G.p.x),y(G.p.y),detail?4:2.1,0,TAU);g.fill();g.stroke();
@@ -351,6 +373,7 @@ const FieldMaps = (() => {
     G.mode='map';
     putText(byId('fieldMapTitle'),SCENES[G.stage].name + (field ? (underground()?' · 地下检修廊':' · 地表') : ''));
     drawMap(byId('openFieldMap'),true);
+    CampaignStory.paintLog();
     byId('fieldMapDialog').showModal();
     return true;
   }

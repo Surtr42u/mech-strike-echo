@@ -1,12 +1,12 @@
 /* Outdoor conditions and one usable installation in each of sectors 02–05. */
 const SectorClimate = (() => {
   const skies = {
-    clear:{name:'晴', particles:null}, dust:{name:'扬尘', particles:0},
+    clear:{name:'晴', particles:null}, dust:{name:'尘暴', particles:0},
     rain:{name:'阵雨', particles:1}, storm:{name:'雷雨', particles:1},
     snow:{name:'小雪', particles:2}, blizzard:{name:'暴雪', particles:2}
   };
   const forecasts = [
-    ['dust','clear','rain','storm'], ['rain','storm','clear','storm'], ['snow','blizzard','clear','snow']
+    null, ['rain','storm','clear','storm'], ['snow','blizzard','clear','snow']
   ];
   const installations = [
     null,
@@ -15,26 +15,26 @@ const SectorClimate = (() => {
     {id:'valve', name:'冷却阀', verb:'释放冷却液', color:'#83e3c6', points:[[.51,.46]]},
     {id:'gate', name:'相位锚', verb:'相位跃迁', color:'#c4acff', points:[[.45,.54],[.75,.29]]}
   ];
-  const weatherPeriod=26, dayPeriod=104, gateCooldown=9;
+  const weatherPeriod=26, dayPeriod=104, gateCooldown=9, shelterRadius=106;
   const daylightPalette=Array.from({length:33},(_,i)=>{
     const f=i/32;
     return 'rgb('+Math.round(21+204*f)+','+Math.round(43+113*f)+','+Math.round(88+9*f)+')';
   });
   const noMarkers=Object.freeze([]);
   let state;
-  const routeNotes = [
-    '地表电闸为地下升降机供电。', '引雷塔能把三道落雷引向敌群。',
-    '地热阀融开冰墙，暖区可抵消暴雪减速。', '冷却阀可压制周围熔池十秒。',
-    '相位双锚可往返跃迁，冷却九秒。'
-  ];
 
   function begin(stage) {
     const spec=installations[stage];
     const pads=spec ? Object.freeze(spec.points.map(([x,y])=>Object.freeze({
       x:Math.round(ARENA.w*x),y:Math.round(ARENA.h*y),name:spec.name,color:spec.color
     }))) : noMarkers;
-    state={stage, elapsed:0, sky:forecasts[stage]?.[0] || null, spec, pads,
+    state={stage, elapsed:0, sky:stage===0?'dust':forecasts[stage]?.[0] || null, spec, pads,
       used:false, charges:0, cooling:0, jumpCd:0, strike:null, nextStrike:4};
+  }
+
+  function clearDust(){
+    state.sky='clear';
+    G.env=buildEnv(state.stage);
   }
 
   function mapMarkers(){
@@ -78,7 +78,7 @@ const SectorClimate = (() => {
     if(pad<0) return false;
     const spec=state.spec;
     if(spec.id==='gate'){
-      if(state.jumpCd>0 || G.phase==='clear') return false;
+      if(state.jumpCd>0) return false;
       const dest=state.pads[1-pad];
       spark(G.p.x,G.p.y,8,spec.color,80);
       G.p.x=dest.x;G.p.y=dest.y;G.p.vx=0;G.p.vy=0;
@@ -101,6 +101,7 @@ const SectorClimate = (() => {
         banner('冷却阀泄压','十秒内阀区持续清除熔池、减速敌人',1.6);
       }
     }
+    CampaignStory.complete();
     SFX.pick();paintInstruments(true);return true;
   }
 
@@ -133,6 +134,11 @@ const SectorClimate = (() => {
       consider(G.boss);
       if(!target){state.nextStrike=1;return;}
       state.charges--;
+    } else if(state.spec?.id==='tower' && state.used){
+      const tower=state.pads[0];
+      if(d2(tower.x,tower.y,G.p.x,G.p.y)<=shelterRadius**2){
+        target={x:tower.x,y:tower.y+(G.p.y>=tower.y?-168:168)};
+      }
     }
     state.strike={x:target.x,y:target.y,r:friendly?64:42,t:0,wind:1.35,friendly,fired:false};
   }
@@ -196,6 +202,38 @@ const SectorClimate = (() => {
     g.save();g.globalAlpha=.17*(1-light)+.055;g.fillStyle=daylightPalette[Math.round(light*32)];
     g.fillRect(0,0,VW,VH);g.restore();
   }
+
+  function drawWastelandWeather(g){
+    if(state?.stage!==0 || FieldMaps.underground()) return;
+    g.save();
+    if(state.sky==='clear'){
+      const daylight=g.createLinearGradient(SW*.8,0,SW*.35,SH);
+      daylight.addColorStop(0,'rgba(255,221,161,.25)');
+      daylight.addColorStop(.68,'rgba(255,221,161,0)');
+      g.globalCompositeOperation='screen';g.fillStyle=daylight;g.fillRect(0,0,SW,SH);
+      g.restore();return;
+    }
+    const x=SW*.5, y=SH*.53, inset=Math.min(SW,SH)*.27, radius=Math.hypot(SW/2,SH/2);
+    const haze=g.createRadialGradient(x,y,inset,x,y,radius);
+    haze.addColorStop(0,'rgba(128,98,83,.22)');
+    haze.addColorStop(.58,'rgba(124,99,85,.48)');
+    haze.addColorStop(1,'rgba(77,57,54,.77)');
+    g.fillStyle=haze;g.fillRect(0,0,SW,SH);
+    const clouds=g.createLinearGradient(0,0,0,SH*.45);
+    clouds.addColorStop(0,'rgba(156,132,113,.42)');
+    clouds.addColorStop(1,'rgba(156,132,113,0)');
+    g.fillStyle=clouds;g.fillRect(0,0,SW,SH*.45);
+    if(!reducedEffects){
+      g.strokeStyle='#ffc17f';g.lineWidth=1.25;
+      for(let i=0;i<32;i++){
+        const px=(i*143+G.t*(84+i%3*15))%(SW+95)-80;
+        const py=(i*43+G.t*9)%SH;
+        g.globalAlpha=.12+(i%5)*.04;
+        g.beginPath();g.moveTo(px,py);g.lineTo(px+16+i%6*5,py+4);g.stroke();
+      }
+    }
+    g.restore();
+  }
   function distanceText() {
     let d=Infinity;
     for(const p of state.pads) d=Math.min(d,Math.hypot(p.x-G.p.x,p.y-G.p.y));
@@ -206,12 +244,14 @@ const SectorClimate = (() => {
     if(!state?.spec){h.hidden=true;b.hidden=true;return;}
     const id=state.spec.id;
     let hint=state.spec.name+' · '+distanceText(), label=state.spec.verb;
-    if(id==='tower' && state.used) hint=state.charges?'引雷剩余 '+state.charges+' 次':'引雷塔已放电';
+    if(id==='tower' && state.used) hint=state.charges?'引雷剩余 '+state.charges+' 次':'避雷棚已接地';
     if(id==='heater' && state.used) hint='地热已开 · 东侧通道畅通';
-    if(id==='valve' && state.used) hint=state.cooling?'阀区冷却 '+Math.ceil(state.cooling)+'s':'阀区冷却已结束';
+    if(id==='valve' && state.used) hint=state.cooling?'阀区冷却 '+Math.ceil(state.cooling)+'s':'冷却中继已接通';
     if(id==='gate' && state.jumpCd>0) hint='相位锚冷却 '+Math.ceil(state.jumpCd)+'s';
+    const route=CampaignStory.approachRoute();
+    if(route) hint=CampaignStory.repaired()?route:route+' · 或'+label;
     h.hidden=false;putText(h,hint);
-    b.hidden=nearPad()<0 || state.used || state.jumpCd>0 || (id==='gate'&&G.phase==='clear');
+    b.hidden=nearPad()<0 || state.used || state.jumpCd>0;
     if(!b.hidden) putText(b,'R  '+label);
   }
   function drawPad(p, spec) {
@@ -230,14 +270,17 @@ const SectorClimate = (() => {
       ctx.beginPath();ctx.ellipse(0,-14,8,4,0,0,TAU);ctx.moveTo(-7,-14);ctx.lineTo(7,-14);ctx.stroke();
     }
     ctx.font='bold 8px sans-serif';ctx.textAlign='center';ctx.lineWidth=2.7;ctx.strokeStyle='#0d1720';
-    ctx.strokeText(spec.name,0,-28);ctx.fillStyle=spec.color;ctx.fillText(spec.name,0,-28);ctx.restore();
+    const name=spec.id==='tower'&&state.used?'避雷棚 · 已接地':spec.name;
+    ctx.strokeText(name,0,-28);ctx.fillStyle=spec.color;ctx.fillText(name,0,-28);ctx.restore();
   }
   function drawStations() {
     if(!state?.spec) return;
-    const spec=state.spec, activeRadius=spec.id==='heater'&&state.used?135:state.cooling>0?146:0;
+    const spec=state.spec;
+    const activeRadius=spec.id==='tower'&&state.used?shelterRadius:spec.id==='heater'&&state.used?135:state.cooling>0?146:0;
     if(activeRadius){
-      const p=state.pads[0];ctx.save();ctx.strokeStyle=spec.color;ctx.globalAlpha=.55;ctx.lineWidth=1;
-      ctx.beginPath();ctx.ellipse(SX(p.x),SY(p.y),activeRadius,activeRadius*KZ,0,0,TAU);ctx.stroke();ctx.restore();
+      const p=state.pads[0];ctx.save();ctx.strokeStyle=ctx.fillStyle=spec.color;ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.ellipse(SX(p.x),SY(p.y),activeRadius,activeRadius*KZ,0,0,TAU);
+      ctx.globalAlpha=.1;ctx.fill();ctx.globalAlpha=.63;ctx.stroke();ctx.restore();
     }
     for(const p of state.pads) drawPad(p,spec);
   }
@@ -249,5 +292,6 @@ const SectorClimate = (() => {
     g.save();g.strokeStyle=color;g.lineWidth=3;g.globalAlpha=1-(s.t-s.wind)/.28;
     g.beginPath();g.moveTo(x+9,y-86);g.lineTo(x-7,y-37);g.lineTo(x+4,y-40);g.lineTo(x,y);g.stroke();g.restore();
   }
-  return {begin,particles,prepareProps,activate,frostFactor,tick,skyLabel,tintFloor,paintHud,drawStations,drawWarning,mapMarkers,guideMarker,routeNotes};
+  return {begin,clearDust,particles,prepareProps,activate,frostFactor,tick,skyLabel,tintFloor,drawWastelandWeather,
+    paintHud,drawStations,drawWarning,mapMarkers,guideMarker};
 })();
