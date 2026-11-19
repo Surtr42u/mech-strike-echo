@@ -83,7 +83,7 @@ class ProjectileField {
       if(!projectileTargetActive(e)) continue;
       let from = previous?.get(e) || e;
       // Boss teleports must not create a hittable path across the arena.
-      if(e === G.boss && Math.hypot(e.x - from.x, e.y - from.y) > 8 + dt * 520) from = e;
+      if(e === G.boss && e.teleportedAt === G.t) from = e;
       const entry = { e:e, x:from.x, y:from.y, dx:e.x - from.x, dy:e.y - from.y, visit:0 };
       this.eachCell(from.x, from.y, e.x, e.y, e.r, key => {
         let cell = this.cells.get(key);

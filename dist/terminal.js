@@ -308,7 +308,9 @@ function wireTerminal() {
   };
   SCENES.forEach((sc,i) => {
     const line = node('li');
-    line.append(node('span','sector-number','S' + pad2(i+1)),node('b','',sc.name),node('small','','首领 · ' + BOSSES[sc.boss].n));
+    const guard = MID_BOSSES[i];
+    const names = '关底 · ' + BOSSES[sc.boss].n + (guard ? '\n第' + guard.wave + '波后 · ' + BOSSES[guard.kind].n : '');
+    line.append(node('span','sector-number','S' + pad2(i+1)),node('b','',sc.name),node('small','',names));
     byId('routeList').append(line);
   });
   if(G.touch) byId('titleHint').textContent = '左侧拖动移动 · 右侧点按技能';
@@ -369,7 +371,7 @@ function paintInstruments(force) {
   instrument('wavePanel').classList.toggle('boss',!!boss);
   const clear = G.phase === 'clear';
   putText(instrument('waveName'),boss ? boss.name : clear ? '前往传送门' : G.phase === 'boss' ? '首领接近' : '敌潮 ' + pad2(G.wave) + ' / ' + WAVES_PER_STAGE);
-  putText(instrument('waveDetail'),boss ? '阶段 ' + boss.phase : G.phase === 'wave' ? Math.max(0,Math.ceil(G.waveT)) + 's' : '');
+  putText(instrument('waveDetail'),boss ? '阶段 ' + boss.phase + ' / ' + BOSS_PHASES[boss.kind].phases.length : G.phase === 'wave' ? Math.max(0,Math.ceil(G.waveT)) + 's' : '');
   meterFill('waveFill',boss ? boss.hp/boss.maxHp : G.phase === 'wave' ? G.waveT/G.waveDur : 1);
   putText(instrument('comboText'),G.combo >= 5 ? G.combo + ' 连击' : '');
   const active = [['over','过载'],['magnet','磁吸'],['stasis','停滞'],['fleet','疾风'],['rad','辐射'],['luck','幸运'],['weak','虚弱']];

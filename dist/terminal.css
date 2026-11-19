@@ -174,7 +174,7 @@ button.wallet:hover{background:#3b3023;border-color:#a37c4e}
 .terminal-dialog .touch-note{font-size:.83rem;color:#b7c4b9;display:flex;align-items:flex-start;gap:8px}
 .touch-note .icon{width:16px;height:16px;margin-top:4px;color:var(--pale)}
 .route-list{list-style:none;padding:0;margin:14px 0 0}.route-list li{border-top:1px solid var(--line);padding:9px 0;display:grid;grid-template-columns:38px 1fr auto;gap:10px;align-items:center}
-.route-list .sector-number{font:700 .83rem var(--mono);color:var(--pale)}.route-list b{font-size:.95rem}.route-list small{color:var(--muted);font-size:.78rem}
+.route-list .sector-number{font:700 .83rem var(--mono);color:var(--pale)}.route-list b{font-size:.95rem}.route-list small{color:var(--muted);font-size:.78rem;white-space:pre-line}
 .setting-row{justify-content:space-between;gap:10px;padding:16px 0;border-top:1px solid var(--line)}.setting-row strong{font-size:.94rem;font-weight:650}
 .quality button{padding-inline:12px}.quality-row{padding-bottom:4px}.terminal-dialog .quality-desc{font-size:.8rem;color:var(--muted);margin:5px 0 15px}
 .switch{height:30px;min-width:61px;display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:.78rem;padding:3px 6px;background:#343d38;border:1px solid #687269}

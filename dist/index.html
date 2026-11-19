@@ -16,6 +16,7 @@
   <script defer src="talents.js"></script>
   <script defer src="projectiles.js"></script>
   <script defer src="mechs.js"></script>
+  <script defer src="encounters.js"></script>
   <script defer src="game.js"></script>
 </head>
 <body>
@@ -159,7 +160,7 @@
     <div><dt>满槽时选一项替换</dt><dd><kbd>1</kbd>–<kbd>9</kbd> / <kbd>0</kbd>（第 10 项）</dd></div>
     <div><dt>暂停 / 继续</dt><dd><kbd>P</kbd> / <kbd>Esc</kbd></dd></div>
   </dl><p class="touch-note"><canvas class="icon" data-icon="touch"></canvas>触屏可在左侧拖动移动，点右下按钮释放技能或使用道具。替换技能时可滑动列表。</p></div>
-  <div id="guideRoute" hidden><p>每个战区有十波敌潮。击败关底首领后，进入传送门前往下一站。</p><ol id="routeList" class="route-list"></ol></div>
+  <div id="guideRoute" hidden><p>每个战区有十波敌潮。落日废土和冰封矿场在第五波后有守卫，击败守卫即可继续第六波。击败关底首领后，进入传送门前往下一站。</p><ol id="routeList" class="route-list"></ol></div>
 </dialog>
 <dialog id="mechDialog" class="terminal-dialog mech-dialog" aria-labelledby="mechDialogTitle">
   <div class="dialog-head"><h2 id="mechDialogTitle">出战机甲</h2><button class="icon-button dialog-close" aria-label="关闭机甲选择"><canvas class="icon" data-icon="close"></canvas></button></div>

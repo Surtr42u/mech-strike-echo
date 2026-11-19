@@ -1790,7 +1790,7 @@ const G = {
   ccd:0, ccdMax:1, cbuff:{ rate:0, spd:0, dmg:0, armor:0, extra:0 },
   lightsFx:[],
   shield:0, shieldFx:0,
-  boss:null, portal:null,
+  boss:null, portal:null, bossEncounter:null, clearedGuards:new Set(), encounterPlayerFrom:null,
   shake:0, flash:0, hurt:0, hitStop:0,
   skin:0, ground:null, groundMarks:null, props:[], scene:0,
   supplyPads:null, supplyIdx:0,
@@ -3024,6 +3024,9 @@ function newRun(){
   G.shield = 0; G.shieldFx = 0;
   G.picksGot = 0; G.settled = false;
   G.boss = null; G.portal = null;
+  G.bossEncounter = null;
+  G.clearedGuards.clear();
+  G.encounterPlayerFrom = null;
   G.shake = 0; G.flash = 0; G.hurt = 0; G.hitStop = 0;
   G.p = {
     x: ARENA.w/2, y: ARENA.h/2, vx:0, vy:0,
@@ -3089,6 +3092,7 @@ function startWave(){
 }
 
 function endWave(){
+  if(G.phase !== 'wave') return;
   /* 波次结束不再清场：剩余敌人保留，与下一波叠加（解除「时间到就消灭怪物」机制） */
   if(G.wave >= WAVES_PER_STAGE){
     /* 进入 Boss 战前才清一次场，保证首领战干净利落 */
@@ -3099,37 +3103,39 @@ function endWave(){
     G.enemies.length = 0;
     startBoss();
   } else {
+    if(queueMidBoss()) return;
     G.wave++;
     startWave();
     TALENTS.queueMilestone();
   }
 }
 
-function startBoss(){
+function startBoss(kind = SCENES[G.stage].boss, resumeWave = null){
+  const encounter = { kind:kind, resumeWave:resumeWave };
+  G.bossEncounter = encounter;
   G.phase = 'boss';
   G.waveT = 0;
   G.enemies.length = 0;
   G.eb.length = 0;
-  const sc = SCENES[G.stage];
-  const def = BOSSES[sc.boss];
+  G.haz.length = 0;
+  const def = BOSSES[kind];
   banner(def.n, def.t, 1.6);
   SFX.boss();
-  // 走游戏内任务队列，暂停时不会偷跑，也不会因为暂停而永久卡住
-  G.jobs.push({ t: .7, fn: function(){
-    if(G.mode !== 'play' || G.phase !== 'boss') return;
-    spawnBoss(sc.boss);
+  G.jobs.push({ t:.7, fn:function(){
+    if(G.phase === 'boss' && G.bossEncounter === encounter) spawnBoss(kind);
   }});
 }
 
 function spawnBoss(kind){
   const def = BOSSES[kind];
+  const origin = bossSpawnPoint();
   const b = {
     kind: kind, name: def.n, r: def.r, h: def.h,
     maxHp: def.hp, hp: def.hp,
-    x: ARENA.w/2, y: ARENA.h*0.28,
+    x:origin.x, y:origin.y,
     vx:0, vy:0, spd: def.spd,
     t:0, atkCd: 1.0, act:null, face:1,
-    flash:0, rot:0, phase:1, ph:0, fightT:0, phFlash:0, tele:false, idx:0, dead:false, deadT:0,
+    flash:0, rot:0, phase:1, ph:0, phT:0, fightT:0, phFlash:0, tele:false, idx:0, dead:false, deadT:0,
     orbit: rnd(0, TAU),
     dmg: def.dmg || 16
   };
@@ -4905,6 +4911,7 @@ function spawnEnemy(kind, x, y, opt){
     slowT:0, slowAmt:0, burnT:0, burnDps:0,
     dead:false, deadT:0, wob: rnd(0, TAU), col: K.c
   };
+  markEliteVariant(e);
   G.enemies.push(e);
   G.rings.push({ x:x, y:y, r:2, max:16, life:.3, maxLife:.3, col:sc.accent, w:1.5 });
   return e;
@@ -5116,6 +5123,7 @@ function updateEnemies(dt){
     const d = Math.max(.001, Math.hypot(dx, dy));
     const ux = dx / d, uy = dy / d;
     e.face = ux >= 0 ? 1 : -1;
+    if(updateEliteVariant(e, dt, d)) continue;
 
     let sp = e.spd;
     if(e.slowT > 0) sp *= (1 - e.slowAmt);
@@ -5340,10 +5348,11 @@ function updateHazards(dt){
   const p = G.p;
   for(let i=G.haz.length-1;i>=0;i--){
     const h = G.haz[i];
-    h.t = (h.t || 0) + dt;
-    h.life -= dt;
+    const elapsed = h.born === G.t ? 0 : dt;
+    h.t = (h.t || 0) + elapsed;
+    h.life -= elapsed;
     if(h.kind === 'pool'){
-      if(d2(p.x, p.y, h.x, h.y) < (h.r - 4) * (h.r - 4)) hurtPlayer(h.dmg);
+      if(h.t >= h.arm && d2(p.x, p.y, h.x, h.y) <= (h.r + PLAYER_HAZARD_RADIUS) ** 2) hurtPlayer(h.dmg);
     } else if(h.kind === 'frost'){
       for(let j = 0; j < G.enemies.length; j++){
         const e = G.enemies[j];
@@ -5358,26 +5367,14 @@ function updateHazards(dt){
         G.boss.slowAmt = Math.max(G.boss.slowAmt || 0, .45);
       }
     } else if(h.kind === 'beam'){
-      if(h.rot) h.ang += h.rot * dt;
-      const dx = Math.cos(h.ang), dy = Math.sin(h.ang);
-      const vx = p.x - h.x, vy = p.y - h.y;
-      const t = clamp(vx * dx + vy * dy, 0, h.len);
-      const cx = h.x + dx * t, cy = h.y + dy * t;
-      if(d2(p.x, p.y, cx, cy) < h.wide * h.wide) hurtPlayer(h.dmg);
+      advanceEncounterBeam(h, elapsed);
     } else if(h.kind === 'wave'){
-      h.r = lerp(4, h.maxR, 1 - Math.pow(1 - clamp(h.t / h.max, 0, 1), 2));
-      if(!h.hit){
-        const dd = dst(p.x, p.y, h.x, h.y);
-        if(Math.abs(dd - h.r) < 13){ hurtPlayer(h.dmg); h.hit = true; }
-      }
+      advanceEncounterWave(h, elapsed);
     } else if(h.kind === 'zone'){
       /* 预警区：计时到点才炸，预警本身不造成伤害 */
       if(h.life <= 0 && !h.boom){
         h.boom = true;
-        explodeFX(h.x, h.y, h.r * 1.7);
-        G.shake = Math.max(G.shake, 6);
-        if(d2(p.x, p.y, h.x, h.y) < (h.r + 8) * (h.r + 8)) hurtPlayer(h.dmg);
-        SFX.boom();
+        resolveGroundBlast(h.x, h.y, h.r, h.dmg);
       }
     }
     if(h.life <= 0) G.haz.splice(i, 1);
@@ -5390,7 +5387,8 @@ const BOSSES = {
   hive:    { n:'蜂后', t:'无人机母舰', hp:4000, r:36, h:48, spd:96, dmg:24, col:'#4f8ba8' },
   frost:   { n:'霜牙', t:'冰原掠夺兽', hp:5800, r:32, h:50, spd:110, dmg:27, col:'#86b6c8' },
   molten:  { n:'熔心', t:'熔炉机兵', hp:8200, r:36, h:58, spd:86, dmg:33, col:'#7a4038' },
-  void:    { n:'虚空之眼', t:'终焉观察者', hp:11500, r:34, h:54, spd:100, dmg:30, col:'#6d4a94' }
+  void:    { n:'虚空之眼', t:'终焉观察者', hp:11500, r:34, h:54, spd:100, dmg:30, col:'#6d4a94' },
+  ...GUARD_BOSSES
 };
 
 function updateBoss(dt){
@@ -5433,8 +5431,8 @@ function updateBoss(dt){
       const dir = d > want ? 1 : -1;
       mx = Math.cos(toP) * dir * .9 + Math.cos(toP + Math.PI/2) * .7 * Math.sin(b.orbit);
       my = Math.sin(toP) * dir * .9 + Math.sin(toP + Math.PI/2) * .7 * Math.sin(b.orbit);
-    } else if(mode === 'chase'){
-      mx = Math.cos(toP); my = Math.sin(toP);
+    } else if(mode === 'chase' || mode === 'press'){
+      if(mode === 'chase' || d > 68){ mx = Math.cos(toP); my = Math.sin(toP); }
     } else {
       if(d > 110){ mx = Math.cos(toP); my = Math.sin(toP); }
       else if(d < 70){ mx = -Math.cos(toP) * .6; my = -Math.sin(toP) * .6; }
@@ -5453,10 +5451,10 @@ function updateBoss(dt){
   }
 
   /* 预警闪烁：出手前 0.6 秒（由攻击动作的 wind 推导） */
-  b.tele = !!(b.act && b.act.wind && b.act.t > b.act.wind - .6);
+  b.tele = !!(b.act && !b.act.fired && b.act.wind);
 
   // 接触伤害
-  if(dst(b.x, b.y, p.x, p.y) < b.r + 10) hurtPlayer(b.dmg * .8);
+  if(b.act?.kind !== 'charge' && dst(b.x, b.y, p.x, p.y) <= b.r + PLAYER_HAZARD_RADIUS) hurtPlayer(b.dmg * .8);
 }
 
 /* ══════════ Boss 三阶段 ══════════
@@ -5509,7 +5507,8 @@ const BOSS_PHASES = {
     { hpThreshold:0.60, timeThreshold:24, nm:'虚空裂隙', msg:'瞬移射线', acts:['teleBeam','voidOrbs','spiral','radialBurst'], cdMul:.85, move:'orbit', keep:240 },
     { hpThreshold:0.30, timeThreshold:42, nm:'终焉降临', msg:'全屏弹幕', acts:['sweepSpin','voidOrbs','teleBeam','radialBurst'], cdMul:.66, move:'orbit', keep:260,
       onEnter:function(b){ voidField(b, 5); } }
-  ]}
+  ]},
+  ...GUARD_PHASES
 };
 
 /* 阶段进入的场地效果 */
@@ -5546,19 +5545,15 @@ function updateBossPhases(b, dt){
   b.fightT = (b.fightT || 0) + dt;
   if(b.phFlash > 0) b.phFlash -= dt;
   const frac = b.hp / b.maxHp;
-  let ni = b.ph || 0;
-  while(ni + 1 < def.phases.length){
-    const nx = def.phases[ni + 1];
-    const byHp = frac <= nx.hpThreshold;
-    const byT = nx.timeThreshold > 0 && b.fightT >= nx.timeThreshold;
-    if(byHp || byT) ni++; else break;
-  }
-  if(ni !== (b.ph || 0)){
-    b.ph = ni;
+  const next = def.phases[b.ph + 1];
+  if(b.phT >= 3 && next && (frac <= next.hpThreshold || b.fightT >= next.timeThreshold)){
+    const ni = ++b.ph;
     b.phase = ni + 1;
     b.phT = 0;
-    b.phFlash = 1.2;                 /* 血条闪烁计时 */
-    b.atkCd = Math.min(b.atkCd || 0, .35);
+    b.phFlash = 1.2;
+    b.idx = 0;
+    if(b.act && !b.act.fired) b.act = null;
+    b.atkCd = 1.05;
     const ph = def.phases[ni];
     banner(b.name + ' · ' + ph.nm, ph.msg || '', 1.15);
     G.shake = Math.max(G.shake, 9);
@@ -5578,9 +5573,9 @@ function updateBossPhases(b, dt){
 function startBossAttack(b, ph){
   const def = BOSS_PHASES[b.kind];
   if(def && def.ai === 'crusher'){ crusherAttack(b, ph || def.phases[0]); return; }
-  const pool = (ph && ph.acts) || BOSS_ACT[SCENES[G.stage].boss];
-  b.idx = (b.idx + 1 + ((Math.random() * Math.max(1, pool.length - 1)) | 0)) % pool.length;
-  const fn = ACT_FN[pool[b.idx]];
+  const pool = (ph && ph.acts) || BOSS_ACT[b.kind];
+  const fn = ACT_FN[pool[b.idx % pool.length]];
+  b.idx++;
   b.act = fn ? fn(b) : null;
   if(!b.act){ b.atkCd = 1; return; }
   if(ph && ph.cdMul) b.act.cd = (b.act.cd || 1.3) * ph.cdMul;
@@ -5600,73 +5595,10 @@ function crusherAttack(b, ph){
 }
 
 function phaseCharge(b, ph){
-  const ang = Math.atan2(G.p.y - b.y, G.p.x - b.x);
-  b.chargeAng = ang;
-  const dm = ph.dist || 1;
-  return {
-    wind:.72, dur:.62, cd:ph.every || 1.5, fired:false,
-    fire:function(){
-      b.vx = Math.cos(ang) * 470 * dm;
-      b.vy = Math.sin(ang) * 470 * dm;
-      /* 冲撞路径两侧各 3 发 */
-      if(ph.side){
-        for(let sgn = -1; sgn <= 1; sgn += 2){
-          for(let i=0;i<ph.side;i++){
-            const a2 = ang + sgn * Math.PI / 2 + (i - (ph.side - 1) / 2) * .17;
-            ebShoot(b.x, b.y, a2, 235, 12, '#ff8a6a', 4);
-          }
-        }
-      }
-      G.shake = 9; SFX.boom();
-    },
-    tick:function(b2, a, dt){
-      if(!a.fired) return;
-      b2.x += b2.vx * dt; b2.y += b2.vy * dt;
-      b2.vx *= .975; b2.vy *= .975;
-      b2.x = clamp(b2.x, 60, ARENA.w - 60);
-      b2.y = clamp(b2.y, 70, ARENA.h - 60);
-      if(Math.random() < .7){
-        G.parts.push({ x:b2.x + rnd(-14,14), y:b2.y + rnd(-6,6),
-          vx:rnd(-30,30), vy:rnd(-16,16), life:.4, max:.4,
-          col:'rgba(255,180,110,.9)', r:rnd(2,4) });
-      }
-    },
-    end:function(b2){
-      /* 阶段二：冲撞结束后原地旋转，八方向环形弹幕 */
-      if(ph.afterRing){
-        ebRing(b2.x, b2.y, ph.afterRing, 195, 13, '#ff8a6a', 4.2);
-        G.rings.push({ x:b2.x, y:b2.y, r:10, max:110, life:.45, maxLife:.45, col:'#ff8a6a', w:3 });
-        G.shake = Math.max(G.shake, 6);
-        SFX.shoot();
-      }
-    },
-    draw:function(g){
-      if(!b.act || b.act.fired) return;
-      const x1 = SX(b.x), y1 = SY(b.y) - 20;
-      /* 指示线长度 = 实际冲撞距离 */
-      const len = 320 * dm;
-      const x2 = SX(b.x + Math.cos(b.chargeAng) * len);
-      const y2 = SY(b.y + Math.sin(b.chargeAng) * len) - 20;
-      g.strokeStyle = 'rgba(255,60,60,' + (.34 + Math.sin(G.t * 24) * .2).toFixed(2) + ')';
-      g.lineWidth = b.r * 2;
-      g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke();
-      g.strokeStyle = 'rgba(255,230,190,.9)';
-      g.lineWidth = 2;
-      g.setLineDash([10, 8]);
-      g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke();
-      g.setLineDash([]);
-    }
-  };
-}
-
-function nextBossAct(b){
-  const sc = SCENES[G.stage];
-  const keys2 = BOSS_ACT[sc.boss];
-  b.idx = (b.idx + 1 + ((Math.random() * (keys2.length - 1)) | 0)) % keys2.length;
-  const name = keys2[b.idx];
-  const fn = ACT_FN[name];
-  b.act = fn ? fn(b) : null;
-  if(!b.act){ b.atkCd = 1; }
+  return makeBossCharge(b, {
+    wind:ph.afterRing ? .82 : .92, dur:.56, cd:ph.every || 1.5,
+    len:252 * (ph.dist || 1), col:'#ff816d', side:ph.side, afterRing:ph.afterRing
+  });
 }
 
 function runBossAct(b, dt){
@@ -5687,7 +5619,7 @@ function runBossAct(b, dt){
   if(a.t >= a.wind + a.dur){
     b.act = null;
     if(a.end) a.end(b);
-    b.atkCd = (a.cd || 1.3);
+    b.atkCd = Math.max(b.atkCd, a.cd || 1.3);
   }
 }
 
@@ -5713,24 +5645,26 @@ function ebAim(x, y, ang, count, spread, spd, dmg, col, r){
     ebShoot(x, y, a, spd, dmg, col, r);
   }
 }
-function bossSummon(kinds, n, aroundBoss){
+function bossSummon(kinds, n){
   const b = G.boss;
-  for(let i=0;i<n;i++){
+  const count = Math.min(n, partnerSlots(b, b.kind === 'hive' ? 6 : 4));
+  for(let i=0;i<count;i++){
     const a = rnd(0, TAU), r = rnd(70, 130);
     const x = clamp(b.x + Math.cos(a) * r, 50, ARENA.w - 50);
     const y = clamp(b.y + Math.sin(a) * r, 60, ARENA.h - 50);
-    spawnEnemy(pick(kinds), x, y, { noElite:true });
+    spawnEnemy(pick(kinds), x, y, { noElite:true }).summoner = b;
   }
 }
 function addPool(x, y, r, dmg, life, col){
-  G.haz.push({ kind:'pool', x:x, y:y, r:r, dmg:dmg, life:life, max:life, col:col, t:0 });
+  const arm = .86;
+  G.haz.push({ kind:'pool', x:x, y:y, r:r, dmg:dmg, life:life + arm, max:life + arm, col:col, arm:arm, t:0 });
 }
 function addBeam(x, y, ang, len, wide, dmg, life, rot, col){
   G.haz.push({ kind:'beam', x:x, y:y, ang:ang, len:len, wide:wide, dmg:dmg,
-    life:life, max:life, rot:rot || 0, col:col, t:0 });
+    life:life, max:life, rot:rot || 0, col:col, t:0, born:G.t });
 }
 function addWave(x, y, maxR, dmg, col){
-  G.haz.push({ kind:'wave', x:x, y:y, r:6, maxR:maxR, dmg:dmg, life:.75, max:.75, col:col, hit:false, t:0 });
+  G.haz.push({ kind:'wave', x:x, y:y, r:4, maxR:maxR, dmg:dmg, life:.75, max:.75, col:col, hit:false, t:0, born:G.t });
 }
 /* 延迟爆炸的圆形预警区：delay 秒后炸开（先给玩家 1 秒反应） */
 function addZone(x, y, r, dmg, delay){
@@ -5744,48 +5678,14 @@ const BOSS_ACT = {
   hive:    ['spawnDrones', 'sweep', 'orbs', 'radialBurst', 'sweepSpin'],
   frost:   ['shards', 'charge', 'summonCaster', 'nova', 'radialBurst', 'sweepSpin'],
   molten:  ['pools', 'fireRing', 'summonBomber', 'flame', 'radialBurst', 'sweepSpin'],
-  void:    ['spiral', 'teleBeam', 'voidOrbs', 'summonMix', 'radialBurst', 'sweepSpin']
+  void:    ['spiral', 'teleBeam', 'voidOrbs', 'summonMix', 'radialBurst', 'sweepSpin'],
+  ...GUARD_ACTIONS
 };
 
 const ACT_FN = {
   /* 冲锋（所有地面 Boss 共用） */
   charge: function(b){
-    const ang = Math.atan2(G.p.y - b.y, G.p.x - b.x);
-    b.chargeAng = ang;
-    return {
-      wind:.72, dur:.62, cd:1.5, fired:false,
-      fire: function(){
-        b.vx = Math.cos(ang) * 470;
-        b.vy = Math.sin(ang) * 470;
-        G.shake = 9; SFX.boom();
-      },
-      tick: function(b2, a, dt){
-        if(!a.fired) return;
-        b2.x += b2.vx * dt; b2.y += b2.vy * dt;
-        b2.vx *= .975; b2.vy *= .975;
-        b2.x = clamp(b2.x, 60, ARENA.w - 60);
-        b2.y = clamp(b2.y, 70, ARENA.h - 60);
-        if(Math.random() < .7){
-          G.parts.push({ x:b2.x + rnd(-14,14), y:b2.y + rnd(-6,6),
-            vx:rnd(-30,30), vy:rnd(-16,16), life:.4, max:.4,
-            col:'rgba(255,180,110,.9)', r:rnd(2,4) });
-        }
-      },
-      draw: function(g){
-        if(!b.act || b.act.fired) return;
-        const x1 = SX(b.x), y1 = SY(b.y) - 20;
-        const x2 = SX(b.x + Math.cos(b.chargeAng) * 320);
-        const y2 = SY(b.y + Math.sin(b.chargeAng) * 320) - 20;
-        g.strokeStyle = 'rgba(255,60,60,' + (.30 + Math.sin(G.t * 24) * .18).toFixed(2) + ')';
-        g.lineWidth = b.r * 2;
-        g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke();
-        g.strokeStyle = 'rgba(255,235,200,.85)';
-        g.lineWidth = 2;
-        g.setLineDash([10, 8]);
-        g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke();
-        g.setLineDash([]);
-      }
-    };
+    return makeBossCharge(b, { wind:.92, dur:.60, cd:1.5, len:235, col:'#a6eaff' });
   },
 
   shell: function(b){
@@ -5841,13 +5741,9 @@ const ACT_FN = {
 
   sweep: function(b){
     const a0 = Math.atan2(G.p.y - b.y, G.p.x - b.x);
-    let beam = null;
-    return {
-      wind:.85, dur:1.8, cd:1.7, fired:false,
-      fire: function(){
-        addBeam(b.x, b.y, a0 - .95, 900, 13, 16, 1.7, 1.12, 'rgba(90,220,255,.95)');
-      }
-    };
+    return makeBossLaser(b, .96, 1.7, [
+      { x:b.x, y:b.y, ang:a0 - .85, len:900, wide:13, dmg:16, life:1.7, rot:1.02, col:'#69e8ff' }
+    ]);
   },
 
   orbs: function(b){
@@ -5969,20 +5865,18 @@ const ACT_FN = {
   },
 
   teleBeam: function(b){
-    return {
-      wind:.9, dur:.9, cd:1.6, fired:false,
-      fire: function(){
-        // 瞬移到玩家附近
-        const a = rnd(0, TAU), r = 170;
-        b.x = clamp(G.p.x + Math.cos(a) * r, 80, ARENA.w - 80);
-        b.y = clamp(G.p.y + Math.sin(a) * r, 90, ARENA.h - 80);
-        G.rings.push({ x:b.x, y:b.y, r:4, max:80, life:.4, maxLife:.4, col:'#c77dff', w:3 });
-        const ang = Math.atan2(G.p.y - b.y, G.p.x - b.x);
-        addBeam(b.x, b.y, ang, 900, 15, 19, 1.0, 0, 'rgba(200,130,255,.95)');
-        G.shake = 8;
-        SFX.boom();
-      }
-    };
+    const angle = rnd(0, TAU);
+    const oldX = b.x, oldY = b.y;
+    b.x = clamp(G.p.x + Math.cos(angle) * 170, 80, ARENA.w - 80);
+    b.y = clamp(G.p.y + Math.sin(angle) * 170, 90, ARENA.h - 80);
+    b.teleportedAt = G.t;
+    for(const pt of [{x:oldX,y:oldY},b]){
+      G.rings.push({ x:pt.x, y:pt.y, r:4, max:80, life:.46, maxLife:.46, col:'#c77dff', w:3 });
+    }
+    const aim = Math.atan2(G.p.y - b.y, G.p.x - b.x);
+    return makeBossLaser(b, 1.05, 1.6, [
+      { x:b.x, y:b.y, ang:aim, len:900, wide:15, dmg:19, life:.84, rot:0, col:'#d895ff' }
+    ]);
   },
 
   voidOrbs: function(b){
@@ -6025,28 +5919,22 @@ const ACT_FN = {
   /* 旋转扫射光束（扫射） */
   sweepSpin: function(b){
     const a0 = rnd(0, TAU);
-    return {
-      wind:.8, dur:2.4, cd:1.6, fired:false,
-      fire: function(){
-        addBeam(b.x, b.y, a0, 920, 14, 18, 2.2, 1.35, 'rgba(255,150,90,.95)');
-        SFX.boss();
-      },
-      tick: function(b2, a, dt){
-        // 第二道反向旋转光束，形成交叉扫射
-        if(!a.fired) return;
-        if(!a._b2 && a.t > .8){
-          a._b2 = true;
-          addBeam(b2.x, b2.y, a0 + Math.PI, 920, 12, 15, 1.6, -1.1, 'rgba(255,200,140,.9)');
-        }
-      }
-    };
-  }
+    return makeBossLaser(b, 1.06, 1.6, [
+      { x:b.x, y:b.y, ang:a0, len:920, wide:14, dmg:18, life:2.1, rot:1.14, col:'#ff9972' },
+      { x:b.x, y:b.y, ang:a0 + Math.PI, len:920, wide:12, dmg:15, life:1.6, rot:-.94, col:'#ffce94' }
+    ]);
+  },
+  ...GUARD_ATTACKS
 };
 
 function bossDown(b){
+  if(b.dead || G.boss !== b) return;
+  const encounter = G.bossEncounter;
+  const guard = encounter?.resumeWave ? MID_BOSSES[G.stage] : null;
   b.dead = true;
   b.deadT = 0;
-  G.score += 400 + G.stage * 220;
+  G.score += guard ? guard.score : 400 + G.stage * 220;
+  if(guard) G.clearedGuards.add(b.kind);
   G.shake = 18;
   G.flash = .7;
   SFX.boom();
@@ -6058,8 +5946,17 @@ function bossDown(b){
   G.haz.length = 0;
   G.enemies.length = 0;
   // 首领的集装箱：一批补给
-  dropLoot(b.x, b.y, 4, true);
+  dropLoot(b.x, b.y, guard ? 2 : 4, true);
   G.jobs.push({ t: .9, fn: function(){
+    if(G.phase !== 'boss' || G.bossEncounter !== encounter) return;
+    if(guard){
+      G.boss = null;
+      G.bossEncounter = null;
+      G.wave = encounter.resumeWave;
+      startWave();
+      banner(b.name + ' 已击败', '继续第 ' + G.wave + ' 波', 1.45);
+      return;
+    }
     G.phase = 'clear';
     G.portal = { x: b.x, y: b.y, t: 0 };
     banner('区域肃清', '走进光环前往下一区域', 1.6);
@@ -6204,6 +6101,8 @@ function nextStage(){
     return;
   }
   G.portal = null;
+  G.boss = null;
+  G.bossEncounter = null;
   G.p.hp = Math.min(G.p.maxHp, G.p.hp + G.p.maxHp * .3);
   G.energy = 0;
   G.revives = Math.max(G.revives, 0);
@@ -8373,9 +8272,9 @@ function drawEnemy(e){
 
 /* ── 首领精灵渲染：图集 96×96，脚底线 y=92 ── */
 function drawBossSprite(b, sx, sy){
-  const floating = (b.kind === 'hive' || b.kind === 'void');
-  const hover = floating ? Math.sin(G.t * 1.8) * 4 : 0;
   const def = BOSSES[b.kind];
+  const floating = def.floating || b.kind === 'hive' || b.kind === 'void';
+  const hover = floating ? Math.sin(G.t * 1.8) * 4 : 0;
   const ph = b.ph || 0;
   const sc = clamp(b.r * 2.30 / 86, .55, 2.6);
   const dw = 96 * sc, dh = 96 * sc;
@@ -8383,7 +8282,7 @@ function drawBossSprite(b, sx, sy){
   const dy = sy - 92 * sc + hover;
   const fade = b.dead ? Math.max(0, 1 - (b.deadT || 0) / .8) : 1;
   const fi = (b.flash > 0 || (b.actT || 0) > 0) ? 1 : 0;
-  const name = 'b_' + b.kind + '_' + fi;
+  const name = 'b_' + (def.sprite || b.kind) + '_' + fi;
 
   /* ① 阶段光环：血越少越亮，第三阶段转红 */
   const k = 1 - clamp(b.hp / b.maxHp, 0, 1);
@@ -8405,6 +8304,16 @@ function drawBossSprite(b, sx, sy){
   ctx.globalAlpha = fade;
   if(b.face < 0){ ctx.translate(sx * 2, 0); ctx.scale(-1, 1); }
   drawFrame(name, dx, dy, sc);
+  if(def.sprite){
+    const tint = SPRM.tintOf(name, def.col);
+    if(tint){
+      ctx.save();
+      ctx.globalAlpha = fade * .27;
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.drawImage(tint, dx, dy, dw, dh);
+      ctx.restore();
+    }
+  }
   rimLight(name, dx, dy, dw, dh, auraCol, .16);
 
   if(b.flash > 0){
@@ -8432,6 +8341,8 @@ function drawBossSprite(b, sx, sy){
   ctx.restore();
   ctx.globalAlpha = 1;
 
+  drawGuardDetails(ctx, b, sx, sy + hover, fade);
+
   /* ③ 核心呼吸光 */
   const pulse = .6 + .4 * Math.sin(G.t * 4.2);
   ctx.save();
@@ -8448,13 +8359,13 @@ function drawBossSprite(b, sx, sy){
 function drawBoss(b){
   const sx = Math.round(SX(b.x));
   const sy = Math.round(SY(b.y));
-  const frac = clamp(b.hp / b.maxHp, 0, 1);
   const def = BOSSES[b.kind];
-  const floating = (b.kind === 'hive' || b.kind === 'void');
+  const skin = def.sprite || b.kind;
+  const floating = def.floating || b.kind === 'hive' || b.kind === 'void';
   const hover = floating ? Math.sin(G.t * 1.8) * 4 : 0;
 
   /* 图集就绪后走精灵渲染（旧的矢量首领保留为兜底） */
-  if(SPRM.ready && SPRM.frames['b_' + b.kind + '_0']){
+  if(SPRM.ready && SPRM.frames['b_' + skin + '_0']){
     drawBossSprite(b, sx, sy);
     return;
   }
@@ -8467,7 +8378,7 @@ function drawBoss(b){
   const R = function(x, y, w, h, c){ ctx.fillStyle = c; ctx.fillRect(x, y, w, h); };
   const dark = shade(def.col, -.55), mid = shade(def.col, -.2), lite = shade(def.col, .35);
 
-  if(b.kind === 'crusher'){
+  if(skin === 'crusher'){
     // 深色描边
     R(-28, -36, 56, 27, '#10151c');
     // 履带
@@ -8490,7 +8401,7 @@ function drawBoss(b){
     R(-3, -41, 6, 4, '#ffe0b0');
     // 前铲
     R(24, -22, 14, 12, dark);
-  } else if(b.kind === 'hive'){
+  } else if(skin === 'hive'){
     // 四个旋翼
     ctx.strokeStyle = 'rgba(120,230,255,.42)';
     ctx.lineWidth = 2;
@@ -8669,8 +8580,7 @@ function drawBoss(b){
   }
   ctx.restore();
 
-  if(b.act && b.act.draw) b.act.draw(ctx);
-  if(b.act && b.act.kind === 'charge'){ /* 兼容 */ }
+  drawGuardDetails(ctx, b, sx, sy + hover, b.dead ? Math.max(0, 1 - b.deadT / .8) : 1);
 }
 
 function drawOrb(o){
@@ -9003,7 +8913,8 @@ function drawHazards(){
   for(let i=0;i<G.haz.length;i++){
     const h = G.haz[i];
     if(h.kind === 'pool'){
-      const k = clamp(h.life / h.max, 0, 1);
+      if(h.t < h.arm) continue;
+      const k = clamp(h.life / (h.max - h.arm), 0, 1);
       ctx.globalAlpha = .55 * k + .15;
       const g2 = ctx.createRadialGradient(SX(h.x), SY(h.y), 2, SX(h.x), SY(h.y), h.r);
       g2.addColorStop(0, h.col);
@@ -9013,34 +8924,9 @@ function drawHazards(){
       ctx.beginPath();
       ctx.ellipse(SX(h.x), SY(h.y), h.r, h.r * KZ, 0, 0, TAU);
       ctx.fill();
-      ctx.globalAlpha = 1;
-    } else if(h.kind === 'zone'){
-      /* 预警：红圈从边缘收缩到中心，越接近爆炸越亮 */
-      const k = clamp(h.t / h.max, 0, 1);
-      const cx = SX(h.x), cy = SY(h.y);
-      const rad = h.r * lerp(1, .22, k);
-      ctx.globalAlpha = .22 + .42 * k;
-      ctx.fillStyle = 'rgba(255,50,50,.30)';
-      ctx.beginPath();
-      ctx.ellipse(cx, cy, h.r * .96, h.r * .96 * KZ, 0, 0, TAU);
-      ctx.fill();
-      ctx.globalAlpha = .6;
-      ctx.strokeStyle = '#ff7169';
-      ctx.lineWidth = 1.25;
-      ctx.beginPath();
-      ctx.ellipse(cx, cy, h.r, h.r * KZ, 0, 0, TAU);
-      ctx.stroke();
-      ctx.globalAlpha = .65 + .35 * k;
-      ctx.strokeStyle = '#ff3c3c';
-      ctx.lineWidth = 2.4;
-      ctx.beginPath();
-      ctx.ellipse(cx, cy, rad, rad * KZ, 0, 0, TAU);
-      ctx.stroke();
-      ctx.globalAlpha = .9;
-      ctx.strokeStyle = 'rgba(255,220,200,.85)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.ellipse(cx, cy, rad * .78, rad * .78 * KZ, 0, 0, TAU);
+      ctx.strokeStyle = h.col;
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = .95;
       ctx.stroke();
       ctx.globalAlpha = 1;
     } else if(h.kind === 'frost'){
@@ -9073,40 +8959,9 @@ function drawHazards(){
 }
 
 function drawBeams(){
-  for(let i=0;i<G.haz.length;i++){
-    const h = G.haz[i];
-    if(h.kind === 'wave'){
-      const k = 1 - h.life / h.max;
-      const rad = h.r;
-      ctx.globalAlpha = (1 - k) * .9;
-      ctx.strokeStyle = h.col;
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.ellipse(SX(h.x), SY(h.y), rad, rad * KZ, 0, 0, TAU);
-      ctx.stroke();
-      ctx.lineWidth = 1.5;
-      ctx.strokeStyle = 'rgba(255,255,255,.55)';
-      ctx.beginPath();
-      ctx.ellipse(SX(h.x), SY(h.y), rad * .92, rad * .92 * KZ, 0, 0, TAU);
-      ctx.stroke();
-      ctx.globalAlpha = 1;
-    } else if(h.kind === 'beam'){
-      const k = clamp(h.life / h.max, 0, 1);
-      const x1 = SX(h.x), y1 = SY(h.y) - BULLET_H;
-      const x2 = SX(h.x + Math.cos(h.ang) * h.len);
-      const y2 = SY(h.y + Math.sin(h.ang) * h.len) - BULLET_H;
-      ctx.globalAlpha = .28 * k;
-      ctx.strokeStyle = h.col;
-      ctx.lineWidth = h.wide * 2.4;
-      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-      ctx.globalAlpha = .95 * k;
-      ctx.lineWidth = h.wide;
-      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-      ctx.strokeStyle = 'rgba(255,255,255,.9)';
-      ctx.lineWidth = Math.max(1.5, h.wide * .3);
-      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-      ctx.globalAlpha = 1;
-    }
+  for(const h of G.haz){
+    if(h.kind === 'wave') drawEncounterWave(ctx, h);
+    else if(h.kind === 'beam') drawEncounterBeam(ctx, h, false);
   }
 }
 
@@ -9248,6 +9103,7 @@ function render(){
   drawRings();
   drawBeams();
   drawLights(1);
+  drawEncounterWarnings(ctx);
   drawParts();
   drawTexts();
 
@@ -9426,6 +9282,7 @@ function step(dt){
   G.t += dt;
   G.time += dt;
 
+  G.encounterPlayerFrom = { x:G.p.x, y:G.p.y };
   updatePlayer(dt);
   updateWeapon(dt);
   updateChar(dt);
