@@ -187,14 +187,14 @@ const WEAPONS = [
     sk:{ n:'火力压制', ic:'⁂', cd:14, t:'4 秒射速 ×2.4、穿透 +2' } },
 
   { id:'shotgun', class:'shotgun', n:'霰弹枪', ic:'⋔', c:'#ffb45c', price:800, tag:'近战',
-    desc:'5 发扇形弹丸，贴脸爆发极高',
+    desc:'5 发扇形弹丸。距离越近，同时命中的弹丸越多',
     dmg:5.4, rate:.74, spd:350, count:5, spread:.40, pierce:0, crit:.04, br:3.2, life:.42,
-    sk:{ n:'推进冲击', ic:'»', cd:11, t:'向前突进并震开周围敌人' } },
+    sk:{ n:'推进冲击', ic:'»', cd:11, t:'向前突进，在落点释放近身冲击波' } },
 
   { id:'sniper', class:'precise', n:'磁轨炮', ic:'⊹', c:'#c8a0ff', price:1000, tag:'远程',
-    desc:'单发高伤，贯穿一整条线',
+    desc:'直线高速重弹，可贯穿 3 次。每次贯穿后伤害递减',
     dmg:33, rate:1.0, spd:920, count:1, spread:.008, pierce:3, crit:.16, br:2.4, life:1.6,
-    sk:{ n:'贯穿射线', ic:'✦', cd:16, t:'朝瞄准方向射出贯穿光束' } },
+    sk:{ n:'贯穿射线', ic:'✦', cd:16, t:'朝瞄准方向射出必定暴击的贯穿光束' } },
 
   { id:'smg', class:'rifle', n:'双持冲锋', ic:'⇉', c:'#8fe3ff', price:1200, tag:'高频',
     desc:'极快射速，单发伤害低',
@@ -207,9 +207,9 @@ const WEAPONS = [
     sk:{ n:'饱和轰炸', ic:'✹', cd:15, t:'齐射 6 发榴弹覆盖前方' } },
 
   { id:'arc', class:'tech', n:'电弧枪', ic:'⌁', c:'#b9f2ff', price:2000, tag:'连锁',
-    desc:'命中后电弧跳向附近敌人',
+    desc:'每次命中最多连锁电击附近 2 个目标',
     dmg:7, rate:.30, spd:540, count:1, spread:.05, pierce:1, crit:.07, br:3, life:.9,
-    sk:{ n:'电磁风暴', ic:'⌇', cd:18, t:'麻痹全场并造成连锁电击' } },
+    sk:{ n:'电磁风暴', ic:'⌇', cd:18, t:'清除敌弹，电击并麻痹场上敌人' } },
 
   /* ── 第二世代：对照军械图集新增 ── */
   { id:'pistol', class:'precise', n:'制式手枪', ic:'⌐', c:'#ffe07a', price:300, tag:'精准',
@@ -228,7 +228,7 @@ const WEAPONS = [
     sk:{ n:'枪管过热', ic:'✺', cd:14, t:'5 秒射速 ×2.8、穿透 +2' } },
 
   { id:'flamer', class:'elemental', n:'火焰喷射', ic:'≈', c:'#ff7a3c', price:1400, tag:'近战', reach:250,
-    desc:'短程舌焰，灼烧成片',
+    desc:'短程持续喷火，贯穿并点燃命中的敌人',
     dmg:3.2, rate:.05, spd:330, count:1, spread:.30, pierce:4, crit:.03, br:5.5, life:.36,
     sk:{ n:'烈焰吐息', ic:'✷', cd:12, t:'前方火墙，命中点燃 3 秒' } },
 
@@ -299,9 +299,9 @@ const WEAPONS = [
     sk:{ n:'极寒喷发', ic:'❅', cd:16, t:'半径 190 冻结并碎冰', g:'nova' } },
 
   { id:'micromissile', class:'heavy', n:'微型导弹', ic:'◉', c:'#ffa070', price:2700, tag:'爆裂',
-    desc:'小弹头快装填，覆盖广',
+    desc:'弹头在飞行中追踪敌人，命中或燃尽时爆炸',
     dmg:10, rate:.55, spd:380, count:1, spread:.05, pierce:0, crit:.04, br:4.4, life:1.4, boom:true,
-    sk:{ n:'齐射饱和', ic:'✹', cd:13, t:'八枚追踪弹幕', g:'salvo' } },
+    sk:{ n:'齐射饱和', ic:'✹', cd:13, t:'齐射 8 枚追踪导弹，爆炸波及附近敌人', g:'salvo', count:8 } },
 
   { id:'tesla', class:'tech', n:'特斯拉枪', ic:'⌇', c:'#b0f8ff', price:2800, tag:'连锁',
     desc:'持续放电，连锁跳弹',
@@ -1519,7 +1519,7 @@ function collectLights(){
     const b = G.bullets[i];
     const bw = WP[b.w];
     const bcol = b.mech ? '#ff9a4a' : (bw ? bw.c : '#ffd88a');
-    addLight(b.x, b.y, b.mech ? 34 : (b.arc ? 30 : (b.w === 'flamer' || b.w === 'toxin' ? 24 : 18)),
+    addLight(b.x, b.y, b.mech ? 34 : (b.boom ? 30 : (b.w === 'flamer' || b.w === 'toxin' ? 24 : 18)),
              bcol, b.mech ? .40 : .28, 1);
   }
   // 敌弹
@@ -3024,7 +3024,7 @@ function newRun(){
   G.p = {
     x: ARENA.w/2, y: ARENA.h/2, vx:0, vy:0,
     hp:100, maxHp:100, face:1, anim:0,
-    faceAngle:0, atkT:0,
+    faceAngle:0, aimAngle:0, shotAngle:0, atkT:0,
     fireT:.3, inv:1.2, hurtT:0, moving:false, flashT:0
   };
   G.st = null;
@@ -3174,7 +3174,7 @@ function updatePlayer(dt){
   }
 
   // 朝向：优先看目标，否则看移动（8 方向）
-  const tgt = nearestEnemy(p.x, p.y, 400);
+  const tgt = nearestEnemy(p.x, p.y, G.mechT > 0 ? 460 : weaponReach(WEP(), s));
   let fa = p.faceAngle;
   if(tgt){
     fa = Math.atan2(tgt.y - p.y, tgt.x - p.x);
@@ -3184,6 +3184,7 @@ function updatePlayer(dt){
     p.face = Math.cos(fa) >= 0 ? 1 : -1;
   }
   // 平滑过渡到 8 方向（取最近的 45° 方位，避免抖动）
+  p.aimAngle = fa;
   const snap = Math.round(fa / (Math.PI / 4)) * (Math.PI / 4);
   let d = snap - p.faceAngle;
   while(d > Math.PI) d -= Math.PI * 2;
@@ -3212,7 +3213,7 @@ function updatePlayer(dt){
   }
 
   p.fireT -= dt;
-  if(p.fireT <= 0 && tgt) fire();
+  if(p.fireT <= 0 && tgt) fire(tgt);
 
   updateMech(dt);
 
@@ -3268,60 +3269,76 @@ function nearestEnemyExcept(x, y, range, excl){
   return best;
 }
 
-function fire(){
+function weaponReach(w, s){
+  const nominal = w.reach || (w.id === 'sniper' ? 620 : 400);
+  const travel = w.spd * s.bspdMul * (G.buff.over > 0 ? 1.1 : 1) * (w.life + s.lifeAdd);
+  return Math.min(nominal, travel + gunMuzzleLength(w)) * s.gunRangeMul;
+}
+
+function gunMuzzleLength(w){
+  return (MUZ[w.id] || 24) * .80 + 2;
+}
+
+function gunMuzzle(p, w, angle){
+  const dx = Math.cos(angle), dy = Math.sin(angle);
+  const reach = gunMuzzleLength(w) / Math.hypot(dx, dy * KZ);
+  return { x:p.x + dx * reach, y:p.y + dy * reach };
+}
+
+function fire(target){
   if(G.mechT > 0){ mechFire(); return; }
   if(TALENTS.tryBayonet()) return;
   const p = G.p, s = G.st, w = WEP();
-  const reach = (w.reach || (w.id === 'shotgun' ? 250 : (w.id === 'sniper' ? 620 : 400))) * s.gunRangeMul;
-  const t = nearestEnemy(p.x, p.y, reach);
+  const t = target || nearestEnemy(p.x, p.y, weaponReach(w, s));
   if(!t) return;
   const ang = Math.atan2(t.y - p.y, t.x - p.x);
+  const muzzle = gunMuzzle(p, w, ang);
   const oved = G.buff.over > 0;
   const focus = G.wbuff.focus > 0;
   const heat = G.wbuff.heat > 0;
   const weakM = G.buff.weak > 0 ? .65 : 1;   /* 弹药克扣：伤害下降 */
   p.fireT = s.baseRate / s.rateMul / (oved ? 1.55 : 1) / (focus ? 2.4 : 1) / (heat ? 2.8 : 1);
   p.flashT = .07;
-  p.atkT = .16;   /* 攻击动作计时器：驱动举枪/挥臂/射击动画 */
+  p.atkT = .16;
+  p.shotAngle = ang;
 
   const n = w.count + s.extra;
-  const step = (w.count > 1 ? w.spread : .075) * (s.spreadMul || 1);
+  const step = (w.count > 1 ? w.spread : .075) * s.spreadMul;
+  const sp = w.spd * (oved ? 1.1 : 1) * s.bspdMul;
   for(let i=0;i<n;i++){
-    const off = n > 1 ? (i - (n - 1) / 2) * step : 0;
-    const a = ang + off + rnd(-.014, .014);
-    const sp = w.spd * (oved ? 1.1 : 1) * (s.bspdMul || 1);
+    // Keep the center of the shotgun volley when resonance or talents add pellets.
+    const off = w.id === 'shotgun'
+      ? (i < w.count ? (i - (w.count - 1) / 2) * step : rnd(-2, 2) * step)
+      : (i - (n - 1) / 2) * step;
+    const spread = w.count > 1 || n > 1 ? .014 : w.spread * s.spreadMul * .24;
+    const a = ang + off + rnd(-spread, spread);
     G.bullets.push({
-      x: p.x + Math.cos(a) * 12, y: p.y + Math.sin(a) * 12,
-      vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
-      dmg: s.dmg * weakM, pct: oved ? .25 : 0,
-      pierce: s.pierce + (focus ? 2 : 0) + (heat ? 2 : 0),
-      hits: [], pi: 0, life: (w.life + (s.lifeAdd || 0)) * s.gunRangeMul, crit: Math.random() < s.crit,
-      r: w.br * s.bigMul,
-      over: oved, w: w.id, boom: !!w.boom,
-      arc: w.boom ? w.life * s.gunRangeMul : 0, arcH: w.boom ? 28 : 0
+      x:muzzle.x, y:muzzle.y, fromX:p.x, fromY:p.y,
+      vx:Math.cos(a) * sp, vy:Math.sin(a) * sp,
+      dmg:s.dmg * weakM, pct:oved ? .25 : 0,
+      pierce:w.pierce + s.pierce + (focus ? 2 : 0) + (heat ? 2 : 0),
+      hits:[], life:(w.life + s.lifeAdd) * s.gunRangeMul, crit:Math.random() < s.crit,
+      r:w.br * s.bigMul, over:oved, w:w.id, boom:!!w.boom, fuse:!!w.boom,
+      homing:w.id === 'micromissile', turn:w.id === 'micromissile' ? 5 : 0
     });
   }
-  /* 弹幕风暴：额外散射子弹（土豆兄弟「子弹增多」型天赋） */
+  /* 弹幕风暴：额外散射子弹 */
   const bn = s.barrage * 2 + s.barrageExtra;
-  if(bn > 0){
-    for(let i=0;i<bn;i++){
-      const a = ang + rnd(-.5, .5);
-      const sp = w.spd * rnd(.72, .95);
-      G.bullets.push({
-        x: p.x + Math.cos(a) * 12, y: p.y + Math.sin(a) * 12,
-        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
-        dmg: s.dmg * .8 * weakM * s.barragePower, pierce: s.pierce, hits: [], life: w.life * .9 * s.gunRangeMul,
-        crit: Math.random() < s.crit * .7, r: w.br * s.bigMul * .8,
-        over: oved, w: w.id, boom: false, barrage: true
-      });
-    }
+  for(let i=0;i<bn;i++){
+    const a = ang + rnd(-.5, .5);
+    const sp = w.spd * rnd(.72, .95);
+    G.bullets.push({
+      x:muzzle.x, y:muzzle.y, fromX:p.x, fromY:p.y,
+      vx:Math.cos(a) * sp, vy:Math.sin(a) * sp,
+      dmg:s.dmg * .8 * weakM * s.barragePower, pierce:w.pierce + s.pierce, hits:[], life:w.life * .9 * s.gunRangeMul,
+      crit:Math.random() < s.crit * .7, r:w.br * s.bigMul * .8,
+      over:oved, w:w.id, boom:false, barrage:true
+    });
   }
-  // 枪口火花
-  const mx = p.x + Math.cos(ang) * 15, my = p.y + Math.sin(ang) * 15;
   for(let i=0;i<(w.id === 'shotgun' ? 6 : 3);i++){
     G.parts.push({
-      x:mx, y:my, vx:Math.cos(ang)*rnd(30,110), vy:Math.sin(ang)*rnd(30,110),
-      life:.09, max:.09, col:w.c, r:1.6
+      x:muzzle.x, y:muzzle.y, vx:Math.cos(ang)*rnd(30,110), vy:Math.sin(ang)*rnd(30,110),
+      life:.09, max:.09, col:w.c, r:1.6, height:BULLET_H
     });
   }
   if(w.id === 'shotgun'){ G.shake = Math.max(G.shake, 2.6); SFX.heavy(); }
@@ -3330,30 +3347,23 @@ function fire(){
 }
 
 /* 沿射线判定（贯穿类技能共用）：返回命中数 */
-function rayHit(ox, oy, ang, len, wide, dmg, crit){
-  const ca = Math.cos(ang), sa = Math.sin(ang);
+function rayHit(ox, oy, ang, len, wide, dmg, crit, bossDmg = dmg){
+  const x = ox + Math.cos(ang) * len, y = oy + Math.sin(ang) * len;
   let n = 0;
-  for(let i=0;i<G.enemies.length;i++){
-    const e = G.enemies[i];
-    if(e.dead) continue;
-    const ex = e.x - ox, ey = e.y - oy;
-    const proj = ex * ca + ey * sa;
-    if(proj < 0 || proj > len) continue;
-    if(Math.abs(-ex * sa + ey * ca) < e.r + wide){ applyDamage(e, dmg, crit, e.x, e.y - 6); n++; }
-  }
-  if(G.boss && !G.boss.dead){
-    const ex = G.boss.x - ox, ey = G.boss.y - oy;
-    const proj = ex * ca + ey * sa;
-    if(proj > 0 && proj < len && Math.abs(-ex * sa + ey * ca) < G.boss.r + wide){
-      damageBoss(G.boss, dmg, crit, G.boss.x, G.boss.y); n++;
-    }
+  for(const e of projectileTargets()){
+    if(!projectileTargetActive(e)) continue;
+    if(projectileContact(ox - e.x, oy - e.y, x - e.x, y - e.y, e.r + wide) === null) continue;
+    if(e === G.boss) damageBoss(e, bossDmg, crit, e.x, e.y);
+    else applyDamage(e, dmg, crit, e.x, e.y - 6);
+    n++;
   }
   return n;
 }
-function beamFX(x, y, ang, len, col, wide, life){
+
+function beamFX(x, y, ang, len, col, wide, life, radius){
   const L = life || .22;
   G.parts.push({ x:x, y:y, vx:0, vy:0, life:L, max:L, col:col, r:wide || 1,
-    line:{ x2:x + Math.cos(ang) * len, y2:y + Math.sin(ang) * len } });
+    line:{ x2:x + Math.cos(ang) * len, y2:y + Math.sin(ang) * len, width:wide, radius:radius } });
 }
 
 /* ── 主动技：以最近敌人为基准方向 ── */
@@ -3370,10 +3380,9 @@ const WSK_G = {
   },
   beam: function(w, p){
     const a = aimAngle(p, 1100);
-    const n = rayHit(p.x, p.y, a, 980, 16, scaleSkill(weaponBaseDamage(w) * 3.4), true);
-    beamFX(p.x, p.y, a, 980, w.c, 5, .26);
+    const n = rayHit(p.x, p.y, a, 980, 16, scaleSkill(weaponBaseDamage(w) * 3.4), true, scaleSkill(weaponBaseDamage(w) * 3));
+    beamFX(p.x, p.y, a, 980, w.c, 5, .26, 16);
     beamFX(p.x, p.y, a, 980, '#ffffff', 1.6, .18);
-    if(G.boss && !G.boss.dead) damageBoss(G.boss, scaleSkill(weaponBaseDamage(w) * 3), true, G.boss.x, G.boss.y);
     for(let i = 0; i < 10; i++){
       G.parts.push({ x:p.x + Math.cos(a) * (30 + i * 40), y:p.y + Math.sin(a) * (30 + i * 40),
         vx:rnd(-40, 40), vy:rnd(-40, 40), life:.3, max:.3, col:w.c, r:1.8 });
@@ -3400,13 +3409,19 @@ const WSK_G = {
     G.rings.push({ x:p.x, y:p.y, r:14, max:R, life:.6, maxLife:.6, col:w.c, w:4 });
   },
   salvo: function(w, p){
-    for(let i = 0; i < 6; i++){
-      const a = aimAngle(p, 700) + (i - 2.5) * .22;
+    const count = w.sk.count || 6;
+    const aim = aimAngle(p, 700);
+    const muzzle = gunMuzzle(p, w, aim);
+    p.shotAngle = aim;
+    p.flashT = .07;
+    for(let i = 0; i < count; i++){
+      const a = aim + (i - (count - 1) / 2) * .18;
       G.bullets.push({
-        x:p.x + Math.cos(a) * 12, y:p.y + Math.sin(a) * 12,
+        x:muzzle.x, y:muzzle.y, fromX:p.x, fromY:p.y,
         vx:Math.cos(a) * w.spd * 1.1, vy:Math.sin(a) * w.spd * 1.1,
-        dmg:scaleSkill(G.st.dmg * 2.4), pierce:1, hits:[], life:1.6, crit:Math.random() < G.st.crit + .1,
-        r:w.br * 1.2, w:w.id, boom:!!w.boom, homing:true
+        dmg:scaleSkill(G.st.dmg * 2.4), pierce:w.boom ? 0 : 1, hits:[], life:1.6,
+        crit:Math.random() < G.st.crit + .1, r:w.br * 1.2, w:w.id,
+        boom:!!w.boom, fuse:!!w.boom, homing:true, turn:w.boom ? 5 : 3.4
       });
     }
     G.shake = 5;
@@ -3477,35 +3492,21 @@ function weaponSkill(){
       G.parts.push({ x:p.x, y:p.y, vx:Math.cos(a2)*v, vy:Math.sin(a2)*v*.6,
         life:.34, max:.34, col:pick(['#ffb060','#ffd88a','#fff2cf']), r:2 });
     }
-    G.rings.push({ x:p.x, y:p.y, r:10, max:86, life:.38, maxLife:.38, col:'#ffb060', w:4 });
+    G.rings.push({ x:p.x, y:p.y, r:10, max:82, life:.38, maxLife:.38, col:'#ffb060', w:4 });
     G.shake = 11;
     banner(w.sk.n, w.sk.t, 1.0);
 
   } else if(w.id === 'sniper'){
-    const t = nearestEnemy(p.x, p.y, 1000);
-    const a = t ? Math.atan2(t.y - p.y, t.x - p.x) : (p.face > 0 ? 0 : Math.PI);
-    const ca = Math.cos(a), sa = Math.sin(a);
+    const a = aimAngle(p, 1200);
+    const muzzle = gunMuzzle(p, w, a);
+    p.shotAngle = a;
+    p.flashT = .07;
     const len = 1200;
-    for(let i=0;i<G.enemies.length;i++){
-      const e = G.enemies[i];
-      if(e.dead) continue;
-      const ex = e.x - p.x, ey = e.y - p.y;
-      const proj = ex * ca + ey * sa;
-      if(proj < 0 || proj > len) continue;
-      if(Math.abs(-ex * sa + ey * ca) < e.r + 13) applyDamage(e, scaleSkill(130), true, e.x, e.y - 6);
-    }
-    if(G.boss && !G.boss.dead){
-      const ex = G.boss.x - p.x, ey = G.boss.y - p.y;
-      const proj = ex * ca + ey * sa;
-      if(proj > 0 && proj < len && Math.abs(-ex * sa + ey * ca) < G.boss.r + 14){
-        damageBoss(G.boss, scaleSkill(100), true, G.boss.x, G.boss.y);
-      }
-    }
-    G.parts.push({ x:p.x, y:p.y, vx:0, vy:0, life:.24, max:.24, col:'#e0c8ff', r:1,
-      line:{ x2:p.x + ca * len, y2:p.y + sa * len } });
-    G.parts.push({ x:p.x, y:p.y, vx:0, vy:0, life:.24, max:.24, col:'#ffffff', r:1,
-      line:{ x2:p.x + ca * len, y2:p.y + sa * len } });
-    addFlash(p.x + ca * 60, p.y + sa * 60, 150, '#c8a0ff', .5);
+    const width = 13;
+    rayHit(p.x, p.y, a, len, width, scaleSkill(130), true, scaleSkill(100));
+    beamFX(p.x, p.y, a, len, w.c, 6, .28, width);
+    beamFX(muzzle.x, muzzle.y, a, len - dst(p.x, p.y, muzzle.x, muzzle.y), '#ffffff', 2, .20);
+    addFlash(muzzle.x, muzzle.y, 150, w.c, .5);
     G.shake = 10;
     banner(w.sk.n, w.sk.t, 1.0);
 
@@ -4273,74 +4274,8 @@ function addEnergy(v){
 }
 
 /* ── 子弹 ── */
-function updateBullets(dt){
-  const s = G.st;
-  for(let i=G.bullets.length-1;i>=0;i--){
-    const b = G.bullets[i];
-    if(!b) continue;
-    if(b.homing){
-      const tg = nearestEnemy(b.x, b.y, 300);
-      if(tg){
-        const ca = Math.atan2(b.vy, b.vx), ta = Math.atan2(tg.y - b.y, tg.x - b.x);
-        const na = angLerp(ca, ta, clamp(dt * 3.4, 0, 1));
-        const sp = Math.hypot(b.vx, b.vy);
-        b.vx = Math.cos(na) * sp; b.vy = Math.sin(na) * sp;
-      }
-    }
-    b.x += b.vx * dt; b.y += b.vy * dt;
-    b.life -= dt;
-    /* 火焰/毒雾：飞行途中持续掉出火舌粒子 */
-    if((b.w === 'flamer' || b.w === 'toxin') && Math.random() < dt * 26){
-      G.parts.push({ x:b.x, y:b.y - 4, vx:rnd(-16, 16), vy:-rnd(4, 28),
-        life:.24, max:.24, col: b.w === 'toxin' ? '#a8e05a' : '#ff8a3c', r:rnd(1.4, 2.6) });
-    }
-    if(b.life <= 0 || b.x < 0 || b.x > ARENA.w || b.y < 0 || b.y > ARENA.h){
-      if(b.arc){
-        /* 抛物弹落地：范围冲击 + 焦痕 */
-        const br0 = 46 * (s.boomMul || 1);
-        aoe(b.x, b.y, br0, b.dmg * .8, null);
-        explodeFX(b.x, b.y, br0);
-        addBurn(b.x, b.y, 26);
-      }
-      G.bullets.splice(i, 1); continue;
-    }
-    let hit = false;
-
-    for(let j=0;j<G.enemies.length;j++){
-      const e = G.enemies[j];
-      if(e.dead || e.spawnT > 0) continue;
-      if(b.hits.indexOf(e) >= 0) continue;
-      const rr = e.r + 3;
-      if(d2(b.x, b.y, e.x, e.y) < rr * rr){
-        b.hits.push(e);
-        onBulletHit(b, e);
-        if(b.pierce > 0){ b.pierce--; }
-        else { hit = true; }
-        break;
-      }
-    }
-    // 补给箱：不再靠弹幕击碎，改为靠近解锁（子弹直接穿过）
-    if(!hit && G.crates.length){
-      for(let j=0;j<G.crates.length;j++){
-        const c = G.crates[j];
-        if(c.dead || c.fall > 0) continue;
-        if(d2(b.x, b.y, c.x, c.y) < 17 * 17){
-          // 子弹穿过箱子，仅给一点点提示火花，不造成伤害
-          spark(b.x, b.y, 2, '#ffd08a', 40);
-          break;
-        }
-      }
-    }
-
-    if(hit){ G.bullets.splice(i, 1); continue; }
-
-    const bs = G.boss;
-    if(bs && !bs.dead && d2(b.x, b.y, bs.x, bs.y) < (bs.r + 4) * (bs.r + 4)){
-      damageBoss(bs, b.dmg, b.crit, b.x, b.y, { pct: b.pct || 0, pierceIndex: b.pi || 0 });
-      b.pi = (b.pi || 0) + 1;
-      if(b.pierce > 0) b.pierce--; else G.bullets.splice(i, 1);
-    }
-  }
+function updateBullets(dt, previous){
+  updatePlayerProjectiles(dt, previous);
 
   // 敌方子弹
   for(let i=G.eb.length-1;i>=0;i--){
@@ -4361,54 +4296,6 @@ function updateBullets(dt){
     if(G.p.inv <= 0 && d2(b.x, b.y, G.p.x, G.p.y) < (b.r + 8) * (b.r + 8)){
       hurtPlayer(b.dmg);
       G.eb.splice(i, 1);
-    }
-  }
-}
-
-function onBulletHit(b, e){
-  const s = G.st;
-  const pi = Math.max(0, b.hits.length - 1);   // 穿透递减层级
-  /* 受击方向冲击波 + 碎屑（朝弹道前方） */
-  hitFX(b.x, b.y - 4, Math.atan2(b.vy, b.vx), b.boom ? '#ffb060' : '#ffe6c0', !!b.boom);
-  const opt = { crit: b.crit, pct: b.pct || 0, pierceIndex: pi };
-  applyDamage(e, b.dmg, b.crit, b.x, b.y, opt);
-
-  /* 元素效果触发：共鸣给额外的 25% 触发，触发时元素强度提高 */
-  const xu = s.elemMul > 1 && Math.random() < (s.elemMul - 1) ? s.elemMul : 1;
-
-  if(b.boom){
-    const br = 38 * (s.boomMul || 1);
-    aoe(b.x, b.y, br, b.dmg * .72, e);
-    explodeFX(b.x, b.y, br);
-    addFlash(b.x, b.y, br * 2.2, '#ff8a5c', .5);
-  }
-  /* 武器自身的弹种特性 */
-  if(b.w === 'flamer'){ setBurn(e, 2.6, 6 * s.burnMul * xu); }
-  else if(b.w === 'acid'){ setBurn(e, 3.0, 5 * s.burnMul * xu); aoe(b.x, b.y, 26, b.dmg * .38, e); }
-  else if(b.w === 'frost'){
-    e.slowT = Math.max(e.slowT || 0, 1.6 * xu);
-    e.slowAmt = Math.max(e.slowAmt || 0, .45 * xu);
-  } else if(b.w === 'plasma'){
-    aoe(b.x, b.y, 56 * (s.boomMul || 1), b.dmg * .55, e);
-    G.rings.push({ x:b.x, y:b.y, r:6, max:58 * (s.boomMul || 1), life:.26, maxLife:.26, col:'#c08cff', w:2 });
-  }
-  if(s.burn > 0){ e.burnT = 2.4; e.burnDps = 3.2 * s.burn * s.burnMul * xu; }
-  if(s.freeze > 0){ e.slowT = 1.3; e.slowAmt = Math.min(.78, .22 * s.freeze * xu); }
-  if(s.blast > 0){
-    const br2 = (22 + 6 * s.blast) * (s.boomMul || 1);
-    aoe(b.x, b.y, br2, b.dmg * .42, e);
-    G.rings.push({ x:b.x, y:b.y, r:4, max:br2, life:.24, maxLife:.24, col:'#ffc46a', w:2 });
-  }
-  if(s.chain > 0){
-    let from = e, sx = b.x, sy = b.y;
-    const used = [e];
-    for(let k=0;k<s.chain;k++){
-      const nx = nearestEnemyExcept(from.x, from.y, 130, used);
-      if(!nx) break;
-      used.push(nx);
-      applyDamage(nx, b.dmg * .55, false, nx.x, nx.y);
-      G.parts.push({ x:sx, y:sy, vx:0, vy:0, life:.1, max:.1, col:'#b9f2ff', r:1, line:{ x2:nx.x, y2:nx.y } });
-      sx = nx.x; sy = nx.y; from = nx;
     }
   }
 }
@@ -8063,17 +7950,13 @@ function drawGunShape(w){
 }
 
 /* 手持武器：独立图层 —— 按瞄准方向旋转 + 左向垂直翻转 + 枪口火光 */
-function drawGun(sx, sy, faceAngle, bob, attacking, vy){
+function drawGun(sx, sy, angle){
   const w = WEP();
-  const fa = faceAngle || 0;
-  const left = Math.cos(fa) < 0;
-  const gy = sy - 17 + (bob || 0) + (attacking ? -1.5 : 0);
-
+  const left = Math.cos(angle) < 0;
   ctx.save();
-  ctx.translate(Math.round(sx + (left ? -1.5 : 1.5)), Math.round(gy));
-  ctx.rotate(fa);
+  ctx.translate(sx, sy - BULLET_H);
+  ctx.rotate(Math.atan2(Math.sin(angle) * KZ, Math.cos(angle)));
   if(left) ctx.scale(1, -1);          /* 左向时上下翻转，枪身不会倒过来 */
-  if(attacking) ctx.rotate(-.14);     /* 后坐上仰 */
 
   const f = SPRM.frames['g_' + w.id];
   const gsc = .80;                       /* 与 32px 主角的比例：枪身略收一点 */
@@ -8086,9 +7969,9 @@ function drawGun(sx, sy, faceAngle, bob, attacking, vy){
     drawGunShape(w);
   }
 
-  const mz = (MUZ[w.id] || 24) * gsc;
-  if(attacking || (G.p && G.p.flashT > 0)){
-    const k = attacking ? 1 : .55;
+  const mz = gunMuzzleLength(w) - 2;
+  if(G.p.flashT > 0){
+    const k = clamp(G.p.flashT / .07, .35, 1);
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     const R2 = 15 * k;
@@ -8134,13 +8017,13 @@ function weaponIconURL(w){
   return c.toDataURL();
 }
 
-function drawHero(x, y, faceAngle, moving, anim, atkT){
+function drawHero(x, y, faceAngle, moving, anim){
   const sk = SKIN();
   const si = Math.min(22, G.skin | 0);
   const fa = faceAngle || 0;
   const di = heroDir(fa);
   const sx = Math.round(x), sy = Math.round(y);
-  const attacking = atkT > 0;
+  const aim = G.p.flashT > 0 ? G.p.shotAngle : G.p.aimAngle;
 
   /* 场景光照采样：站在阴影里整体压暗，靠近火光偏暖 */
   let lum = 1, warm = 0;
@@ -8180,7 +8063,7 @@ function drawHero(x, y, faceAngle, moving, anim, atkT){
     const f = Math.cos(fa) < 0;
     ctx.drawImage(f ? leg.l : leg.r, sx - 13, sy - leg.h);
     ctx.drawImage(f ? sk.body.l : sk.body.r, sx - 13, sy - 7 - (sk.h || SKIN_BODY_H));
-    drawGun(sx, sy, fa, 0, attacking, 0);
+    drawGun(x, y, aim);
     return;
   }
 
@@ -8189,11 +8072,11 @@ function drawHero(x, y, faceAngle, moving, anim, atkT){
   trailDraw();
 
   const bx = sx - 16, by = sy - 30;
-  const aimingUp = Math.sin(fa) < -.20;
+  const aimingUp = Math.sin(aim) < -.20;
   const sep = HERO_SEP[G.stage] || HERO_SEP[0];
 
   ctx.globalAlpha = lum;
-  if(aimingUp) drawGun(sx, sy, fa, 0, attacking, 0);
+  if(aimingUp) drawGun(x, y, aim);
 
   /* 深色分离轮廓：往 4 个方向各偏 1px 铺一层暗剪影，
      让浅色主角在冰面 / 熔岩这种高亮地面上仍然"贴得住" */
@@ -8244,7 +8127,7 @@ function drawHero(x, y, faceAngle, moving, anim, atkT){
   }
   ctx.globalAlpha = 1;
 
-  if(!aimingUp) drawGun(sx, sy, fa, 0, attacking, 0);
+  if(!aimingUp) drawGun(x, y, aim);
 }
 
 /* ══════════ 机甲形态：光之巨人 ══════════ */
@@ -8942,7 +8825,7 @@ function drawPlayer(){
   if(G.mechT > 0){
     drawMechSprite(sx, sy, p.faceAngle, p.moving, p.anim, p.atkT);
   } else {
-    drawHero(sx, sy, p.faceAngle, p.moving, p.anim, p.atkT);
+    drawHero(sx, sy, p.faceAngle, p.moving, p.anim);
   }
 }
 
@@ -8956,7 +8839,7 @@ function bTrail(len, wid, col, a){
 }
 
 /* 每把武器自己的弹道语言 */
-function drawBulletBody(b, col, w){
+function drawBulletBody(b, col){
   const id = b.w;
   const br = b.r;
 
@@ -8972,10 +8855,25 @@ function drawBulletBody(b, col, w){
     ctx.globalCompositeOperation = 'lighter';
     bTrail(L, 7, col, .50);
     ctx.fillStyle = hexA(col, .9);
-    ctx.fillRect(-L * .8, -1.5, L * .85, 3);
+    ctx.fillRect(-L * .8, -br * .55, L * .80, br * 1.1);
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(-3, -1, 11, 2);
+    ctx.beginPath(); ctx.arc(0, 0, br, 0, TAU); ctx.fill();
     ctx.globalCompositeOperation = 'source-over';
+
+  } else if(id === 'micromissile' && b.homing){
+    bTrail(br * 6, br * 2.6, '#ff6e38', .72);
+    ctx.fillStyle = '#ff864d';
+    ctx.beginPath();
+    ctx.moveTo(-br * 3, -br * 1.35);
+    ctx.lineTo(0, -br * .50);
+    ctx.lineTo(0, br * .50);
+    ctx.lineTo(-br * 3, br * 1.35);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#fff0ca';
+    ctx.beginPath(); ctx.arc(0, 0, br, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#71363b';
+    ctx.fillRect(-br * .6, -br * .35, br * .8, br * .7);
 
   } else if(id === 'launcher' || id === 'plasma' || id === 'orbgun' || id === 'micromissile'){
     const pc = id === 'launcher' || id === 'micromissile' ? '#ff7a3c' : col;
@@ -8999,7 +8897,7 @@ function drawBulletBody(b, col, w){
     bTrail(10, 5, col, .40);
     ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = '#ffe9c0';
-    ctx.beginPath(); ctx.arc(0, 0, br * .95, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc(0, 0, br, 0, TAU); ctx.fill();
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(-.5, -1, 3, 2);
     /* 飞行中的放射状微粒 */
@@ -9018,6 +8916,9 @@ function drawBulletBody(b, col, w){
     const pc = id === 'toxin' ? '#a8e05a' : '#ff7a3c';
     ctx.globalCompositeOperation = 'lighter';
     bTrail(14 * k + 6, 8, pc, .40);
+    ctx.fillStyle = pc;
+    ctx.globalAlpha = .68 * Math.max(k, .4);
+    ctx.beginPath(); ctx.arc(0, 0, br, 0, TAU); ctx.fill();
     for(let j = 0; j < 3; j++){
       const rr = br * (1.5 - j * .35) * (.8 + .3 * Math.sin(G.t * 20 + j + b.x * .1));
       ctx.globalAlpha = (.30 + j * .16) * k;
@@ -9040,7 +8941,7 @@ function drawBulletBody(b, col, w){
     ctx.lineTo(4, -1.8);
     ctx.stroke();
     ctx.fillStyle = '#eaffff';
-    ctx.fillRect(3, -1.2, 3.4, 2.4);
+    ctx.beginPath(); ctx.arc(0, 0, br, 0, TAU); ctx.fill();
     ctx.globalCompositeOperation = 'source-over';
 
   } else if(id === 'bow' || id === 'hunter'){
@@ -9050,9 +8951,7 @@ function drawBulletBody(b, col, w){
     ctx.fillStyle = '#d8ffe8';
     ctx.fillRect(-7, -.5, 14, 1);
     ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.moveTo(8, 0); ctx.lineTo(2, -2.6); ctx.lineTo(2, 2.6);
-    ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.arc(0, 0, br, 0, TAU); ctx.fill();
 
   } else {
     /* 通用自动武器：短拖尾 + 亮芯 */
@@ -9061,9 +8960,9 @@ function drawBulletBody(b, col, w){
     bTrail(13, 4.6, wc, .42);
     ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = b.crit ? '#fff3b0' : wc;
-    ctx.fillRect(-4, -1.5, 8, 3);
+    ctx.beginPath(); ctx.arc(0, 0, br, 0, TAU); ctx.fill();
     ctx.fillStyle = '#fffdf0';
-    ctx.fillRect(0, -1, 4, 2);
+    ctx.beginPath(); ctx.arc(0, 0, br * .42, 0, TAU); ctx.fill();
   }
 }
 
@@ -9072,29 +8971,16 @@ function drawBullets(){
   for(let i = 0; i < G.bullets.length; i++){
     const b = G.bullets[i];
     const ang = Math.atan2(b.vy, b.vx);
-    const prog = b.arc ? clamp(1 - b.life / b.arc, 0, 1) : 0;
-    const arcY = b.arc ? Math.sin(prog * Math.PI) * (b.arcH || 20) : 0;
-    const sx = SX(b.x), sy = SY(b.y) - BULLET_H - arcY;
+    const sx = SX(b.x), sy = SY(b.y) - BULLET_H;
+    const margin = 36 + b.r * 6;
+    if(sx < -margin || sx > VW + margin || sy < -margin || sy > VH + margin) continue;
     const w = WP[b.w];
     const col = w ? w.c : '#ffd88a';
-
-    if(b.arc){
-      /* 抛物弹：地面上随高度收缩的投影 */
-      ctx.save();
-      ctx.globalCompositeOperation = 'multiply';
-      ctx.globalAlpha = Math.max(.06, .34 * (1 - arcY / 48));
-      ctx.fillStyle = '#000';
-      ctx.beginPath();
-      ctx.ellipse(sx, SY(b.y) - 1, b.r * (.7 + arcY / 70), b.r * .30, 0, 0, TAU);
-      ctx.fill();
-      ctx.restore();
-      ctx.globalAlpha = 1;
-    }
-
     ctx.save();
     ctx.translate(sx, sy);
+    ctx.scale(1, KZ);
     ctx.rotate(ang);
-    drawBulletBody(b, col, w);
+    drawBulletBody(b, col);
     ctx.restore();
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
@@ -9111,6 +8997,8 @@ function drawBullets(){
     ctx.fillStyle = hexA(b.col, .15);
     ctx.beginPath(); ctx.ellipse(-b.r * 1.8, 0, b.r * 2.9, b.r * 1.15, 0, 0, TAU); ctx.fill();
     ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#301018';
+    ctx.beginPath(); ctx.arc(0, 0, b.r + 1.4, 0, TAU); ctx.fill();
     ctx.fillStyle = b.col;
     ctx.beginPath(); ctx.arc(0, 0, b.r, 0, TAU); ctx.fill();
     ctx.fillStyle = 'rgba(255,255,255,.9)';
@@ -9160,7 +9048,13 @@ function drawHazards(){
       ctx.beginPath();
       ctx.ellipse(cx, cy, h.r * .96, h.r * .96 * KZ, 0, 0, TAU);
       ctx.fill();
-      ctx.globalAlpha = .55 + .45 * k;
+      ctx.globalAlpha = .6;
+      ctx.strokeStyle = '#ff7169';
+      ctx.lineWidth = 1.25;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, h.r, h.r * KZ, 0, 0, TAU);
+      ctx.stroke();
+      ctx.globalAlpha = .65 + .35 * k;
       ctx.strokeStyle = '#ff3c3c';
       ctx.lineWidth = 2.4;
       ctx.beginPath();
@@ -9246,17 +9140,39 @@ function drawParts(){
     const k = clamp(p.life / p.max, 0, 1);
     ctx.globalAlpha = k;
     if(p.line){
+      const line = p.line;
+      const x0 = SX(p.x), y0 = SY(p.y) - BULLET_H;
+      const x1 = SX(line.x2), y1 = SY(line.y2) - BULLET_H;
+      if(line.radius){
+        ctx.save();
+        ctx.translate(x0, y0);
+        ctx.scale(1, KZ);
+        ctx.globalAlpha = k * .30;
+        ctx.strokeStyle = p.col;
+        ctx.lineWidth = line.radius * 2;
+        ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(x1 - x0, (y1 - y0) / KZ); ctx.stroke();
+        ctx.restore();
+      }
       ctx.strokeStyle = p.col;
-      ctx.lineWidth = 2;
+      ctx.lineWidth = line.width || 2;
       ctx.beginPath();
-      ctx.moveTo(SX(p.x), SY(p.y) - BULLET_H);
-      ctx.lineTo(SX(p.line.x2), SY(p.line.y2) - BULLET_H);
+      ctx.moveTo(x0, y0);
+      if(line.electric){
+        const phase = Math.sin(G.t * 80 + p.x);
+        const len = Math.max(1, Math.hypot(x1 - x0, y1 - y0));
+        for(let j = 1; j <= 4; j++){
+          const f = j / 5, off = (j % 2 ? 1 : -1) * (3.5 + phase * 1.5);
+          ctx.lineTo(lerp(x0, x1, f) - (y1 - y0) * off / len, lerp(y0, y1, f) + (x1 - x0) * off / len);
+        }
+      }
+      ctx.lineTo(x1, y1);
       ctx.stroke();
       ctx.globalAlpha = 1;
       continue;
     }
     ctx.fillStyle = p.col;
-    const sx = SX(p.x), sy = SY(p.y) - 10;
+    const sx = SX(p.x), sy = SY(p.y) - (p.height ?? 10);
     const s = p.r * (0.5 + k * .9);
     ctx.fillRect(sx - s / 2, sy - s / 2, s, s);
   }
@@ -9535,10 +9451,11 @@ function step(dt){
   updatePlayer(dt);
   updateWeapon(dt);
   updateChar(dt);
+  const projectileMotion = G.bullets.length ? snapshotProjectileMotion() : null;
   updateWaves(dt);
   updateEnemies(dt);
   updateBoss(dt);
-  updateBullets(dt);
+  updateBullets(dt, projectileMotion);
   updateHazards(dt);
   updateOrbs(dt);
   updatePicks(dt);
