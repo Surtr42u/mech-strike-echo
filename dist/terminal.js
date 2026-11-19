@@ -68,10 +68,12 @@ function updateLoadout() {
 }
 function currentStock() {
   if(shopTab === 'growth') return Object.keys(GROWTH_MODULES)[0];
+  if(shopTab === 'preparations') return PREPARATIONS.rows()[0].id;
   return shopTab === 'skin' ? PROF.skin : PROF.weapon;
 }
 function stockRows() {
   if(shopTab === 'growth') return growthRows();
+  if(shopTab === 'preparations') return PREPARATIONS.rows();
   if(shopTab === 'skin') return SKINS.map((pilot,i) => ({
     id:i, name:pilot.name, category:'驾驶员', desc:pilot.desc, price:pilot.price, owned:ownSkin(i),
     skill:pilot.act.n, effect:pilot.act.t, cooldown:pilot.act.cd, passive:pilot.pas.t, passiveLabel:'角色被动'
@@ -86,6 +88,7 @@ function showStockDetail(row) {
   const detail = byId('shopDetail');
   detail.replaceChildren();
   if(shopTab === 'growth') { showModuleDetail(row); return; }
+  if(shopTab === 'preparations') { PREPARATIONS.showDetail(row); return; }
   const art = node('div','detail-art' + (shopTab === 'weapon' ? ' gun' : ''));
   const img = node('img'); img.alt = ''; img.src = thumbnail(shopTab,row.id); art.append(img);
   detail.append(art,node('div','detail-tag',row.category),node('h3','',row.name),node('p','',row.desc));
@@ -118,10 +121,13 @@ function buildShop() {
   const grid = byId('shopGrid'), rows = stockRows();
   const detail = byId('shopDetail');
   const offset = grid.scrollTop, detailOffset = detail.scrollTop;
-  const modules = shopTab === 'growth', equipped = currentStock();
+  const preparations = shopTab === 'preparations';
+  const modules = shopTab === 'growth' || preparations, equipped = currentStock();
   grid.classList.toggle('module-grid',modules);
-  byId('catalogName').textContent = modules ? '永久强化 · 购买后自动生效' : shopTab === 'skin' ? '驾驶员名册' : '武器库';
-  byId('catalogCount').textContent = modules ? activeModuleCount() + ' / ' + rows.length + ' 生效 · ' + skillCapacity() + ' 技能槽' :
+  byId('catalogName').textContent = preparations ? '战前准备' : modules ? '永久强化 · 购买后自动生效' :
+    shopTab === 'skin' ? '驾驶员名册' : '武器库';
+  byId('catalogCount').textContent = preparations ? '解锁后自动生效' :
+    modules ? activeModuleCount() + ' / ' + rows.length + ' 生效 · ' + skillCapacity() + ' 技能槽' :
     '已解锁 ' + rows.filter(r=>r.owned).length + ' / ' + rows.length;
   document.querySelectorAll('[data-tab]').forEach(b => {
     b.setAttribute('aria-pressed',String(b.dataset.tab === shopTab));
@@ -135,7 +141,7 @@ function buildShop() {
     if(modules) {
       const art = node('span','module-symbol',row.icon);
       art.setAttribute('aria-hidden','true');
-      const status = row.level ? '已生效' : '未购买';
+      const status = preparations ? (row.level ? '出击时生效' : '未解锁') : row.level ? '已生效' : '未购买';
       item.append(art,node('strong','',row.name),node('small','','Lv.' + row.level + ' · ' + row.effects),
         node('small',row.level ? 'equipped' : '',status));
     } else {
@@ -176,7 +182,7 @@ function openShop(tab) {
   G.mode = 'shop';
   for(const id of ['ovTitle','ovPause','ovOver']) byId(id).classList.add('hide');
   byId('ovShop').classList.remove('hide');
-  setShopTab(['weapon','growth'].includes(tab) ? tab : 'skin');
+  setShopTab(['weapon','growth','preparations'].includes(tab) ? tab : 'skin');
   byId('btnShopX').focus({preventScroll:true});
 }
 function closeShop() {
@@ -279,6 +285,7 @@ function wireTerminal() {
   byId('btnHome').onclick = returnToLobby;
   byId('btnEvt').onclick = closeEvent;
   byId('lvCancel').onclick = TALENTS.cancelSwap;
+  byId('lvRefresh').onclick = TALENTS.refreshCards;
   byId('btnMech').onclick = useMechAction;
   wireMechSelect();
   byId('charAction').onclick = charSkill;
@@ -367,7 +374,7 @@ function paintInstruments(force) {
   putText(instrument('comboText'),G.combo >= 5 ? G.combo + ' 连击' : '');
   const active = [['over','过载'],['magnet','磁吸'],['stasis','停滞'],['fleet','疾风'],['rad','辐射'],['luck','幸运'],['weak','虚弱']];
   putText(instrument('hudBuffs'),active.filter(([k])=>G.buff[k]>0).map(([k,n])=>n+' '+Math.ceil(G.buff[k])+'s').join(' · '));
-  putText(instrument('hudEnhancements'),TALENTS.status().join(' · '));
+  putText(instrument('hudEnhancements'),[...TALENTS.status(),PREPARATIONS.lockStatus()].filter(Boolean).join(' · '));
   const live = G.mechT > 0;
   const shapeLock = live ? '机甲形态期间暂停使用' : '';
   paintAbility('charAction',pilot.act.n,live ? '暂停' : G.ccd>0 ? Math.ceil(G.ccd)+'s' : pilot.act.ic,shapeLock || (pilot.act.n + ' · ' + pilot.act.t),!live && G.ccd<=0,pilot.flow);

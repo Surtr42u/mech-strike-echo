@@ -33,7 +33,7 @@ const TALENTS = (function(){
     return G.enhancements.chosen.includes(id);
   }
 
-  function rollCards(){
+  function regularOptions(){
     const full = G.slots.length >= G.skillLimit;
     const current = { fire:0, control:0, defense:0 };
     for(const { id, tag } of pool){
@@ -47,6 +47,11 @@ const TALENTS = (function(){
       const w = (lv ? 2.4 : 1) * (1 + current[tag] * .65 + (tag === weaponTag ? .35 : 0));
       return [{ id, tag, lv, kind:lv ? 'up' : full ? 'swap' : 'new', w }];
     });
+    return { available, focus };
+  }
+
+  function rollCards(previous = []){
+    const { available, focus } = regularOptions();
 
     function draw(filter){
       const candidates = available.filter(filter);
@@ -61,7 +66,13 @@ const TALENTS = (function(){
     const pivot = draw(card => card.lv === 0 && card.tag !== focus) || draw(card => card.lv === 0);
     const main = draw(card => card.kind !== 'swap' && card.tag === focus) ||
       draw(card => card.kind !== 'swap') || draw(() => true);
-    const flex = draw(card => card.kind === 'up') || draw(() => true);
+    let flex = draw(card => card.kind === 'up') || draw(() => true);
+    if(previous.length){
+      const prior = new Set(previous.map(card => card.id));
+      if([main,flex,pivot].every(card => prior.has(card.id))){
+        flex = draw(card => !prior.has(card.id)) || flex;
+      }
+    }
     return [main, flex, pivot];
   }
 
@@ -70,10 +81,18 @@ const TALENTS = (function(){
     if(milestones.includes(key) && !G.enhancements.offered.includes(key)) G.enhancements.pending = key;
   }
 
-  function rollMilestone(){
-    if(!G.enhancements.pending) return [];
-    const cards = Object.keys(majors).filter(id => !has(id));
-    while(cards.length > 3) cards.splice(Math.floor(Math.random() * cards.length), 1);
+  function milestoneOptions(){
+    return G.enhancements.pending ? Object.keys(majors).filter(id => !has(id)) : [];
+  }
+
+  function rollMilestone(previous = []){
+    const cards = milestoneOptions();
+    while(cards.length > 3){
+      const existing = cards.filter(id => previous.some(card => card.id === id));
+      const removable = existing.length ? existing : cards;
+      const omitted = removable[Math.floor(Math.random() * removable.length)];
+      cards.splice(cards.indexOf(omitted),1);
+    }
     return cards.map(id => ({ id, kind:'major' }));
   }
 
@@ -180,6 +199,7 @@ const TALENTS = (function(){
     byId('lvSlots').textContent = major ? status().join(' · ') :
       '已持有 ' + G.slots.length + ' / ' + G.skillLimit + (G.slots.length >= G.skillLimit ? ' · 满槽可替换' : '');
     byId('lvCancel').hidden = true;
+    renderRefresh();
     const cards = byId('cards');
     cards.classList.remove('swap-options');
     cards.replaceChildren(...options.map((o, i) => {
@@ -191,6 +211,36 @@ const TALENTS = (function(){
     }));
     const focusIndex = options.findIndex(o => o.id === focusId);
     cards.children[Math.max(0, focusIndex)]?.focus({ preventScroll:true });
+  }
+
+  function hasAlternative(cards){
+    if(!cards.length) return false;
+    const eligible = cards[0].kind === 'major' ? milestoneOptions() : regularOptions().available.map(card => card.id);
+    return eligible.some(id => !cards.some(card => card.id === id));
+  }
+
+  function renderRefresh(){
+    const button = byId('lvRefresh'), note = byId('lvRefreshNote');
+    const { refreshLeft, refreshMax } = G.preparations;
+    button.hidden = !refreshMax || !!G._swap;
+    note.textContent = '';
+    if(button.hidden) return;
+    const alternative = hasAlternative(G._cards);
+    button.disabled = !refreshLeft || !alternative;
+    byId('lvRefreshLabel').textContent = '刷新选项 ' + refreshLeft + ' / ' + refreshMax;
+    if(!refreshLeft) note.textContent = '本局刷新次数已用完';
+    else if(!alternative) note.textContent = '没有其他可选牌';
+  }
+
+  function refreshCards(){
+    if(G.mode !== 'level' || G._swap || !G.preparations.refreshLeft || !hasAlternative(G._cards)) return false;
+    const previous = G._cards;
+    const cards = previous[0].kind === 'major' ? rollMilestone(previous) : rollCards(previous);
+    if(!cards.some(card => !previous.some(old => old.id === card.id))) return false;
+    G.preparations.refreshLeft--;
+    renderCards(cards);
+    SFX.pick();
+    return true;
   }
 
   function showCards(options){
@@ -216,6 +266,7 @@ const TALENTS = (function(){
 
   function startSwap(option){
     G._swap = option;
+    renderRefresh();
     byId('levelTitle').textContent = '选择替换槽位';
     byId('lvNote').textContent = '选择一项卸下，换成「' + SK[option.id].n + '」Lv1。';
     byId('lvSlots').textContent = '被替换的天赋及等级会移除。';
@@ -279,6 +330,7 @@ const TALENTS = (function(){
   function handleKey(key){
     if(G.mode !== 'level') return false;
     if(key === 'escape') return cancelSwap();
+    if(key === 'r') return refreshCards();
     if(!/^[0-9]$/.test(key)) return false;
     const button = byId('cards').children[(Number(key) || 10) - 1];
     if(!button) return false;
@@ -287,5 +339,5 @@ const TALENTS = (function(){
   }
 
   return { groups, pool, majors, reset, rollCards, queueMilestone, rollMilestone, applyStats, onKill, status, tryBayonet,
-    renderCards, openLevel, openReward, chooseCard, chooseReplacement, cancelSwap, handleKey };
+    renderCards, openLevel, openReward, chooseCard, chooseReplacement, cancelSwap, refreshCards, handleKey };
 })();

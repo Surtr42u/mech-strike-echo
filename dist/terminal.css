@@ -160,7 +160,9 @@ button.wallet:hover{background:#3b3023;border-color:#a37c4e}
 .card .ico{font-size:1.7rem;line-height:1;min-width:41px;height:41px;display:grid;place-items:center;border:1px solid #566257;margin:5px 0 9px}
 .card .nm{font-size:1.05rem;font-weight:800}.card .lv,.card .ds,.card .rk{font-size:.83rem;line-height:1.5}.card .lv{color:var(--pale);margin:3px 0 7px}.card .ds{color:#d0d9ce}.card .rk{color:#ffaa96;margin-top:6px}
 .slot-count{font-size:.83rem;color:var(--muted);margin-top:12px}.centered{text-align:center}.centered .section-kicker,.centered .primary{justify-content:center;margin-inline:auto}
-.slot-count:empty{display:none}#lvCancel{margin-top:12px}
+.slot-count:empty{display:none}.level-actions{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px}
+.level-actions button{margin-top:12px}.level-actions .slot-count{margin-top:12px}
+#lvRefresh:disabled{opacity:.62;cursor:default}
 #evtBox{margin:15px 0 20px}.evtIco{font-size:2.2rem}.evtName{font-size:1.42rem;font-weight:750;margin:.2em 0}.evtDesc{color:#c6cfc6;line-height:1.6}
 .report-sheet{width:min(100%,470px)}.stats{display:grid;grid-template-columns:1fr 1fr;gap:0 22px;margin:12px 0 21px}
 .stats>div{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:.9rem;padding:8px 0;border-bottom:1px solid var(--line);color:#b7c1b9}
@@ -252,8 +254,10 @@ button.wallet:hover{background:#3b3023;border-color:#a37c4e}
   .growth-comparison{margin:8px 0;padding:6px 0}
   .cards.swap-options{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
 }
-@media(max-width:360px){
+@media(max-width:430px){
   .shop-heading{align-items:flex-start;flex-direction:column;gap:4px}
+}
+@media(max-width:360px){
   .section-bar h2 small{display:none}
 }
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important}}

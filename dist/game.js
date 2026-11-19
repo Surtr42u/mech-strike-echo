@@ -351,7 +351,8 @@ const PROF = {
   pts:GIFT_PTS, total:0, best:0, runs:0, gift:1, giftFx:1,
   skin:0, weapon:'rifle', mech:DEFAULT_MECH,
   ownSkins:[0], ownWeapons:['rifle'],
-  growth:{ levels:{}, weaponLevels:{} }
+  growth:{ levels:{}, weaponLevels:{} },
+  preparations:{}
 };
 let loadedProf = null;
 function loadProf(){
@@ -384,6 +385,7 @@ function loadProf(){
     if(!fresh && typeof o.skin === 'number' && PROF.ownSkins.indexOf(o.skin) >= 0) PROF.skin = o.skin;
     if(typeof o.weapon === 'string' && PROF.ownWeapons.indexOf(o.weapon) >= 0) PROF.weapon = o.weapon;
     PROF.growth = readGrowth(o.growth);
+    PROF.preparations = PREPARATIONS.read(o.preparations);
     PROF.mech = equippedMech(o.mech);
   }catch(e){}
 }
@@ -3031,6 +3033,7 @@ function newRun(){
   };
   G.st = null;
   recalc();
+  PREPARATIONS.startRun();
   G.wcdMax = abilityCooldown(WEP().sk.cd);
   G.ccdMax = abilityCooldown(SKIN().act?.cd ?? 1);
   G.p.hp = G.p.maxHp;
@@ -3203,7 +3206,7 @@ function updatePlayer(dt){
     p.hp = Math.min(p.maxHp, p.hp + s.regen * dt);
   }
   /* 茜羽：自身每秒承受灼烧（真实伤害，不吃护甲/无敌） */
-  if((s.selfBurn || 0) > 0 && G.mode === 'play' && p.hp > 0){
+  if(s.selfBurn > 0 && G.mode === 'play' && p.hp > 0 && !PREPARATIONS.protectedFromSelfBurn()){
     G.selfBurnT = (G.selfBurnT || 0) + dt * s.selfBurn;
     while(G.selfBurnT >= 1){
       G.selfBurnT -= 1;
@@ -4384,6 +4387,7 @@ function hurtPlayer(dmg){
 }
 
 function playerDown(){
+  if(PREPARATIONS.tryLock()) return;
   endMech();
   if(G.revives > 0){
     G.revives--;
