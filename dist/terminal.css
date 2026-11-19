@@ -135,15 +135,18 @@ button.wallet:hover{background:#3b3023;border-color:#a37c4e}
 .loadout-modules{min-height:44px;max-width:60%;display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid #47574e;background:#1a2322;font-size:.8rem}
 .loadout-modules:hover{border-color:var(--pale)}.loadout-modules span{white-space:nowrap}.loadout-modules b{font-size:.73rem;color:var(--mint);text-align:left}
 .module-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+.hangar-filters{align-self:flex-start;max-width:100%;margin-bottom:12px;overflow-x:auto;flex:none;overscroll-behavior-inline:contain}
+.hangar-filters button{white-space:nowrap;min-height:44px;padding-inline:11px}
 .module-item{padding:clamp(9px,1.25vw,18px);min-height:108px;gap:3px}
 .module-symbol{font-size:1.22rem;color:var(--pale);line-height:1.1;margin:0 3px 4px}
 .module-item small:last-child{margin-top:auto}
 .growth-comparison{display:grid;grid-template-columns:minmax(0,1.25fr) repeat(2,minmax(0,1fr));gap:8px;align-items:center;margin:14px 0 10px;padding:10px 0;border-block:1px solid var(--line)}
+.growth-comparison.final-value{grid-template-columns:minmax(0,1fr) minmax(0,1.6fr)}
 .growth-comparison span{display:grid;gap:2px}.growth-stat-name{font-size:.82rem;color:#c0c9c1}
-.growth-comparison small,.weapon-grade>small{font-size:.72rem;color:var(--muted)}
+.growth-comparison small{font-size:.72rem;color:var(--muted)}
 .growth-comparison strong{font-size:.92rem;color:var(--text)}.growth-comparison span:nth-child(3) strong{color:var(--mint)}
-.shop-detail #buyModule,.shop-detail .weapon-grade button{min-height:44px;padding:7px 9px;font-size:.83rem;letter-spacing:0}
-.weapon-grade{margin-top:13px}.weapon-grade h4{margin:0;font-size:.86rem;color:var(--pale)}.weapon-grade .growth-comparison{margin-top:5px}
+.shop-detail #buyUpgrade{min-height:44px;padding:7px 9px;font-size:.83rem;letter-spacing:0}
+.tuning-link{margin-top:9px;min-height:44px;padding:7px 9px;font-size:.83rem}
 #hudGrowth{color:var(--pale);flex-basis:100%}
 /* In-game and system dialogs */
 .veil{display:flex;align-items:center;justify-content:center;padding:18px max(16px,var(--safe-r)) max(16px,var(--safe-b)) max(16px,var(--safe-l));background:#07100ed9;overflow:auto}
@@ -250,7 +253,10 @@ button.wallet:hover{background:#3b3023;border-color:#a37c4e}
 @media(pointer:coarse){.launch kbd,.ability kbd{display:none}.bag-button{min-width:44px;height:38px}.corner-controls button{width:42px;height:42px}}
 @media(max-width:620px) and (orientation:portrait){
   .shop-heading .segmented button{min-height:44px;padding-inline:8px;white-space:nowrap}
-  .module-item{min-height:76px}.module-symbol{font-size:1.05rem;margin-bottom:1px}
+  .module-item{min-height:82px;padding:6px;gap:2px}.module-symbol{font-size:1.05rem;margin-bottom:1px}
+  .module-item strong{font-size:.83rem;line-height:1.3}.module-item small{font-size:.71rem;line-height:1.3}
+  .hangar-filters{margin-bottom:8px;width:100%}.hangar-filters button{flex:1;padding-inline:6px;font-size:.78rem}
+  #hangarFilters:not([hidden]) + .shop-layout .catalog-side{min-height:120px}
   .growth-comparison{margin:8px 0;padding:6px 0}
   .cards.swap-options{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
 }

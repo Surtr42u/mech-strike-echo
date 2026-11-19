@@ -27,35 +27,16 @@ const PREPARATIONS = (function(){
     return levels;
   }
 
-  function buy(id){
-    if(!Object.hasOwn(specs,id)) return false;
-    const level = PROF.preparations[id] ?? 0;
-    const cost = MODULE_COSTS[specs[id].grades[level]];
-    if(cost === undefined || PROF.pts < cost) return false;
-    PROF.pts -= cost;
-    PROF.preparations[id] = level + 1;
-    saveProf();
-    return true;
-  }
-
   function rows(){
     return Object.entries(specs).map(([id,spec]) => {
       const level = PROF.preparations[id] ?? 0;
-      return { id, name:spec.name, icon:spec.icon, level, effects:spec.value(level) };
+      const costs = spec.grades.map(grade => MODULE_COSTS[grade]);
+      return upgradeRow(id,spec,level,costs,() => buyUpgradeLevel(PROF.preparations,id,costs));
     });
   }
 
-  function showDetail(row){
-    const spec = specs[row.id], max = spec.grades.length;
-    const comparison = growthComparison(spec.label,spec.value(row.level),row.level < max ? spec.value(row.level+1) : null);
-    const button = growthBuyButton('buyPreparation',MODULE_COSTS[spec.grades[row.level]],() => buy(row.id));
-    if(row.level === 0) button.textContent = button.textContent.replace(/^升级/,'解锁');
-    byId('shopDetail').append(node('div','detail-tag','战前准备 · ' + row.level + ' / ' + max),
-      node('h3','',row.name),node('p','',spec.desc),comparison,button);
-  }
-
   function startRun(){
-    const levels = PROF.preparations;
+    const levels = G.growth.preparations;
     G.preparations = {
       refreshMax:levels.refresh || 0, refreshLeft:levels.refresh || 0,
       lockReady:!!levels.lock, lockUntil:0
@@ -87,5 +68,5 @@ const PREPARATIONS = (function(){
     return state.lockReady ? '应急锁血可用' : state.lockUntil > 0 ? '应急锁血已用' : '';
   }
 
-  return { read, rows, showDetail, startRun, tryLock, protectedFromSelfBurn, lockStatus };
+  return { read, rows, startRun, tryLock, protectedFromSelfBurn, lockStatus };
 })();

@@ -3,6 +3,7 @@ const byId = id => document.getElementById(id);
 const numberFormat = new Intl.NumberFormat('zh-CN');
 const thumbCache = new Map();
 let shopTab = 'skin';
+let hangarGroup = 'modules';
 let selectedStock = 0;
 let shopOpener = null;
 let reducedEffects = false;
@@ -56,7 +57,7 @@ function updateLoadout() {
   byId('pilotMove').textContent = '必杀 · ' + pilot.act.n;
   byId('weaponName').textContent = weapon.n;
   byId('weaponMove').textContent = 'Lv.' + weaponGrade(weapon.id) + ' · ' + weapon.sk.n;
-  byId('moduleLoadout').textContent = activeModuleCount() + ' 项生效 · ' + skillCapacity() + ' 技能槽';
+  byId('moduleLoadout').textContent = activeHangarCount() + ' 项生效 · ' + skillCapacity() + ' 技能槽';
   byId('pilotImage').src = thumbnail('skin',PROF.skin);
   byId('hudPortrait').src = thumbnail('skin',G.skin);
   byId('weaponImage').src = thumbnail('weapon', weapon.id);
@@ -67,13 +68,11 @@ function updateLoadout() {
   updateMechLoadout();
 }
 function currentStock() {
-  if(shopTab === 'growth') return Object.keys(GROWTH_MODULES)[0];
-  if(shopTab === 'preparations') return PREPARATIONS.rows()[0].id;
+  if(shopTab === 'growth') return hangarGroup === 'tuning' ? PROF.weapon : hangarRows(hangarGroup)[0].id;
   return shopTab === 'skin' ? PROF.skin : PROF.weapon;
 }
 function stockRows() {
-  if(shopTab === 'growth') return growthRows();
-  if(shopTab === 'preparations') return PREPARATIONS.rows();
+  if(shopTab === 'growth') return hangarRows(hangarGroup);
   if(shopTab === 'skin') return SKINS.map((pilot,i) => ({
     id:i, name:pilot.name, category:'驾驶员', desc:pilot.desc, price:pilot.price, owned:ownSkin(i),
     skill:pilot.act.n, effect:pilot.act.t, cooldown:pilot.act.cd, passive:pilot.pas.t, passiveLabel:'角色被动'
@@ -87,8 +86,7 @@ function stockRows() {
 function showStockDetail(row) {
   const detail = byId('shopDetail');
   detail.replaceChildren();
-  if(shopTab === 'growth') { showModuleDetail(row); return; }
-  if(shopTab === 'preparations') { PREPARATIONS.showDetail(row); return; }
+  if(shopTab === 'growth') { showHangarDetail(row); return; }
   const art = node('div','detail-art' + (shopTab === 'weapon' ? ' gun' : ''));
   const img = node('img'); img.alt = ''; img.src = thumbnail(shopTab,row.id); art.append(img);
   detail.append(art,node('div','detail-tag',row.category),node('h3','',row.name),node('p','',row.desc));
@@ -114,20 +112,31 @@ function showStockDetail(row) {
     byId('shopGrid').querySelector('[aria-pressed="true"]')?.focus({preventScroll:true});
   };
   detail.append(dl,equip);
-  if(shopTab === 'weapon') detail.append(weaponGradePanel(row));
+  if(shopTab === 'weapon' && row.owned){
+    const tuning = node('button','secondary wide tuning-link','Lv.' + weaponGrade(row.id) + ' · 前往武器调校');
+    tuning.onclick = () => {
+      hangarGroup = 'tuning';
+      setShopTab('growth',row.id);
+      byId('shopGrid').querySelector('[aria-pressed="true"]')?.focus({preventScroll:true});
+    };
+    detail.append(tuning);
+  }
 }
 function buildShop() {
   byId('shopPts').textContent = numberFormat.format(PROF.pts);
   const grid = byId('shopGrid'), rows = stockRows();
   const detail = byId('shopDetail');
   const offset = grid.scrollTop, detailOffset = detail.scrollTop;
-  const preparations = shopTab === 'preparations';
-  const modules = shopTab === 'growth' || preparations, equipped = currentStock();
+  const hangar = shopTab === 'growth', modules = hangar && hangarGroup !== 'tuning';
+  const equipped = hangar ? null : currentStock();
   grid.classList.toggle('module-grid',modules);
-  byId('catalogName').textContent = preparations ? '战前准备' : modules ? '永久强化 · 购买后自动生效' :
-    shopTab === 'skin' ? '驾驶员名册' : '武器库';
-  byId('catalogCount').textContent = preparations ? '解锁后自动生效' :
-    modules ? activeModuleCount() + ' / ' + rows.length + ' 生效 · ' + skillCapacity() + ' 技能槽' :
+  const filters = byId('hangarFilters');
+  filters.hidden = !hangar;
+  filters.querySelectorAll('[data-hangar-group]').forEach(button => {
+    button.setAttribute('aria-pressed',String(button.dataset.hangarGroup === hangarGroup));
+  });
+  byId('catalogName').textContent = hangar ? '下次出击自动生效' : shopTab === 'skin' ? '驾驶员名册' : '武器库';
+  byId('catalogCount').textContent = hangar ? '已升级 ' + rows.filter(r=>r.active).length + ' / ' + rows.length :
     '已解锁 ' + rows.filter(r=>r.owned).length + ' / ' + rows.length;
   document.querySelectorAll('[data-tab]').forEach(b => {
     b.setAttribute('aria-pressed',String(b.dataset.tab === shopTab));
@@ -138,19 +147,25 @@ function buildShop() {
     const item = node('button',modules ? 'shop-item module-item' : 'shop-item');
     const selected = row.id === selectedStock;
     item.setAttribute('aria-pressed',String(selected));
-    if(modules) {
-      const art = node('span','module-symbol',row.icon);
-      art.setAttribute('aria-hidden','true');
-      const status = preparations ? (row.level ? '出击时生效' : '未解锁') : row.level ? '已生效' : '未购买';
-      item.append(art,node('strong','',row.name),node('small','','Lv.' + row.level + ' · ' + row.effects),
-        node('small',row.level ? 'equipped' : '',status));
+    if(modules){
+      const symbol = node('span','module-symbol',row.icon);
+      symbol.setAttribute('aria-hidden','true');
+      item.append(symbol);
     } else {
-      const art = node('span','catalog-image' + (shopTab === 'weapon' ? ' gun' : ''));
-      const img = node('img'); img.alt = ''; img.src = thumbnail(shopTab,row.id); art.append(img);
+      const kind = shopTab === 'skin' ? 'skin' : 'weapon';
+      const art = node('span','catalog-image' + (kind === 'weapon' ? ' gun' : ''));
+      const img = node('img'); img.alt = ''; img.src = thumbnail(kind,row.id); art.append(img);
+      item.append(art);
+    }
+    item.append(node('strong','',row.name));
+    if(hangar){
+      item.append(node('small','','Lv.' + row.level + ' · ' + row.effects),
+        node('small',row.active ? 'equipped' : '',hangarStatus(row)));
+    } else {
       const owned = shopTab === 'weapon' ? 'Lv.' + weaponGrade(row.id) : '已解锁';
       const status = row.id === equipped ? (shopTab === 'weapon' ? owned + ' · 已装配' : '已装配') :
         row.owned ? owned : numberFormat.format(row.price) + ' 积分';
-      item.append(art,node('strong','',row.name),node('small',row.id === equipped ? 'equipped' : '',status));
+      item.append(node('small',row.id === equipped ? 'equipped' : '',status));
     }
     item.onclick = () => {
       grid.querySelector('[aria-pressed="true"]')?.setAttribute('aria-pressed','false');
@@ -166,9 +181,9 @@ function buildShop() {
   grid.scrollTop = offset;
   detail.scrollTop = detailOffset;
 }
-function setShopTab(tab) {
+function setShopTab(tab, selection) {
   shopTab = tab;
-  selectedStock = currentStock();
+  selectedStock = selection ?? currentStock();
   byId('shopGrid').scrollTop = 0;
   byId('shopDetail').scrollTop = 0;
   buildShop();
@@ -182,7 +197,7 @@ function openShop(tab) {
   G.mode = 'shop';
   for(const id of ['ovTitle','ovPause','ovOver']) byId(id).classList.add('hide');
   byId('ovShop').classList.remove('hide');
-  setShopTab(['weapon','growth','preparations'].includes(tab) ? tab : 'skin');
+  setShopTab(['weapon','growth'].includes(tab) ? tab : 'skin');
   byId('btnShopX').focus({preventScroll:true});
 }
 function closeShop() {
@@ -280,6 +295,12 @@ function wireTerminal() {
   byId('selectModules').onclick = () => openShop('growth');
   byId('btnShopX').onclick = closeShop;
   document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => setShopTab(b.dataset.tab));
+  byId('hangarFilters').querySelectorAll('[data-hangar-group]').forEach(button => {
+    button.onclick = () => {
+      hangarGroup = button.dataset.hangarGroup;
+      setShopTab('growth');
+    };
+  });
   byId('btnPause').onclick = byId('btnResume').onclick = togglePause;
   byId('btnQuit').onclick = quitRun;
   byId('btnHome').onclick = returnToLobby;
@@ -358,8 +379,8 @@ function paintInstruments(force) {
   const grade = weaponGrade(weapon.id,G.growth);
   if(force || growth.dataset.grade !== String(grade)) {
     growth.dataset.grade = grade;
-    const count = activeModuleCount(G.growth), parts = [];
-    if(count) parts.push('强化模块 ×' + count);
+    const count = activeHangarCount(G.growth), parts = [];
+    if(count) parts.push('战前整备 ×' + count);
     if(grade > 1) parts.push('武器 Lv.' + grade);
     const label = parts.join(' · ');
     putText(growth,label);

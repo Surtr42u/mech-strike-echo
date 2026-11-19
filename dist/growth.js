@@ -4,6 +4,15 @@ const CAPACITY_PER_LEVEL = 2;
 const MODULE_COSTS = [260, 520, 900, 1200, 1550, 1950, 2400, 2900, 3450, 4050];
 const WEAPON_GRADE_COSTS = [300, 650, 1100];
 const MAX_WEAPON_GRADE = 1 + WEAPON_GRADE_COSTS.length;
+const HEX_FORTUNE_GOLD_SHARE = .6;
+const HEX_UPGRADES = {
+  hexFortune:{ name:'高阶海克斯', icon:'✧', label:'高阶概率加成', step:3,
+    unit:' 个百分点', compactUnit:'%', costs:[900,1650,2800,4200,6000],
+    desc:'混合局的每轮海克斯会从银色移出这部分概率，按 ' + Math.round(HEX_FORTUNE_GOLD_SHARE*100) +
+      '% 和 ' + Math.round((1-HEX_FORTUNE_GOLD_SHARE)*100) + '% 分给金色与棱彩。' },
+  goldPrism:{ name:'金变彩', icon:'◇', label:'升彩机会出现概率', step:5, unit:'%', base:0, costs:[1500,3000,5000],
+    desc:'每个金色轮次都有机会出现「本轮升彩」。按下后改为棱彩三选一，也可照常选择金色牌。' }
+};
 const GROWTH_MODULES = {
   attack:{ name:'火控模块', icon:'◆', label:'伤害加成', step:4, unit:'%',
     desc:'提高常规伤害计算中的伤害加成。', apply:(s,n) => { s.dmgPct += n / 100; } },
@@ -20,7 +29,8 @@ const GROWTH_MODULES = {
     desc:'缩短武器主动与驾驶员必杀的冷却时间。', apply:(s,n) => { s.skillCooldown += n / 100; } },
   capacity:{ name:'技能扩容', icon:'▦', label:'局内技能上限', step:CAPACITY_PER_LEVEL, unit:' 种',
     base:BASE_SKILL_CAPACITY, costs:[1200, 3000],
-    desc:'每级多持有两种局内技能，下次出击时生效。各技能的等级上限维持原值。' }
+    desc:'每级多持有两种局内技能，下次出击时生效。各技能的等级上限维持原值。' },
+  ...HEX_UPGRADES
 };
 
 function readGrowth(raw){
@@ -39,7 +49,7 @@ function readGrowth(raw){
 
 function growthSnapshot(){
   const { levels, weaponLevels } = PROF.growth;
-  return { levels:{...levels}, weaponLevels:{...weaponLevels} };
+  return { levels:{...levels}, weaponLevels:{...weaponLevels}, preparations:{...PROF.preparations} };
 }
 
 function applyGrowth(s){
@@ -57,28 +67,37 @@ function activeModuleCount(growth = PROF.growth){
   return Object.keys(GROWTH_MODULES).filter(id => growth.levels[id] > 0).length;
 }
 
+function activeHangarCount(growth = PROF.growth){
+  return activeModuleCount(growth) + Object.keys(growth.preparations ?? PROF.preparations).length;
+}
+
+function hexFortuneBonus(growth = G.growth){
+  return (growth.levels.hexFortune ?? 0) * HEX_UPGRADES.hexFortune.step / 100;
+}
+
+function goldPrismChance(growth = G.growth){
+  return (growth.levels.goldPrism ?? 0) * HEX_UPGRADES.goldPrism.step / 100;
+}
+
 function weaponGrade(id, growth = PROF.growth){ return growth.weaponLevels[id] ?? 1; }
 function weaponBaseDamage(w, grade = weaponGrade(w.id, G.growth)){ return w.dmg * (1 + .05 * (grade - 1)); }
 
-function buyModule(id){
-  if(!Object.hasOwn(GROWTH_MODULES, id)) return false;
-  const costs = GROWTH_MODULES[id].costs ?? MODULE_COSTS;
-  const level = PROF.growth.levels[id] ?? 0, cost = costs[level];
+function buyUpgradeLevel(levels,id,costs,base = 0){
+  const level = levels[id] ?? base, cost = costs[level - base];
   if(cost === undefined || PROF.pts < cost) return false;
   PROF.pts -= cost;
-  PROF.growth.levels[id] = level + 1;
+  levels[id] = level + 1;
   saveProf();
   return true;
 }
 
+function buyModule(id){
+  return Object.hasOwn(GROWTH_MODULES,id) &&
+    buyUpgradeLevel(PROF.growth.levels,id,GROWTH_MODULES[id].costs ?? MODULE_COSTS);
+}
+
 function buyWeaponGrade(id){
-  if(!ownWep(id)) return false;
-  const level = weaponGrade(id), cost = WEAPON_GRADE_COSTS[level - 1];
-  if(cost === undefined || PROF.pts < cost) return false;
-  PROF.pts -= cost;
-  PROF.growth.weaponLevels[id] = level + 1;
-  saveProf();
-  return true;
+  return ownWep(id) && buyUpgradeLevel(PROF.growth.weaponLevels,id,WEAPON_GRADE_COSTS,1);
 }
 
 function growthValue(spec, level, unit = spec.unit){
@@ -87,15 +106,39 @@ function growthValue(spec, level, unit = spec.unit){
   return (amount > 0 ? '+' + amount : amount || '0') + unit;
 }
 
-function growthRows(){
-  return Object.entries(GROWTH_MODULES).map(([id,spec]) => {
+function upgradeRow(id,spec,level,costs,buy,base = 0){
+  const max = costs.length + base;
+  const value = spec.value ?? (rank => growthValue(spec,rank));
+  return { id, name:spec.name, icon:spec.icon, label:spec.label, desc:spec.desc, level, max,
+    active:level > base, current:value(level), next:level < max ? value(level+1) : null,
+    effects:spec.compactUnit ? growthValue(spec,level,spec.compactUnit) : value(level),
+    cost:costs[level-base], buy };
+}
+
+function growthRows(hex){
+  return Object.entries(GROWTH_MODULES).filter(([id]) => Object.hasOwn(HEX_UPGRADES,id) === hex).map(([id,spec]) => {
     const level = PROF.growth.levels[id] ?? 0;
-    return { id, name:spec.name, icon:spec.icon, effects:growthValue(spec,level,spec.compactUnit), level };
+    return upgradeRow(id,spec,level,spec.costs ?? MODULE_COSTS,() => buyModule(id));
   });
 }
 
+const growthNumber = new Intl.NumberFormat('zh-CN',{maximumFractionDigits:3});
+function weaponUpgradeRows(){
+  return WEAPONS.filter(w => ownWep(w.id)).map(w => {
+    const spec = { name:w.n, label:'单发基础伤害', desc:'提升该武器的单发基础伤害。',
+      value:grade => growthNumber.format(weaponBaseDamage(w,grade)) };
+    return upgradeRow(w.id,spec,weaponGrade(w.id),WEAPON_GRADE_COSTS,() => buyWeaponGrade(w.id),1);
+  });
+}
+
+function hangarRows(group){
+  if(group === 'tactics') return PREPARATIONS.rows();
+  if(group === 'tuning') return weaponUpgradeRows();
+  return growthRows(group === 'hex');
+}
+
 function growthComparison(label, current, next){
-  const comparison = node('div','growth-comparison');
+  const comparison = node('div','growth-comparison' + (next === null ? ' final-value' : ''));
   const makeValue = (caption, value) => {
     const el = node('span');
     el.append(node('small','',caption),node('strong','',value));
@@ -106,12 +149,12 @@ function growthComparison(label, current, next){
   return comparison;
 }
 
-function growthBuyButton(id, cost, buy){
+function growthBuyButton(id, cost, buy, firstPurchase = false){
   const button = node('button','primary wide');
   button.id = id;
   const shortfall = cost - PROF.pts;
   button.textContent = cost === undefined ? '已满级' : shortfall > 0 ?
-    '还差 ' + numberFormat.format(shortfall) + ' 积分' : '升级 · ' + numberFormat.format(cost) + ' 积分';
+    '还差 ' + numberFormat.format(shortfall) + ' 积分' : (firstPurchase ? '购买' : '升级') + ' · ' + numberFormat.format(cost) + ' 积分';
   button.disabled = cost === undefined || shortfall > 0;
   button.onclick = () => {
     if(buy()) refreshGrowthShop(id);
@@ -129,23 +172,12 @@ function refreshGrowthShop(action){
   nextFocus?.focus({preventScroll:true});
 }
 
-function showModuleDetail(row){
-  const spec = GROWTH_MODULES[row.id], costs = spec.costs ?? MODULE_COSTS, max = costs.length;
-  const comparison = growthComparison(spec.label, growthValue(spec,row.level), row.level < max ? growthValue(spec,row.level + 1) : null);
-  const buy = growthBuyButton('buyModule',costs[row.level],() => buyModule(row.id));
-  byId('shopDetail').append(node('div','detail-tag','模块等级 ' + row.level + ' / ' + max + (row.level ? ' · 已生效' : '')),
-    node('h3','',row.name),node('p','',spec.desc),comparison,buy);
+function showHangarDetail(row){
+  byId('shopDetail').append(node('div','detail-tag','等级 ' + row.level + ' / ' + row.max + ' · ' + hangarStatus(row)),
+    node('h3','',row.name),node('p','',row.desc),growthComparison(row.label,row.current,row.next),
+    growthBuyButton('buyUpgrade',row.cost,row.buy,!row.active));
 }
 
-const growthNumber = new Intl.NumberFormat('zh-CN',{maximumFractionDigits:3});
-function weaponGradePanel(row){
-  const w = WP[row.id], grade = weaponGrade(row.id);
-  const block = node('div','weapon-grade');
-  const formatDamage = rank => growthNumber.format(weaponBaseDamage(w,rank));
-  const next = row.owned && grade < MAX_WEAPON_GRADE ? formatDamage(grade + 1) : null;
-  block.append(node('h4','','武器调校 · Lv.' + grade + ' / ' + MAX_WEAPON_GRADE),
-    growthComparison('单发基础伤害',formatDamage(grade),next));
-  if(row.owned) block.append(growthBuyButton('buyWeaponGrade',WEAPON_GRADE_COSTS[grade - 1],() => buyWeaponGrade(row.id)));
-  else block.append(node('small','','解锁后可调校'));
-  return block;
+function hangarStatus(row){
+  return row.level === row.max ? '已满级' : row.active ? '已生效' : '未升级';
 }

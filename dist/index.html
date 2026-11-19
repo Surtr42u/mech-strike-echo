@@ -93,7 +93,7 @@
         </button>
       </section>
       <section class="loadout" id="loadout" aria-labelledby="loadoutTitle">
-        <div class="section-bar"><h2 id="loadoutTitle"><i></i>出击配置 <small>LOADOUT</small></h2><span class="rule"></span><button class="loadout-modules" id="selectModules"><span>强化模块</span><b id="moduleLoadout">0 项生效 · 6 技能槽</b></button></div>
+        <div class="section-bar"><h2 id="loadoutTitle"><i></i>出击配置 <small>LOADOUT</small></h2><span class="rule"></span><button class="loadout-modules" id="selectModules"><span>战前整备</span><b id="moduleLoadout">0 项生效 · 6 技能槽</b></button></div>
         <div class="loadout-grid">
           <button class="outfit-card" id="selectPilot" aria-label="更换驾驶员">
             <span class="thumb pilot-thumb"><img id="pilotImage" alt=""></span>
@@ -121,7 +121,11 @@
     </header>
     <div class="supply-content">
       <div class="section-kicker"><i></i>SUPPLY DEPOT</div>
-      <div class="shop-heading"><h2>补给站</h2><div class="segmented" aria-label="补给类别"><button class="tab on" data-tab="skin">驾驶员</button><button class="tab" data-tab="weapon">主武器</button><button class="tab" data-tab="growth">强化模块</button><button class="tab" data-tab="preparations">战前准备</button></div></div>
+      <div class="shop-heading"><h2>补给站</h2><div class="segmented" aria-label="补给类别"><button class="tab on" data-tab="skin">驾驶员</button><button class="tab" data-tab="weapon">主武器</button><button class="tab" data-tab="growth">战前整备</button></div></div>
+      <div class="hangar-filters segmented" id="hangarFilters" role="group" aria-label="整备分类" hidden>
+        <button data-hangar-group="modules">基础强化</button><button data-hangar-group="tactics">战术准备</button>
+        <button data-hangar-group="hex">海克斯升级</button><button data-hangar-group="tuning">武器调校</button>
+      </div>
       <div class="shop-layout">
         <div class="catalog-side"><div class="catalog-bar"><span id="catalogName">驾驶员名册</span><small id="catalogCount"></small></div><div id="shopGrid" class="shop-grid"></div></div>
         <aside id="shopDetail" class="shop-detail" aria-label="装备详情"></aside>
