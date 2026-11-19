@@ -1675,7 +1675,7 @@ function gradeFrame(){
 
     /* 远景大气粒子：只在屏幕上半部分缓慢飘动，压在远端雾之上，
        透明度 .04–.15，让"最远的那一层"不是死板的色块 */
-    FARFX.draw(SW, SH);
+    if(!FieldMaps.underground()) FARFX.draw(SW, SH);
 
     // 近景压暗
     const bh = Math.max(50, SH * .2);
@@ -1748,7 +1748,7 @@ function gradeFrame(){
 
   /* 近景遮挡层：画在暗角之后（不被压暗），像贴在镜头前的灰尘与角落剪影，
      制造「镜头在场景内部」的纵深；密度极低，不影响任何操作判定 */
-  FOREFX.draw(SW, SH);
+  if(!FieldMaps.underground()) FOREFX.draw(SW, SH);
 
   // 全屏白闪（爆炸 / 受击 / 召唤）
   if(G.flash > 0 && !reducedEffects){
@@ -3052,6 +3052,7 @@ function newRun(){
 
 function setScene(i){
   G.stage = i;
+  FieldMaps.begin(i);
   const sc = SCENES[i];
   /* 先说清道具，再算补给投放候选点，最后烘焙地面：
      三者共用同一组坐标，视觉暗示与实际投放严格一致 */
@@ -3060,6 +3061,7 @@ function setScene(i){
   G.spawnAnchors = buildSpawnAnchors(sc);   // 刷怪点跟着场景装饰走
   G.scars.length = 0;
   G.ground = buildGround(sc, G.supplyPads);
+  FieldMaps.prepareSurface();
   if(STAGE3D) STAGE3D.invalidateGround();   // 地面重烘焙 → 3D 舞台必须重建贴图
   G.env = buildEnv(i);
   FARFX.build(i);       // 远景大气层（每关换外观，不重建几何）
@@ -3185,6 +3187,7 @@ function updatePlayer(dt){
     }
   }
 
+  FieldMaps.clearRails(p,9);
   // 朝向：优先看目标，否则看移动（8 方向）
   const tgt = G.mechT > 0 ? mechTarget(currentMech().reach) : nearestEnemy(p.x,p.y,weaponReach(WEP(),s));
   let fa = p.faceAngle;
@@ -3499,8 +3502,9 @@ function weaponSkill(){
     const t = nearestEnemy(p.x, p.y, 420);
     let ax = p.face, ay = 0;
     if(t){ const d = Math.max(1, dst(p.x, p.y, t.x, t.y)); ax = (t.x - p.x) / d; ay = (t.y - p.y) / d; }
-    p.x = clamp(p.x + ax * 90, 28, ARENA.w - 28);
-    p.y = clamp(p.y + ay * 90, 28, ARENA.h - 28);
+    const distance = FieldMaps.dashDistance(p,ax,ay,90);
+    p.x = clamp(p.x + ax * distance, 28, ARENA.w - 28);
+    p.y = clamp(p.y + ay * distance, 28, ARENA.h - 28);
     p.face = ax >= 0 ? 1 : -1;
     aoe(p.x, p.y, 82, scaleSkill(48), null);
     for(let i=0;i<16;i++){
@@ -5156,6 +5160,8 @@ function updateEnemies(dt){
       // 自爆虫加速冲刺
       sp *= 1.55;
     }
+    const heading = FieldMaps.chase(e);
+    if(heading){ mx = heading.x; my = heading.y; }
 
     e.vx = lerp(e.vx, mx * sp, 1 - Math.pow(.0015, dt));
     e.vy = lerp(e.vy, my * sp, 1 - Math.pow(.0015, dt));
@@ -5180,6 +5186,7 @@ function updateEnemies(dt){
       }
     }
 
+    if(!e.fly) FieldMaps.clearRails(e,e.r);
     // 接触伤害
     if(d < e.r + 9){
       if(G.st.thorns > 0){
@@ -9056,14 +9063,14 @@ function render(){
     drawGround();
   }
   /* 远景视差层：远山剪影 + 云影（比地面移动得慢，制造纵深） */
-  BACKDROP.draw(VW, VH);
+  if(!FieldMaps.underground()) BACKDROP.draw(VW, VH);
   /* 功能性地表标记：独立透明层，1:1 叠加（3D 低分辨率舞台不会吃掉细节） */
-  drawEnv();
-  drawSceneAmbience();
+  if(!FieldMaps.underground()){ drawEnv(); drawSceneAmbience(); }
   drawHazards();
   drawLights(0);
   /* 标记在光照/暗角之后叠加：阴影里的通道痕迹仍然可读，但不参与实体遮挡 */
   drawGroundMarks();
+  FieldMaps.draw();
   /* 地面反光：发光物在地面拉出的长椭圆光斑（加性，压在实体之下） */
   drawGroundGlow();
   drawScars();
@@ -9519,7 +9526,7 @@ function boot(){
   });
 }
 /* 先拉图集，再起游戏；图集失败也不阻塞（绘制层会自动退回程序化） */
-SPRM.load().then(function(ok){
+Promise.all([SPRM.load(),FieldMaps.load()]).then(function([ok]){
   if(!ok) console.warn('[sprite] atlas unavailable, fallback to procedural art');
   boot();
 });

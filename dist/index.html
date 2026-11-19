@@ -17,6 +17,7 @@
   <script defer src="projectiles.js"></script>
   <script defer src="mechs.js"></script>
   <script defer src="encounters.js"></script>
+  <script defer src="field-maps.js"></script>
   <script defer src="game.js"></script>
 </head>
 <body>
@@ -37,6 +38,7 @@
       <strong id="waveName"></strong><small id="waveDetail"></small>
       <div class="meter wave-meter"><i id="waveFill"></i></div>
       <b id="comboText"></b>
+      <small id="fieldObjective" class="field-objective" hidden></small>
     </div>
     </div>
     <div class="corner-controls">
@@ -45,6 +47,7 @@
     </div>
     <div id="skillRack" class="skill-rack" role="group" aria-label="局内技能"></div>
     <div id="actionDock">
+      <button id="fieldInteract" class="field-interact" type="button" hidden></button>
       <div class="bag-row"><button class="bag-button" data-bag="0"></button><button class="bag-button" data-bag="1"></button></div>
       <div class="ability-row">
         <button id="charAction" class="ability"><kbd>E</kbd><b class="ability-value"></b><span class="ability-name"></span></button>
@@ -155,6 +158,7 @@
     <div><dt>角色必杀 / 武器技</dt><dd><kbd>E</kbd> / <kbd>Q</kbd></dd></div>
     <div><dt>满能量变身 / 变身后释放机甲技</dt><dd><kbd>F</kbd></dd></div>
     <div><dt>使用战术道具</dt><dd><kbd>1</kbd> / <kbd>2</kbd></dd></div>
+    <div><dt>操作战场机关</dt><dd>靠近按 <kbd>R</kbd> 或点机关按钮</dd></div>
     <div><dt>选择升级强化</dt><dd><kbd>1</kbd>–<kbd>3</kbd></dd></div>
     <div><dt>刷新强化选项（需解锁）</dt><dd><kbd>R</kbd></dd></div>
     <div><dt>满槽时选一项替换</dt><dd><kbd>1</kbd>–<kbd>9</kbd> / <kbd>0</kbd>（第 10 项）</dd></div>

@@ -368,6 +368,7 @@ function paintInstruments(force) {
   instrument('hpFill').parentElement.classList.toggle('low',hp < .3);
   meterFill('hpFill',hp); meterFill('xpFill',G.xp/G.need);
   putText(instrument('hudSector'),'S' + pad2(G.stage+1) + ' / ' + SCENES[G.stage].name);
+  FieldMaps.paintHud();
   instrument('wavePanel').classList.toggle('boss',!!boss);
   const clear = G.phase === 'clear';
   putText(instrument('waveName'),boss ? boss.name : clear ? '前往传送门' : G.phase === 'boss' ? '首领接近' : '敌潮 ' + pad2(G.wave) + ' / ' + WAVES_PER_STAGE);

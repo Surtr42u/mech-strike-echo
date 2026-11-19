@@ -261,3 +261,4 @@ button.wallet:hover{background:#3b3023;border-color:#a37c4e}
   .section-bar h2 small{display:none}
 }
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important}}
+.field-interact{align-self:end;pointer-events:auto;background:#173331f2;color:#bcf4dc;border:1px solid #82bc9d;padding:7px 12px;font:700 .83rem var(--sans);cursor:pointer;margin-bottom:4px}.field-interact:focus-visible{outline:2px solid #ffe1a4}.wave-panel .field-objective{display:block;font:600 .7rem/1.4 var(--sans);color:#acd9ca;margin:3px 0 0}.field-interact[hidden],.field-objective[hidden]{display:none!important}

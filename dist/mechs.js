@@ -179,7 +179,7 @@ function mechDash(){
   for(let d=10;d<=150;d+=10){
     const nx = x+ca*d, ny = y+sa*d;
     if(nx < minX || nx > maxX || ny < minY || ny > maxY) break;
-    if(obstacles.some(pr => d2(nx,ny,pr.x,pr.y) < (pr.r+9)**2)) break;
+    if(FieldMaps.blocksMovement(nx,ny,9) || obstacles.some(pr => d2(nx,ny,pr.x,pr.y) < (pr.r+9)**2)) break;
     p.x = nx;
     p.y = ny;
   }
