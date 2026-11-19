@@ -4297,6 +4297,7 @@ function aoe(x, y, r, dmg, skip){
    ④ 穿透递减：每次穿透后 ×0.7
    ⑤ 取整输出 */
 function calcDamage(base, attacker, target, opt){
+  if(attacker === 'weather') return {dmg:Math.max(1,Math.round(base)),crit:false};
   opt = opt || {};
   const s = G.st || baseStats();
   let dmg = base + (opt.flat || 0);
@@ -4310,10 +4311,11 @@ function calcDamage(base, attacker, target, opt){
 
 function applyDamage(e, dmg, crit, hx, hy, opt){
   if(!e || e.dead) return;
-  const r = calcDamage(dmg, 'player', e, Object.assign({ crit: crit }, opt || {}));
+  const source = opt?.source ?? 'player';
+  const r = calcDamage(dmg, source, e, Object.assign({ crit: crit }, opt || {}));
   if(EnemyTactics.supported(e)) r.dmg = Math.max(1, Math.round(r.dmg * .52));
   EnemyTactics.interrupt(e);
-  HEXES.onAttackDamage(Math.min(e.hp,r.dmg));
+  if(source === 'player') HEXES.onAttackDamage(Math.min(e.hp,r.dmg));
   e.hp -= r.dmg;
   e.flash = .11;
   if(r.crit) G.hitStop = Math.max(G.hitStop, .028);
@@ -4323,16 +4325,16 @@ function applyDamage(e, dmg, crit, hx, hy, opt){
       life: .55, max: .55, col: r.crit ? '#ffe58a' : '#ffffff', vy: -40, big: r.crit
     });
   }
-  if(e.hp <= 0) killEnemy(e);
+  if(e.hp <= 0) killEnemy(e,source === 'player');
   else SFX.hit(true);
 }
 
-function killEnemy(e){
+function killEnemy(e, playerKill = true){
   if(e.dead) return;
   e.dead = true;
   e.deadT = 0;
   EnemyTactics.detach(e);
-  if(e.noReward){
+  if(e.noReward || !playerKill){
     boom(e.x, e.y, false);
     return;
   }
@@ -4375,8 +4377,9 @@ function killEnemy(e){
 
 function damageBoss(b, dmg, crit, hx, hy, opt){
   if(!b || b.dead) return;
-  const r = calcDamage(dmg, 'player', b, Object.assign({ crit: crit }, opt || {}));
-  HEXES.onAttackDamage(Math.min(b.hp,r.dmg));
+  const source = opt?.source ?? 'player';
+  const r = calcDamage(dmg, source, b, Object.assign({ crit: crit }, opt || {}));
+  if(source === 'player') HEXES.onAttackDamage(Math.min(b.hp,r.dmg));
   b.hp -= r.dmg;
   b.flash = .09;
   if(Math.random() < .6 || r.crit){

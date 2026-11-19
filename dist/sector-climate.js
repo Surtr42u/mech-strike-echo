@@ -139,15 +139,16 @@ const SectorClimate = (() => {
 
   function resolveStrike(s) {
     const damage=s.friendly?58+G.stage*9:23+G.stage*4;
+    const hit=s.friendly ? undefined : {source:'weather'};
     for(const e of G.enemies){
       if(e.dead || e.spawnT>0 || d2(s.x,s.y,e.x,e.y)>(s.r+e.r)**2) continue;
-      applyDamage(e,damage,false,e.x,e.y-5);
+      applyDamage(e,damage,false,e.x,e.y-5,hit);
       if(s.friendly) e.stun=Math.max(e.stun||0,.8);
     }
     const boss=G.boss;
-    if(boss && !boss.dead && d2(boss.x,boss.y,s.x,s.y)<=(s.r+boss.r)**2) damageBoss(boss,damage,false,boss.x,boss.y);
+    if(boss && !boss.dead && d2(boss.x,boss.y,s.x,s.y)<=(s.r+boss.r)**2) damageBoss(boss,damage,false,boss.x,boss.y,hit);
     if(!s.friendly){
-      const radius=typeof playerRadius==='function' ? playerRadius(PLAYER_HAZARD_RADIUS) : PLAYER_HAZARD_RADIUS;
+      const radius=playerRadius();
       if(d2(G.p.x,G.p.y,s.x,s.y)<=(s.r+radius)**2) hurtPlayer(9+2*G.stage);
     }
     spark(s.x,s.y,7,s.friendly?'#9ae9da':'#ffe299',95);
