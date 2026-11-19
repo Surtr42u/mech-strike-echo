@@ -30,8 +30,8 @@ const GUARD_ATTACKS = {
     const x = b.x, y = b.y;
     return {
       wind:wind, dur:.46, cd:1.08,
-      draw(g){ if(!b.act.fired) drawHazardCircle(g, x, y, radius, '#ffbd56', b.act.t / wind); },
-      fire(){ resolveGroundBlast(x, y, radius, b.dmg); }
+      draw(g){ if(!b.act.fired) BossEffects.target(g, x, y, radius, b.kind, (b.act.t || 0) / wind); },
+      fire(){ resolveGroundBlast(x, y, radius, b.dmg, b.kind); }
     };
   },
   guardRam(b){
@@ -62,7 +62,7 @@ const GUARD_ATTACKS = {
       wind:.86, dur:.4, cd:1.7,
       draw(g){
         if(!b.act.fired){
-          for(const pt of points) drawHazardCircle(g, pt.x, pt.y, 19, '#9df4df', b.act.t / b.act.wind);
+          for(const pt of points) BossEffects.target(g, pt.x, pt.y, 19, b.kind, (b.act.t || 0) / b.act.wind);
         }
       },
       fire(){
@@ -70,6 +70,7 @@ const GUARD_ATTACKS = {
         for(const pt of points){
           if(slots-- <= 0) break;
           spawnEnemy('drone', pt.x, pt.y, { noElite:true }).summoner = b;
+          BossEffects.emit(b.kind, 'launch', pt.x, pt.y, 19);
         }
         SFX.shoot();
       }
@@ -127,7 +128,7 @@ function makeBossCharge(b, spec){
   return {
     wind:spec.wind, dur:spec.dur, cd:spec.cd, kind:'charge',
     draw(g){
-      if(!b.act.fired) drawEncounterLane(g, sx, sy, target.x, target.y, b.r, spec.col, true, 0);
+      BossEffects.charge(g, b, sx, sy, target, spec.col);
     },
     fire(){
       G.shake = Math.max(G.shake, 6);
@@ -156,6 +157,7 @@ function makeBossCharge(b, spec){
       if(Math.random() < dt * 24) spark(unit.x, unit.y, 2, spec.col, 56);
     },
     end(){
+      BossEffects.emit(b.kind, 'impact', b.x, b.y, b.r * .72);
       if(spec.afterRing){
         ebRing(b.x, b.y, spec.afterRing, 170, 12, '#ff9a74', 4.2, angle + .25);
         spark(b.x, b.y, 8, '#ff9a74', 86);
@@ -170,19 +172,22 @@ function makeBossLaser(b, wind, cooldown, beams){
     wind:wind, dur:Math.max(...beams.map(spec => spec.life)), cd:cooldown,
     draw(g){
       if(!b.act.fired){
-        for(const beam of beams) drawEncounterBeam(g, beam, true);
+        for(const beam of beams) BossEffects.beam(g, beam, b.kind, true, (b.act.t || 0) / wind);
       }
     },
     fire(){
-      for(const beam of beams) addBeam(beam.x, beam.y, beam.ang, beam.len, beam.wide, beam.dmg, beam.life, beam.rot, beam.col);
+      for(const beam of beams) addBeam(beam.x, beam.y, beam.ang, beam.len, beam.wide, beam.dmg, beam.life, beam.rot, beam.col, b.kind);
       SFX.heavy();
     }
   };
 }
 
-function resolveGroundBlast(x, y, radius, dmg){
+function resolveGroundBlast(x, y, radius, dmg, bossFx){
   if(d2(G.p.x, G.p.y, x, y) <= (radius + playerRadius()) ** 2) hurtPlayer(dmg);
-  explodeFX(x, y, radius);
+  if(bossFx){
+    BossEffects.emit(bossFx, 'impact', x, y, radius);
+    G.shake = Math.max(G.shake, 6);
+  } else explodeFX(x, y, radius);
   SFX.boom();
 }
 
@@ -356,13 +361,16 @@ function updateEliteVariant(e, dt, distance){
 
 function drawEncounterWarnings(g){
   for(const h of G.haz){
-    if(h.kind === 'zone') drawHazardCircle(g, h.x, h.y, h.r, '#ff675e', h.t / h.max);
-    else if(h.kind === 'pool' && h.t < h.arm) drawHazardCircle(g, h.x, h.y, h.r, '#ffc184', h.t / h.arm);
+    if(h.kind === 'zone' || (h.kind === 'pool' && h.t < h.arm)){
+      const progress = h.t / (h.kind === 'zone' ? h.max : h.arm);
+      if(h.bossFx) BossEffects.target(g, h.x, h.y, h.r, h.bossFx, progress);
+      else drawHazardCircle(g, h.x, h.y, h.r, h.kind === 'zone' ? '#ff675e' : '#ffc184', progress);
+    }
   }
   const boss = G.boss;
   if(boss && !boss.dead){
     if(boss.act?.draw) boss.act.draw(g);
-    else if(boss.tele) drawHazardCircle(g, boss.x, boss.y, boss.r * 1.3, '#ffc685', .4);
+    BossEffects.cast(g, boss);
   }
   for(const e of G.enemies){
     if(e.dead || !e.eliteVariant || e.spawnT > 0) continue;

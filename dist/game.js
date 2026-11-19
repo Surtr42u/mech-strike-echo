@@ -3165,7 +3165,7 @@ function spawnBoss(kind){
     x:origin.x, y:origin.y,
     vx:0, vy:0, spd: def.spd,
     t:0, atkCd: 1.0, act:null, face:1,
-    flash:0, rot:0, phase:1, ph:0, phT:0, fightT:0, phFlash:0, tele:false, idx:0, dead:false, deadT:0,
+    flash:0, rot:0, phase:1, ph:0, phT:0, fightT:0, phFlash:0, idx:0, dead:false, deadT:0,
     orbit: rnd(0, TAU),
     dmg: def.dmg || 16
   };
@@ -5491,7 +5491,7 @@ function updateHazards(dt){
       /* 预警区：计时到点才炸，预警本身不造成伤害 */
       if(h.life <= 0 && !h.boom){
         h.boom = true;
-        resolveGroundBlast(h.x, h.y, h.r, h.dmg);
+        resolveGroundBlast(h.x, h.y, h.r, h.dmg, h.bossFx);
       }
     }
     if(h.life <= 0) G.haz.splice(i, 1);
@@ -5567,9 +5567,6 @@ function updateBoss(dt){
     runBossAct(b, dt);
   }
 
-  /* 预警闪烁：出手前 0.6 秒（由攻击动作的 wind 推导） */
-  b.tele = !!(b.act && !b.act.fired && b.act.wind);
-
   // 接触伤害
   if(b.act?.kind !== 'charge' && dst(b.x, b.y, p.x, p.y) <= b.r + playerRadius()) hurtPlayer(b.dmg * .8);
 }
@@ -5614,7 +5611,7 @@ const BOSS_PHASES = {
       update:function(b, dt){
         /* 每 3.5 秒在玩家脚下留一块火池 */
         if(Math.floor(b.phT / 3.5) !== Math.floor((b.phT - dt) / 3.5)){
-          addPool(G.p.x, G.p.y, 42, 12, 4.5, 'rgba(255,120,50,.55)');
+          addPool(G.p.x, G.p.y, 42, 12, 4.5, 'rgba(255,120,50,.55)', b.kind);
         }
       } }
   ]},
@@ -5634,7 +5631,7 @@ function frostField(b, n){
     const a = rnd(0, TAU), r = rnd(60, 170);
     addPool(clamp(G.p.x + Math.cos(a) * r, 50, ARENA.w - 50),
             clamp(G.p.y + Math.sin(a) * r, 50, ARENA.h - 50),
-            44, 11, 5.5, 'rgba(150,230,255,.55)');
+            44, 11, 5.5, 'rgba(150,230,255,.55)', b.kind);
   }
   G.rings.push({ x:b.x, y:b.y, r:10, max:220, life:.6, maxLife:.6, col:'#9fe8ff', w:3 });
 }
@@ -5643,7 +5640,7 @@ function lavaField(b, n){
     const a = rnd(0, TAU), r = rnd(60, 180);
     addPool(clamp(G.p.x + Math.cos(a) * r, 50, ARENA.w - 50),
             clamp(G.p.y + Math.sin(a) * r, 50, ARENA.h - 50),
-            46, 13, 6, 'rgba(255,120,50,.55)');
+            46, 13, 6, 'rgba(255,120,50,.55)', b.kind);
   }
   G.rings.push({ x:b.x, y:b.y, r:10, max:220, life:.6, maxLife:.6, col:'#ff8a3c', w:3 });
 }
@@ -5651,7 +5648,7 @@ function voidField(b, n){
   for(let i=0;i<n;i++){
     const a = rnd(0, TAU), r = rnd(70, 190);
     addZone(clamp(G.p.x + Math.cos(a) * r, 50, ARENA.w - 50),
-            clamp(G.p.y + Math.sin(a) * r, 50, ARENA.h - 50), 50, b.dmg * .9, rnd(.9, 1.4));
+            clamp(G.p.y + Math.sin(a) * r, 50, ARENA.h - 50), 50, b.dmg * .9, rnd(.9, 1.4), b.kind);
   }
 }
 
@@ -5704,8 +5701,10 @@ function startBossAttack(b, ph){
 function crusherAttack(b, ph){
   if(ph.ai2 === 'chase'){
     /* 阶段三：不再冲撞，改为在玩家当前位置生成延迟爆炸圈 */
-    addZone(G.p.x, G.p.y, ph.zone || 46, b.dmg * .85, 1.0);
-    G.rings.push({ x:b.x, y:b.y, r:6, max:60, life:.3, maxLife:.3, col:'#ff6a4a', w:2 });
+    addZone(G.p.x, G.p.y, ph.zone || 46, b.dmg * .85, 1.0, b.kind);
+    b.muzzleAt = G.t;
+    b.muzzleAng = Math.atan2(G.p.y - b.y, G.p.x - b.x);
+    b.muzzleStyle = 'vent';
     SFX.heavy();
     b.ventAt = b.t;
     b.atkCd = ph.every || 1.5;
@@ -5725,13 +5724,6 @@ function phaseCharge(b, ph){
 function runBossAct(b, dt){
   const a = b.act;
   a.t = (a.t || 0) + dt;   // 攻击对象不保证带 t 字段，这里兜底初始化
-  /* 弹幕类预警：出手前 0.5 秒，生成点扩散一圈白光（半径 0 → 弹幕范围，透明度 0.6 → 0）
-     冲锋类自带路径指示线（a.draw），不叠加白圈 */
-  if(!a._tel && !a.draw && a.wind >= .5 && a.t >= a.wind - .5){
-    a._tel = true;
-    G.rings.push({ x:b.x, y:b.y, r:0, max:b.r * 2.6, life:.5, maxLife:.5,
-      col:'rgba(255,255,255,.9)', w:2.5 });
-  }
   if(!a.fired && a.t >= a.wind){
     a.fired = true;
     if(a.fire) a.fire(b);
@@ -5747,7 +5739,14 @@ function runBossAct(b, dt){
 /* 攻击原语 */
 function ebShoot(x, y, ang, spd, dmg, col, r, opt){
   opt = opt || {};
+  const boss = G.boss;
+  if(boss && boss.muzzleAt !== G.t){
+    boss.muzzleAt = G.t;
+    boss.muzzleAng = ang;
+    boss.muzzleStyle = null;
+  }
   G.eb.push({
+    owner:'boss', kind:boss?.kind,
     x:x, y:y, vx:Math.cos(ang) * spd, vy:Math.sin(ang) * spd,
     dmg:dmg, r: r || 3.4, col: col || '#ff8a6a',
     life: opt.life || 3.6, homing: !!opt.homing,
@@ -5774,23 +5773,24 @@ function bossSummon(kinds, n){
     const x = clamp(b.x + Math.cos(a) * r, 50, ARENA.w - 50);
     const y = clamp(b.y + Math.sin(a) * r, 60, ARENA.h - 50);
     spawnEnemy(pick(kinds), x, y, { noElite:true }).summoner = b;
+    BossEffects.emit(b.kind, 'launch', x, y, 17);
   }
 }
-function addPool(x, y, r, dmg, life, col){
+function addPool(x, y, r, dmg, life, col, bossFx){
   const arm = .86;
-  G.haz.push({ kind:'pool', x:x, y:y, r:r, dmg:dmg, life:life + arm, max:life + arm, col:col, arm:arm, t:0 });
+  G.haz.push({ kind:'pool', x:x, y:y, r:r, dmg:dmg, life:life + arm, max:life + arm, col:col, arm:arm, t:0, bossFx });
 }
-function addBeam(x, y, ang, len, wide, dmg, life, rot, col){
+function addBeam(x, y, ang, len, wide, dmg, life, rot, col, bossFx){
   G.haz.push({ kind:'beam', x:x, y:y, ang:ang, len:len, wide:wide, dmg:dmg,
-    life:life, max:life, rot:rot || 0, col:col, t:0, born:G.t });
+    life:life, max:life, rot:rot || 0, col:col, t:0, born:G.t, bossFx });
 }
-function addWave(x, y, maxR, dmg, col){
-  G.haz.push({ kind:'wave', x:x, y:y, r:4, maxR:maxR, dmg:dmg, life:.75, max:.75, col:col, hit:false, t:0, born:G.t });
+function addWave(x, y, maxR, dmg, col, bossFx){
+  G.haz.push({ kind:'wave', x:x, y:y, r:4, maxR:maxR, dmg:dmg, life:.75, max:.75, col:col, hit:false, t:0, born:G.t, bossFx });
 }
 /* 延迟爆炸的圆形预警区：delay 秒后炸开（先给玩家 1 秒反应） */
-function addZone(x, y, r, dmg, delay){
+function addZone(x, y, r, dmg, delay, bossFx){
   const d = delay || 1.0;
-  G.haz.push({ kind:'zone', x:x, y:y, r:r, dmg:dmg, life:d, max:d, col:'#ff3c3c', t:0, boom:false });
+  G.haz.push({ kind:'zone', x:x, y:y, r:r, dmg:dmg, life:d, max:d, col:'#ff3c3c', t:0, boom:false, bossFx });
 }
 
 /* 每个 Boss 的攻击组 */
@@ -5842,8 +5842,8 @@ const ACT_FN = {
     return {
       wind:.75, dur:.6, cd:1.6, fired:false,
       fire: function(){
-        addWave(b.x, b.y, 240, 18, 'rgba(255,150,90,.9)');
-        addWave(b.x, b.y, 150, 14, 'rgba(255,200,140,.9)');
+        addWave(b.x, b.y, 240, 18, 'rgba(255,150,90,.9)', b.kind);
+        addWave(b.x, b.y, 150, 14, 'rgba(255,200,140,.9)', b.kind);
         G.shake = 13;
         SFX.boom();
       }
@@ -5855,7 +5855,6 @@ const ACT_FN = {
       wind:.7, dur:.35, cd:2.1, fired:false,
       fire: function(){
         bossSummon(['drone'], 4);
-        G.rings.push({ x:b.x, y:b.y, r:6, max:70, life:.4, maxLife:.4, col:'#57e0ff', w:2 });
       }
     };
   },
@@ -5900,8 +5899,8 @@ const ACT_FN = {
     return {
       wind:.6, dur:.4, cd:1.5, fired:false,
       fire: function(){
-        addPool(G.p.x, G.p.y, 52, 12, 4, 'rgba(150,230,255,.5)');
-        addPool(b.x, b.y, 46, 12, 3.2, 'rgba(150,230,255,.5)');
+        addPool(G.p.x, G.p.y, 52, 12, 4, 'rgba(150,230,255,.5)', b.kind);
+        addPool(b.x, b.y, 46, 12, 3.2, 'rgba(150,230,255,.5)', b.kind);
         G.shake = 6;
         SFX.boom();
       }
@@ -5922,7 +5921,7 @@ const ACT_FN = {
         for(let i=0;i<4;i++){
           const x = clamp(G.p.x + rnd(-90, 90), 50, ARENA.w - 50);
           const y = clamp(G.p.y + rnd(-70, 70), 50, ARENA.h - 50);
-          addPool(x, y, 40, 11, 4.5, 'rgba(255,120,50,.55)');
+          addPool(x, y, 40, 11, 4.5, 'rgba(255,120,50,.55)', b.kind);
         }
         SFX.boom();
       }
@@ -5991,9 +5990,8 @@ const ACT_FN = {
     b.x = clamp(G.p.x + Math.cos(angle) * 170, 80, ARENA.w - 80);
     b.y = clamp(G.p.y + Math.sin(angle) * 170, 90, ARENA.h - 80);
     b.teleportedAt = G.t;
-    for(const pt of [{x:oldX,y:oldY},b]){
-      G.rings.push({ x:pt.x, y:pt.y, r:4, max:80, life:.46, maxLife:.46, col:'#c77dff', w:3 });
-    }
+    BossEffects.emit(b.kind, 'rift', oldX, oldY, 26);
+    BossEffects.emit(b.kind, 'rift', b.x, b.y, 26);
     const aim = Math.atan2(G.p.y - b.y, G.p.x - b.x);
     return makeBossLaser(b, 1.05, 1.6, [
       { x:b.x, y:b.y, ang:aim, len:900, wide:15, dmg:19, life:.84, rot:0, col:'#d895ff' }
@@ -8711,6 +8709,7 @@ function drawBullets(){
 function drawRings(){
   for(let i=0;i<G.rings.length;i++){
     const r = G.rings[i];
+    if(r.bossFx){ BossEffects.echo(ctx, r); continue; }
     const k = 1 - r.life / r.maxLife;
     const rad = lerp(r.r, r.max, k);
     ctx.globalAlpha = (1 - k) * .85;
@@ -8728,6 +8727,7 @@ function drawHazards(){
     const h = G.haz[i];
     if(h.kind === 'pool'){
       if(h.t < h.arm) continue;
+      if(h.bossFx){ BossEffects.pool(ctx, h); continue; }
       const k = clamp(h.life / (h.max - h.arm), 0, 1);
       ctx.globalAlpha = .55 * k + .15;
       const g2 = ctx.createRadialGradient(SX(h.x), SY(h.y), 2, SX(h.x), SY(h.y), h.r);
@@ -8774,8 +8774,13 @@ function drawHazards(){
 
 function drawBeams(){
   for(const h of G.haz){
-    if(h.kind === 'wave') drawEncounterWave(ctx, h);
-    else if(h.kind === 'beam') drawEncounterBeam(ctx, h, false);
+    if(h.kind === 'wave'){
+      if(h.bossFx) BossEffects.wave(ctx, h);
+      else drawEncounterWave(ctx, h);
+    } else if(h.kind === 'beam'){
+      if(h.bossFx) BossEffects.beam(ctx, h, h.bossFx, false);
+      else drawEncounterBeam(ctx, h, false);
+    }
   }
 }
 
