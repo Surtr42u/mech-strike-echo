@@ -1026,7 +1026,8 @@ const MON_GY = 38;   // 精灵脚底线（40×40 格内）
 
 /* ── 受击反馈：朝受击方向的冲击弧 + 碎屑 ── */
 function hitFX(x, y, ang, col, big, height){
-  const n = big ? 3 : 2;
+  const low = QLEVEL === 0;
+  const n = big ? 3 : low ? 1 : 2;
   for(let i = 0; i < n; i++){
     G.rings.push({
       x: x - Math.cos(ang) * (4 + i * 7), y: y - Math.sin(ang) * (4 + i * 7) * .7,
@@ -1034,7 +1035,7 @@ function hitFX(x, y, ang, col, big, height){
       col: col || '#ffe6c0', w: 1.6, arc: ang, height:height
     });
   }
-  for(let i = 0; i < (big ? 9 : 5); i++){
+  for(let i = 0; i < (big ? 9 : low ? 2 : 5); i++){
     const a = ang + Math.PI + rnd(-.9, .9);
     const v = rnd(40, big ? 190 : 120);
     G.parts.push({
@@ -2788,6 +2789,7 @@ const SFX = (function(){
   let ac = null, on = true, master = null;
   let comboPitch = 0, comboTimer = null;
   let ambNodes = null;
+  let enemyHitAt = -Infinity;
 
   function C(){
     if(!ac){
@@ -2895,7 +2897,15 @@ const SFX = (function(){
     shoot(){ shootFor(G.weapon); },
     shootFor:shootFor,
     heavy(){ tone(320, 150, .1, 'sawtooth', .035); },
-    hit(){ tone(1200, 900, .03, 'square', .012); },
+    hit(enemy = false){
+      if(!on) return;
+      if(enemy && QLEVEL === 0){
+        // 散弹或溅射同一帧击中多个目标时，合用一个命中声。
+        if(G.t >= enemyHitAt && G.t - enemyHitAt < .04) return;
+        enemyHitAt = G.t;
+      }
+      tone(1200, 900, .03, 'square', .012);
+    },
     kill(){ killPitched(); },
     hurt(){ tone(220, 90, .22, 'sawtooth', .07); noise(.1, .04, 600); },
     boom(){ noise(.3, .09, 700); tone(120, 50, .25, 'sawtooth', .05); },
@@ -4296,12 +4306,14 @@ function applyDamage(e, dmg, crit, hx, hy, opt){
   e.hp -= r.dmg;
   e.flash = .11;
   if(r.crit) G.hitStop = Math.max(G.hitStop, .028);
-  G.texts.push({
-    x: hx + rnd(-4,4), y: hy - 14, v: r.dmg,
-    life: .55, max: .55, col: r.crit ? '#ffe58a' : '#ffffff', vy: -40, big: r.crit
-  });
+  if(QLEVEL > 0 || r.crit || G.texts.length < 32){
+    G.texts.push({
+      x: hx + rnd(-4,4), y: hy - 14, v: r.dmg,
+      life: .55, max: .55, col: r.crit ? '#ffe58a' : '#ffffff', vy: -40, big: r.crit
+    });
+  }
   if(e.hp <= 0) killEnemy(e);
-  else SFX.hit();
+  else SFX.hit(true);
 }
 
 function killEnemy(e){
@@ -6195,25 +6207,32 @@ function updateParts(dt){
     o.life -= dt;
     if(o.life <= 0) G.lightsFx.splice(i, 1);
   }
-  for(let i=G.parts.length-1;i>=0;i--){
-    const p = G.parts[i];
+  const partDrag = Math.pow(.12, dt);
+  let activeParts = 0;
+  for(const p of G.parts){
     p.life -= dt;
-    if(p.life <= 0){ G.parts.splice(i,1); continue; }
+    if(p.life <= 0) continue;
     p.x += p.vx * dt; p.y += p.vy * dt;
-    p.vx *= Math.pow(.12, dt); p.vy *= Math.pow(.12, dt);
+    p.vx *= partDrag; p.vy *= partDrag;
+    G.parts[activeParts++] = p;
   }
-  for(let i=G.rings.length-1;i>=0;i--){
-    const r = G.rings[i];
+  G.parts.length = activeParts;
+  let activeRings = 0;
+  for(const r of G.rings){
     r.life -= dt;
-    if(r.life <= 0) G.rings.splice(i,1);
+    if(r.life > 0) G.rings[activeRings++] = r;
   }
-  for(let i=G.texts.length-1;i>=0;i--){
-    const t = G.texts[i];
+  G.rings.length = activeRings;
+  const textDrag = Math.pow(.3, dt);
+  let activeTexts = 0;
+  for(const t of G.texts){
     t.life -= dt;
+    if(t.life <= 0) continue;
     t.y += t.vy * dt;
-    t.vy *= Math.pow(.3, dt);
-    if(t.life <= 0) G.texts.splice(i,1);
+    t.vy *= textDrag;
+    G.texts[activeTexts++] = t;
   }
+  G.texts.length = activeTexts;
 }
 
 /* ── 环境天气粒子（土豆兄弟式关卡氛围） ── */
@@ -8212,7 +8231,7 @@ function drawEnemy(e){
   }
 
   drawFrame(name, dx, dy, sc);
-  rimLight(name, dx, dy, dw, dh, SCENES[G.stage].accent, e.dead ? .05 : .13);
+  if(QLEVEL > 0 || e.elite) rimLight(name, dx, dy, dw, dh, SCENES[G.stage].accent, e.dead ? .05 : .13);
 
   /* 受击：整体瞬间闪白（死亡后不再闪，避免尸体变成白影） */
   if(e.flash > 0 && !e.dead){
