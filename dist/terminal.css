@@ -171,6 +171,7 @@ button.wallet:hover{background:#3b3023;border-color:#a37c4e}
 #lvAscend{border-color:#b292d4;color:#f0dcff}
 #hudHexPlan{flex-basis:100%;color:var(--pale)}
 #evtBox{margin:15px 0 20px}.evtIco{font-size:2.2rem}.evtName{font-size:1.42rem;font-weight:750;margin:.2em 0}.evtDesc{color:#c6cfc6;line-height:1.6}
+.event-actions{display:flex;justify-content:center;gap:9px;flex-wrap:wrap}
 .report-sheet{width:min(100%,470px)}.stats{display:grid;grid-template-columns:1fr 1fr;gap:0 22px;margin:12px 0 21px}
 .run-stats-dialog.terminal-dialog{width:min(720px,calc(100% - 24px))}
 .run-stats-dialog .dialog-head h2{margin-top:0}

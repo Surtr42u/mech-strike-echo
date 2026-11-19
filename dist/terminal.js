@@ -353,6 +353,7 @@ function banner(title,sub,seconds) {
   bannerTimer = setTimeout(clearBanner,(seconds || 1.4)*1000);
 }
 function showReport(win,withdrawn) {
+  StageEvents.clear();
   G.pending = 0;
   for(const id of ['ovLevel','ovPause','ovEvent']) byId(id).classList.add('hide');
   byId('ovOver').classList.remove('hide');
@@ -399,7 +400,8 @@ function wireTerminal() {
   byId('pauseStats').onclick = showRunStats;
   byId('btnQuit').onclick = quitRun;
   byId('btnHome').onclick = returnToLobby;
-  byId('btnEvt').onclick = closeEvent;
+  byId('btnEvt').onclick = () => closeEvent();
+  byId('btnEvtSkip').onclick = () => closeEvent(false);
   byId('lvCancel').onclick = TALENTS.cancelSwap;
   byId('lvSkip').onclick = event => { if(event.detail < 2) TALENTS.skipReward(); };
   byId('lvRefresh').onclick = TALENTS.refreshCards;
@@ -505,7 +507,10 @@ function paintInstruments(force) {
   }
   putText(instrument('comboText'),G.combo >= 5 ? G.combo + ' 连击' : '');
   const active = [['over','过载'],['magnet','磁吸'],['stasis','停滞'],['fleet','疾风'],['rad','辐射'],['luck','幸运'],['weak','虚弱']];
-  putText(instrument('hudBuffs'),active.filter(([k])=>G.buff[k]>0).map(([k,n])=>n+' '+Math.ceil(G.buff[k])+'s').join(' · '));
+  const effects = active.filter(([k])=>G.buff[k]>0).map(([k,n])=>n+' '+Math.ceil(G.buff[k])+'s');
+  const incident=StageEvents.status();
+  if(incident) effects.push(incident);
+  putText(instrument('hudBuffs'),effects.join(' · '));
   putText(instrument('hudEnhancements'),[...TALENTS.status(),PREPARATIONS.lockStatus()].filter(Boolean).join(' · '));
   putText(instrument('hudHexPlan'),HEXES.planLabel());
   const live = G.mechT > 0;

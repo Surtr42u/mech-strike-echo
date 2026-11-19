@@ -2968,10 +2968,12 @@ const RESONANCE = {
 function recalc({ fillNewCapacity = true } = {}){
   const s = baseStats();
   applyGrowth(s);
+  const temporary=StageEvents.skill();
   for(const id in G.skills){
     const sk = SK[id];
-    if(sk) sk.ap(s, G.skills[id]);
+    if(sk) sk.ap(s, G.skills[id] + (id===temporary ? 1 : 0));
   }
+  if(temporary && !G.skills[temporary]) SK[temporary].ap(s,1);
   /* 角色专属被动 */
   const chr = SKINS[G.skin] || SKINS[0];
   if(chr && chr.pas && chr.pas.fn) chr.pas.fn(s);
@@ -2986,6 +2988,7 @@ function recalc({ fillNewCapacity = true } = {}){
   if(b.armor > 0) s.armor += .25;
   if(b.extra > 0) s.extra += 2;
   TALENTS.applyStats(s);
+  StageEvents.applyStats(s);
   s.armor += CampaignStory.linerBonus();
   /* 生命上限兜底：易碎/玻璃大炮叠满也不至于变成 0 血 */
   s.maxHp = Math.max(20, Math.round(s.maxHp)) + CampaignStory.coreBonus();
@@ -3016,6 +3019,7 @@ function newRun(){
   G.skillLimit = skillCapacity(G.growth);
   TALENTS.reset();
   CampaignStory.reset();
+  StageEvents.reset();
   G.energy = 0; G.revives = 1;
   G.mechId = PROF.mech;
   resetMech();
@@ -3061,13 +3065,10 @@ function newRun(){
   G.cam.x = G.p.x; G.cam.y = G.p.y;
   setScene(0);
   startWave();
-  /* 首关也按 10% 掷一次事件，别让第一关永远空过 */
-  G.jobs.push({ t: 1.3, fn: function(){
-    if(G.mode === 'play' && G.phase === 'wave' && G.wave === 1) maybeEvent();
-  }});
 }
 
 function setScene(i){
+  StageEvents.clear('离开战区，效果解除');
   G.stage = i;
   G.floorSpawnSerial = 0;
   ThreatPacing.reset();
@@ -3090,12 +3091,13 @@ function setScene(i){
   FOREFX.build(i);      // 近景遮挡层（角落剪影每关重新生成一次）
   SFX.ambience(i);
   G.sceneFx = .8;   // 场景切换淡入
-  G._evtRolled = false;   // 每个场景只掷一次随机事件
+  G._evtRolled = false;
   G.enemies.length = 0; G.eb.length = 0; G.haz.length = 0;
   G.picks.length = 0; G.crates.length = 0; G.jobs.length = 0;
   G.lightsFx.length = 0;
   if(G.p){ G.p.x = ARENA.w/2; G.p.y = ARENA.h/2 + 40; G.cam.x = G.p.x; G.cam.y = G.p.y; }
   CampaignStory.begin(i);
+  StageEvents.begin(i);
 }
 
 function waveDuration(w){ return CampaignBalance.at(G.stage,w).duration; }
@@ -4420,7 +4422,7 @@ function killEnemy(e, playerKill = true, emberSeed = false){
     aoe(e.x, e.y, 30, 12, e);
   }
   // 道具掉落：精英更容易爆货
-  if(Math.random() < (e.elite ? .38 : .09)) dropItem(e.x, e.y);
+  if(Math.random() < StageEvents.dropChance(e.elite)) dropItem(e.x, e.y);
 }
 
 function damageBoss(b, dmg, crit, hx, hy, opt){
@@ -6210,38 +6212,39 @@ const elEvent = document.getElementById('ovEvent');
 const elEvtBox = document.getElementById('evtBox');
 
 function triggerEvent(force){
-  if(G.mode !== 'play' || G.phase !== 'wave') return;
+  if(G.mode !== 'play' || G.phase !== 'wave') return false;
   const pool = G.st.mechLocked ? EVENTS.filter(ev => !ev.needsMech) : EVENTS;
   const ev = force || pick(pool);
-  if(G.st.mechLocked && ev.needsMech) return;
+  if(G.st.mechLocked && ev.needsMech) return false;
   G._event = ev;
   elEvtBox.innerHTML =
     '<div class="evtIco" style="color:' + ev.c + '">' + ev.ic + '</div>' +
     '<div class="evtName" style="color:' + ev.c + '">' + ev.n + '</div>' +
     '<div class="evtDesc">' + ev.desc + '</div>';
   clearBanner();
+  byId('btnEvtSkip').hidden = !ev.optional;
+  putText(byId('btnEvt'),ev.optional?'接受风险':'确认事件');
   elEvent.classList.remove('hide');
   G.mode = 'event';
   byId('btnEvt').focus({preventScroll:true});
   SFX.boss();
+  return true;
 }
 
-function closeEvent(){
+function closeEvent(accept=true){
   if(G.mode !== 'event') return;
   elEvent.classList.add('hide');
   const ev = G._event;
   G._event = null;
   G.mode = 'play';
-  if(ev && ev.apply) ev.apply();
+  if(accept || !ev?.optional) ev?.apply();
+  else ev.decline();
   SFX.pick();
   if(!openReward()) wakeGame();
 }
 
-/* 每关（进入新区域 / 首关开局）10% 概率触发，一关最多一次 */
 function maybeEvent(){
-  if(G._evtRolled) return;
-  G._evtRolled = true;
-  if(Math.random() < .10) triggerEvent();
+  return StageEvents.check();
 }
 
 function nextStage(){
@@ -6266,10 +6269,6 @@ function nextStage(){
   const sc = SCENES[s + 1];
   banner(sc.name, sc.code, 2.2);
   SFX.portal();
-  /* 进入新区域：10% 概率触发随机事件 */
-  G.jobs.push({ t: .5, fn: function(){
-    if(G.mode === 'play' && G.phase === 'wave') maybeEvent();
-  }});
 }
 
 /* ── 波次 ── */
@@ -9139,6 +9138,7 @@ function step(dt){
 
   G.t += dt;
   G.time += dt;
+  if(StageEvents.tick()) return;
 
   G.encounterPlayerFrom = { x:G.p.x, y:G.p.y };
   updatePlayer(dt);
