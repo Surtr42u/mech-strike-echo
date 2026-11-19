@@ -13,6 +13,7 @@
   <script defer src="growth.js"></script>
   <script defer src="preparations.js"></script>
   <script defer src="terminal.js"></script>
+  <script defer src="run-stats.js"></script>
   <script defer src="hexes.js"></script>
   <script defer src="talents.js"></script>
   <script defer src="weapon-links.js"></script>
@@ -161,7 +162,7 @@
   <section class="ov veil hide" id="ovPause" role="dialog" aria-modal="true" aria-labelledby="pauseHeading">
     <div class="menu-sheet"><div class="section-kicker"><i></i>PAUSED</div><h2 id="pauseHeading">战斗暂停</h2><p id="pauseProgress" class="sheet-note"></p>
       <button class="primary wide" id="btnResume"><canvas class="icon" data-icon="play"></canvas>继续战斗<kbd>P</kbd></button>
-      <div class="pause-tools"><button class="secondary" id="pauseManual">作战手册</button><button class="secondary" id="pauseSettings">系统设置</button></div>
+      <div class="pause-tools"><button class="secondary" id="pauseStats" aria-haspopup="dialog">本局属性</button><button class="secondary" id="pauseManual">作战手册</button><button class="secondary" id="pauseSettings">系统设置</button></div>
       <button class="text-button quit" id="btnQuit">撤离战区，结算积分</button>
     </div>
   </section>
@@ -171,6 +172,11 @@
     </div>
   </section>
 </main>
+<dialog id="runStatsDialog" class="terminal-dialog run-stats-dialog" aria-labelledby="runStatsTitle">
+  <div class="dialog-head"><div><h2 id="runStatsTitle">本局属性</h2><p id="runStatLoadout"></p></div><button type="button" class="icon-button dialog-close" aria-label="关闭本局属性"><canvas class="icon" data-icon="close"></canvas></button></div>
+  <div id="runStatGroups" class="run-stat-groups"></div>
+  <p class="run-stat-note">单弹按首次命中普通目标计算。冷却显示剩余时间和完整周期，移速含当前场地效果。</p>
+</dialog>
 <dialog id="manualDialog" class="terminal-dialog manual-dialog" aria-labelledby="manualTitle">
   <div class="dialog-head"><div><div class="section-kicker"><i></i>FIELD MANUAL</div><h2 id="manualTitle">作战手册</h2></div><button class="icon-button dialog-close" aria-label="关闭作战手册"><canvas class="icon" data-icon="close"></canvas></button></div>
   <div class="segmented manual-tabs" id="manualTabs" role="tablist" aria-label="手册内容">

@@ -3178,6 +3178,11 @@ function spawnBoss(kind){
 }
 
 /* ── 玩家 ── */
+function currentMoveSpeed(p, s){
+  return 106 * s.spdMul * (G.buff.fleet > 0 ? 1.35 : 1) *
+    (G.mechT > 0 ? currentMech().speed : 1) * SectorClimate.frostFactor(p) * HEXES.moveMultiplier(p);
+}
+
 function updatePlayer(dt){
   const p = G.p, s = G.st;
   updateMech(dt);
@@ -3192,8 +3197,7 @@ function updatePlayer(dt){
   if(m > 1){ ix /= m; iy /= m; }
   const mag = Math.min(1, Math.hypot(ix, iy));
 
-  const spd = 106 * s.spdMul * (G.buff.fleet > 0 ? 1.35 : 1) * (G.mechT > 0 ? currentMech().speed : 1) *
-    SectorClimate.frostFactor(p) * HEXES.moveMultiplier(p);
+  const spd = currentMoveSpeed(p,s);
   const k = 1 - Math.pow(.0009, dt);
   p.vx = lerp(p.vx, ix * spd, k);
   p.vy = lerp(p.vy, iy * spd, k);
@@ -3331,6 +3335,17 @@ function gunMuzzle(p, w, angle){
   return { x:p.x + dx * reach, y:p.y + dy * reach };
 }
 
+function weaponVolley(w, s){
+  const over = G.buff.over > 0, focus = G.wbuff.focus > 0, heat = G.wbuff.heat > 0;
+  const damage = s.dmg * (G.buff.weak > 0 ? .65 : 1);
+  return {
+    interval:s.baseRate / s.rateMul / (over ? 1.55 : 1) / (focus ? 2.4 : 1) / (heat ? 2.8 : 1),
+    count:w.count + s.extra, damage, pct:over ? .25 : 0,
+    pierce:w.pierce + s.pierce + (focus ? 2 : 0) + (heat ? 2 : 0),
+    barrageCount:s.barrage * 2 + s.barrageExtra, barrageDamage:damage * .8 * s.barragePower
+  };
+}
+
 function fire(target){
   if(G.mechT > 0){ mechFire(target); return; }
   if(TALENTS.tryBayonet()) return;
@@ -3340,15 +3355,13 @@ function fire(target){
   const ang = Math.atan2(t.y - p.y, t.x - p.x);
   const muzzle = gunMuzzle(p, w, ang);
   const oved = G.buff.over > 0;
-  const focus = G.wbuff.focus > 0;
-  const heat = G.wbuff.heat > 0;
-  const weakM = G.buff.weak > 0 ? .65 : 1;   /* 弹药克扣：伤害下降 */
-  p.fireT = s.baseRate / s.rateMul / (oved ? 1.55 : 1) / (focus ? 2.4 : 1) / (heat ? 2.8 : 1);
+  const volley = weaponVolley(w,s);
+  p.fireT = volley.interval;
   p.flashT = .07;
   p.atkT = .16;
   p.shotAngle = ang;
 
-  const n = w.count + s.extra;
+  const n = volley.count;
   const railFork=w.id==='sniper' && WeaponLinks.railEnabled();
   const emberSeed=w.id==='flamer' && WeaponLinks.emberEnabled();
   const step = (w.count > 1 ? w.spread : .075) * s.spreadMul;
@@ -3363,26 +3376,26 @@ function fire(target){
     const bullet = {
       x:muzzle.x, y:muzzle.y, fromX:p.x, fromY:p.y,
       vx:Math.cos(a) * sp, vy:Math.sin(a) * sp,
-      dmg:s.dmg * weakM, pct:oved ? .25 : 0,
-      pierce:w.pierce + s.pierce + (focus ? 2 : 0) + (heat ? 2 : 0),
+      dmg:volley.damage, pct:volley.pct,
+      pierce:volley.pierce,
       hits:[], life:(w.life + s.lifeAdd) * s.gunRangeMul, crit:Math.random() < s.crit,
       r:w.br * s.bigMul, over:oved, w:w.id, boom:!!w.boom, fuse:!!w.boom,
       homing:w.id === 'micromissile', turn:w.id === 'micromissile' ? 5 : 0,
       railFork:railFork && i===Math.floor(n/2), emberSeed,
-      splitDamage:w.id==='micromissile' && i===0 && s.barrage>0 ? s.dmg * weakM * .45 * s.barragePower : 0
+      splitDamage:w.id==='micromissile' && i===0 && s.barrage>0 ? volley.damage * .45 * s.barragePower : 0
     };
     if(w.boom) lobProjectile(bullet, t);
     G.bullets.push(bullet);
   }
   /* 弹幕风暴：额外散射子弹 */
-  const bn = s.barrage * 2 + s.barrageExtra;
+  const bn = volley.barrageCount;
   for(let i=0;i<bn;i++){
     const a = ang + rnd(-.5, .5);
     const sp = w.spd * rnd(.72, .95);
     G.bullets.push({
       x:muzzle.x, y:muzzle.y, fromX:p.x, fromY:p.y,
       vx:Math.cos(a) * sp, vy:Math.sin(a) * sp,
-      dmg:s.dmg * .8 * weakM * s.barragePower, pierce:w.pierce + s.pierce, hits:[], life:w.life * .9 * s.gunRangeMul,
+      dmg:volley.barrageDamage, pierce:w.pierce + s.pierce, hits:[], life:w.life * .9 * s.gunRangeMul,
       crit:Math.random() < s.crit * .7, r:w.br * s.bigMul * .8,
       over:oved, w:w.id, boom:false, barrage:true, emberSeed
     });
@@ -4431,6 +4444,10 @@ function heal(v){
   G.p.hp = Math.min(G.p.maxHp, G.p.hp + v);
 }
 
+function incomingDamageFactor(s){
+  return (1 - clamp(s.armor,0,ARMOR_LIMIT)) * (1 + s.dmgTaken);
+}
+
 function hurtPlayer(dmg){
   const p = G.p;
   if(G.mode !== 'play' || G.mechT > 0 || p.hp <= 0) return;
@@ -4448,8 +4465,7 @@ function hurtPlayer(dmg){
     SFX.hit();
     return;
   }
-  const red = 1 - clamp(G.st.armor, 0, ARMOR_LIMIT);
-  p.hp -= dmg * red * (1 + (G.st.dmgTaken || 0));
+  p.hp -= dmg * incomingDamageFactor(G.st);
   p.inv = .75;
   p.hurtT = .3;
   G.hurt = .55;

@@ -396,6 +396,7 @@ function wireTerminal() {
     };
   });
   byId('btnPause').onclick = byId('btnResume').onclick = togglePause;
+  byId('pauseStats').onclick = showRunStats;
   byId('btnQuit').onclick = quitRun;
   byId('btnHome').onclick = returnToLobby;
   byId('btnEvt').onclick = closeEvent;
