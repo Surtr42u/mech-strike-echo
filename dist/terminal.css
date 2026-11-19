@@ -174,7 +174,26 @@ button.wallet:hover{background:#3b3023;border-color:#a37c4e}
 .stats b{color:#ede9d9;font-weight:700}.stats .earned b{color:var(--amber)}
 .terminal-dialog{width:min(500px,calc(100% - 28px));max-height:calc(100dvh - 28px);margin:auto;overflow:auto}
 .terminal-dialog::backdrop{background:#060d0ddb;backdrop-filter:blur(3px)}.dialog-head{justify-content:space-between;gap:15px;align-items:flex-start}.dialog-head .icon-button{border-color:var(--line)}
-.manual-tabs{margin:6px 0 13px}.controls-list{border-top:1px solid var(--line)}.controls-list>div{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);font-size:.88rem}
+.manual-tabs{margin:6px 0 13px;max-width:100%}.manual-tabs button{min-height:44px;white-space:nowrap}
+.manual-tabs [aria-selected="true"]{color:#1e221c;background:var(--pale)}
+.controls-list{border-top:1px solid var(--line)}.controls-list>div{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);font-size:.88rem}
+.manual-dialog.hex-guide-open{width:min(840px,calc(100% - 28px))}
+.hex-guide-rules{margin:7px 0 12px;color:var(--pale);font-size:.84rem}
+.hex-guide-rules summary{cursor:pointer;width:fit-content;padding:5px 0}
+.hex-guide-rules p{padding:4px 0 0 13px;border-left:1px solid var(--line);font-size:.85rem}
+.hex-guide-toolbar{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:8px}
+.hex-guide-filters button{min-height:44px;white-space:nowrap}
+.hex-guide-count{color:#b7c6be;font-size:.82rem;white-space:nowrap}
+.hex-guide-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0;padding:4px;list-style:none;max-height:min(49dvh,540px);overflow-y:auto;touch-action:pan-y;overscroll-behavior-y:contain;scrollbar-color:#6b756d #151c1d}
+.hex-guide-list:focus-visible{outline:2px solid var(--pale);outline-offset:2px}
+.hex-guide-entry{padding:10px 12px;background:#172123;border:1px solid #3d4b45;border-top:2px solid var(--hex-tier-color);overflow-wrap:anywhere}
+.hex-guide-heading{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:start;gap:8px;margin-bottom:6px}
+.hex-guide-heading h3{font-size:1rem;line-height:1.42}.hex-guide-icon,.hex-guide-tier{color:var(--hex-tier-color)}
+.hex-guide-icon{display:grid;place-items:center;width:24px;height:24px;border:1px solid #43514b;font-size:.95rem}
+.hex-guide-tier{align-self:center;font-size:.72rem;white-space:nowrap}
+.manual-dialog .hex-guide-effect,.manual-dialog .hex-guide-risk{font-size:.86rem;line-height:1.5}
+.manual-dialog .hex-guide-risk{margin-top:6px;color:#ffc5b2}
+.hex-guide-risk strong{margin-right:.5em;font-size:.74rem}
 .controls-list dd{margin:0;color:var(--dim)}.controls-list kbd{display:inline-block;font-size:.8rem}
 .terminal-dialog .touch-note{font-size:.83rem;color:#b7c4b9;display:flex;align-items:flex-start;gap:8px}
 .touch-note .icon{width:16px;height:16px;margin-top:4px;color:var(--pale)}
@@ -261,6 +280,12 @@ button.wallet:hover{background:#3b3023;border-color:#a37c4e}
   #hangarFilters:not([hidden]) + .shop-layout .catalog-side{min-height:120px}
   .growth-comparison{margin:8px 0;padding:6px 0}
   .cards.swap-options{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+  #openManual{width:auto;min-height:44px;padding-inline:4px;gap:4px}
+  #openManual .icon{width:16px;height:16px}
+  #openManual span{display:inline;font-size:.74rem;white-space:nowrap}
+  .manual-tabs button,.hex-guide-filters button{padding-inline:8px;font-size:.78rem}
+  .hex-guide-list{grid-template-columns:minmax(0,1fr)}
+  .hex-guide-entry{padding:9px 10px}
 }
 @media(max-width:430px){
   .shop-heading{align-items:flex-start;flex-direction:column;gap:4px}
@@ -268,6 +293,7 @@ button.wallet:hover{background:#3b3023;border-color:#a37c4e}
 @media(max-width:360px){
   .section-bar h2 small{display:none}
 }
+@media(max-width:340px) and (orientation:portrait){#openManual .icon{display:none}}
 @media(max-width:430px) and (orientation:portrait){
   .cards.hex-options{grid-template-columns:1fr;gap:7px}
   .hex-options .card{display:grid;grid-template-columns:32px minmax(0,1fr);column-gap:8px;padding:9px 12px;align-items:start}

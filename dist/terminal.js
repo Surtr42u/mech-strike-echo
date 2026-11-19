@@ -6,6 +6,7 @@ let shopTab = 'skin';
 let hangarGroup = 'modules';
 let selectedStock = 0;
 let shopOpener = null;
+let manualOpener = null;
 let reducedEffects = false;
 let hudPaintAt = -Infinity;
 let rackSignature = '';
@@ -244,11 +245,95 @@ function toggleSound() {
   if(on && G.mode === 'play') SFX.ambience(G.stage);
   syncSound();
 }
-function showManual(section) {
-  byId('guideControls').hidden = section !== 'controls';
-  byId('guideRoute').hidden = section !== 'route';
-  document.querySelectorAll('[data-manual]').forEach(b => b.setAttribute('aria-pressed',String(section === b.dataset.manual)));
-  if(!byId('manualDialog').open) byId('manualDialog').showModal();
+function renderHexGuide(tier) {
+  const cards = Object.entries(HEXES.cards);
+  const shown = tier === 'all' ? cards : cards.filter(([,card]) => card.tier === tier);
+  const list = byId('hexGuideList');
+  byId('hexGuideFilters').querySelectorAll('[data-hex-tier]').forEach(button => {
+    button.setAttribute('aria-pressed',String(button.dataset.hexTier === tier));
+  });
+  byId('hexGuideCount').textContent = '共 ' + shown.length + ' 项';
+  list.replaceChildren(...shown.map(([id,card]) => {
+    const entry = node('li','hex-guide-entry');
+    entry.dataset.hexCard = id;
+    entry.dataset.tier = card.tier;
+    entry.style.setProperty('--hex-tier-color',HEXES.tierColors[card.tier]);
+    const icon = node('span','hex-guide-icon',card.ic);
+    icon.setAttribute('aria-hidden','true');
+    const heading = node('div','hex-guide-heading');
+    heading.append(icon,node('h3','',card.n),node('span','hex-guide-tier',HEXES.tierNames[card.tier]));
+    entry.append(heading,node('p','hex-guide-effect',card.d));
+    if(card.risk){
+      const risk = node('p','hex-guide-risk');
+      risk.append(node('strong','','代价'),document.createTextNode(card.risk));
+      entry.append(risk);
+    }
+    return entry;
+  }));
+  list.scrollTop = 0;
+}
+
+function setHexGuideHash(show) {
+  if(show && location.hash !== '#hexes') history.replaceState(history.state,'','#hexes');
+  if(!show && location.hash === '#hexes') history.replaceState(history.state,'',location.href.split('#')[0]);
+}
+
+function showManual(section, opener) {
+  const dialog = byId('manualDialog'), opening = !dialog.open;
+  const hexes = section === 'hexes';
+  if(hexes && byId('guideHexes').hidden) renderHexGuide('all');
+  dialog.classList.toggle('hex-guide-open',hexes);
+  const tabs = [...byId('manualTabs').querySelectorAll('[data-manual]')];
+  const selected = tabs.find(tab => tab.dataset.manual === section);
+  for(const tab of tabs){
+    const active = tab === selected;
+    tab.setAttribute('aria-selected',String(active));
+    tab.tabIndex = active ? 0 : -1;
+    byId(tab.getAttribute('aria-controls')).hidden = !active;
+  }
+  if(G.mode === 'title') setHexGuideHash(hexes);
+  if(opening){
+    manualOpener = opener ?? byId('openManual');
+    dialog.showModal();
+    selected.focus({preventScroll:true});
+  }
+  dialog.scrollTop = 0;
+}
+
+function syncHexGuideHash() {
+  if(G.mode !== 'title') return;
+  const dialog = byId('manualDialog');
+  if(location.hash === '#hexes' && (!dialog.open || byId('guideHexes').hidden)) showManual('hexes');
+  else if(location.hash !== '#hexes' && dialog.open && !byId('guideHexes').hidden) dialog.close();
+}
+
+function wireManual() {
+  for(const id of ['openManual','pauseManual']) byId(id).onclick = event => showManual('controls',event.currentTarget);
+  byId('openRoute').onclick = event => showManual('route',event.currentTarget);
+  const group = byId('manualTabs');
+  const tabs = [...group.querySelectorAll('[data-manual]')];
+  for(const tab of tabs) tab.onclick = () => showManual(tab.dataset.manual);
+  group.addEventListener('keydown',event => {
+    const index = tabs.indexOf(event.target);
+    if(index < 0) return;
+    const next = {
+      ArrowLeft:(index + tabs.length - 1) % tabs.length, ArrowRight:(index + 1) % tabs.length,
+      Home:0, End:tabs.length - 1
+    }[event.key];
+    if(next === undefined) return;
+    event.preventDefault();
+    tabs[next].click();
+    tabs[next].focus({preventScroll:true});
+  });
+  byId('hexGuideFilters').querySelectorAll('[data-hex-tier]').forEach(button => {
+    button.onclick = () => renderHexGuide(button.dataset.hexTier);
+  });
+  byId('manualDialog').addEventListener('close',() => {
+    if(G.mode === 'title') setHexGuideHash(false);
+    manualOpener?.focus({preventScroll:true});
+    manualOpener = null;
+  });
+  window.addEventListener('hashchange',syncHexGuideHash);
 }
 function clearBanner() {
   clearTimeout(bannerTimer);
@@ -315,9 +400,7 @@ function wireTerminal() {
   document.querySelectorAll('[data-bag]').forEach(b => b.onclick = () => useItem(Number(b.dataset.bag)));
   for(const id of ['btnSound','btnMute','settingSound']) byId(id).onclick = toggleSound;
   for(const id of ['openSettings','pauseSettings']) byId(id).onclick = () => byId('settingsDialog').showModal();
-  for(const id of ['openManual','pauseManual']) byId(id).onclick = () => showManual('controls');
-  byId('openRoute').onclick = () => showManual('route');
-  document.querySelectorAll('[data-manual]').forEach(b => b.onclick = () => showManual(b.dataset.manual));
+  wireManual();
   document.querySelectorAll('.dialog-close').forEach(b => b.onclick = () => b.closest('dialog').close());
   document.querySelectorAll('[data-quality]').forEach(b => b.onclick = () => {
     perfDone = true;
@@ -342,6 +425,7 @@ function wireTerminal() {
   syncSwitch(byId('settingMotion'),!reducedEffects,'镜头震动与强闪光');
   updateLoadout();
   byId('btnStart').disabled = false;
+  syncHexGuideHash();
 }
 /* Refresh text and meters at instrument speed. The world still animates every frame. */
 const hudNodes = new Map();

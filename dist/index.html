@@ -69,7 +69,7 @@
     <header class="topbar">
       <div class="brand"><span class="emblem" aria-hidden="true"><i></i><i></i><i></i></span><strong>ECHO</strong><span class="brand-divider"></span><span class="brand-context">作战终端</span></div>
       <div class="header-actions">
-        <button class="manual-link" id="openManual"><canvas class="icon" data-icon="manual"></canvas><span>作战手册</span></button>
+        <button class="manual-link" id="openManual" aria-haspopup="dialog" aria-controls="manualDialog"><canvas class="icon" data-icon="manual"></canvas><span>作战手册</span></button>
         <button class="wallet" id="wallet" title="前往补给站"><canvas class="icon" data-icon="credit"></canvas><b id="walletCount">—</b><small>积分</small></button>
         <span class="header-divider"></span>
         <button class="icon-button sound-toggle" id="btnSound" aria-label="关闭音效" title="关闭音效"><canvas class="icon" data-icon="sound"></canvas></button>
@@ -161,10 +161,14 @@
     </div>
   </section>
 </main>
-<dialog id="manualDialog" class="terminal-dialog">
-  <div class="dialog-head"><div><div class="section-kicker"><i></i>FIELD MANUAL</div><h2>作战手册</h2></div><button class="icon-button dialog-close" aria-label="关闭作战手册"><canvas class="icon" data-icon="close"></canvas></button></div>
-  <div class="segmented manual-tabs"><button data-manual="controls">基本操作</button><button data-manual="route">战区路线</button></div>
-  <div id="guideControls"><p>角色会自动瞄准射击。收集经验后，从三项强化中选一项。每局可持有 6 种技能，购买补给站的「技能扩容」可增至 8 或 10 种。</p><dl class="controls-list">
+<dialog id="manualDialog" class="terminal-dialog manual-dialog" aria-labelledby="manualTitle">
+  <div class="dialog-head"><div><div class="section-kicker"><i></i>FIELD MANUAL</div><h2 id="manualTitle">作战手册</h2></div><button class="icon-button dialog-close" aria-label="关闭作战手册"><canvas class="icon" data-icon="close"></canvas></button></div>
+  <div class="segmented manual-tabs" id="manualTabs" role="tablist" aria-label="手册内容">
+    <button type="button" id="manualControls" role="tab" aria-selected="true" aria-controls="guideControls" data-manual="controls">基本操作</button>
+    <button type="button" id="manualRoute" role="tab" aria-selected="false" aria-controls="guideRoute" data-manual="route" tabindex="-1">战区路线</button>
+    <button type="button" id="manualHexes" role="tab" aria-selected="false" aria-controls="guideHexes" data-manual="hexes" tabindex="-1">海克斯图鉴</button>
+  </div>
+  <div id="guideControls" role="tabpanel" aria-labelledby="manualControls" tabindex="0"><p>角色会自动瞄准射击。收集经验后，从三项强化中选一项。每局可持有 6 种技能，购买补给站的「技能扩容」可增至 8 或 10 种。</p><dl class="controls-list">
     <div><dt>移动</dt><dd><kbd>WASD</kbd> / <kbd>方向键</kbd></dd></div>
     <div><dt>角色必杀 / 武器技</dt><dd><kbd>E</kbd> / <kbd>Q</kbd></dd></div>
     <div><dt>满能量变身 / 变身后释放机甲技</dt><dd><kbd>F</kbd></dd></div>
@@ -176,9 +180,21 @@
     <div><dt>满槽时选一项替换</dt><dd><kbd>1</kbd>–<kbd>9</kbd> / <kbd>0</kbd>（第 10 项）</dd></div>
     <div><dt>暂停 / 继续</dt><dd><kbd>P</kbd> / <kbd>Esc</kbd></dd></div>
   </dl><p class="touch-note"><canvas class="icon" data-icon="touch"></canvas>触屏可在左侧拖动移动，点右下按钮释放技能或使用道具。替换技能时可滑动列表。</p></div>
-  <div id="guideRoute" hidden><p>每个战区有十四波敌潮，五区合计七十波。落日废土的地表与地下各有敌群，乘梯共用波次进度。落日废土和冰封矿场在第五波后有守卫，击败守卫即可继续第六波。击败关底首领后，进入传送门前往下一站。</p>
-    <p>海克斯在出击、第一战区第 4 波、进入第三与第五战区各选一次。同轮三张牌同档。出击时锁定本局的全银、全金、全彩或混合牌池。</p>
-    <p>质变牌随机获得一项高档海克斯。金变彩装置触发时，可主动升为棱彩三选一，也可照常选金。升彩不消耗刷新次数。</p><ol id="routeList" class="route-list"></ol></div>
+  <div id="guideRoute" role="tabpanel" aria-labelledby="manualRoute" tabindex="0" hidden><p>每个战区有十四波敌潮，五区合计七十波。落日废土的地表与地下各有敌群，乘梯共用波次进度。落日废土和冰封矿场在第五波后有守卫，击败守卫即可继续第六波。击败关底首领后，进入传送门前往下一站。</p><ol id="routeList" class="route-list"></ol></div>
+  <section id="guideHexes" role="tabpanel" aria-labelledby="manualHexes" hidden>
+    <p>开局、第一战区第 4 波，以及进入第三、第五战区时可选海克斯。每轮三张同档牌，档位在当轮选牌时揭晓。</p>
+    <details class="hex-guide-rules"><summary>质变与升彩</summary><p>拿到质变牌会随机获得一项高一档的海克斯。已购买的金变彩整备有机会在金色选牌时提供「本轮升彩」，可改为棱彩三选一，也可继续选金。升彩不消耗刷新次数。</p></details>
+    <div class="hex-guide-toolbar">
+      <div id="hexGuideFilters" class="segmented hex-guide-filters" role="group" aria-label="档位筛选">
+        <button type="button" data-hex-tier="all" aria-controls="hexGuideList" aria-pressed="true">全部</button>
+        <button type="button" data-hex-tier="silver" aria-controls="hexGuideList" aria-pressed="false">白银</button>
+        <button type="button" data-hex-tier="gold" aria-controls="hexGuideList" aria-pressed="false">黄金</button>
+        <button type="button" data-hex-tier="prism" aria-controls="hexGuideList" aria-pressed="false">棱彩</button>
+      </div>
+      <span id="hexGuideCount" class="hex-guide-count" role="status"></span>
+    </div>
+    <ul id="hexGuideList" class="hex-guide-list" role="list" tabindex="0" aria-label="海克斯列表"></ul>
+  </section>
 </dialog>
 <dialog id="fieldMapDialog" class="terminal-dialog field-map-dialog" aria-labelledby="fieldMapTitle">
   <div class="dialog-head"><h2 id="fieldMapTitle">战区地图</h2><button class="icon-button dialog-close" aria-label="关闭地图"><canvas class="icon" data-icon="close"></canvas></button></div>
