@@ -15,7 +15,10 @@ const PREPARATIONS = (function(){
       value:level => level * energyPerLevel + '%' },
     supply: { name:'战术补给', icon:'▤', label:'开局背包补给', grades:[1],
       desc:'每次出击在第 1 格预装电磁脉冲，可清空敌弹并麻痹敌人。按 1 或点背包格使用。',
-      value:level => level ? '电磁脉冲 ×1' : '未解锁' }
+      value:level => level ? '电磁脉冲 ×1' : '未解锁' },
+    hexDraft: { name:'海克斯扩容', icon:'◇', label:'每局海克斯选取', grades:[3,4],
+      desc:'每局多获得 1 次海克斯五选一。选牌次数与「高阶海克斯」叠加后，后期的构筑会更完整。',
+      value:level => level ? '+' + level + ' 次' : '未解锁' }
   };
 
   function read(raw){

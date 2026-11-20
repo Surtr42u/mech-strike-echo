@@ -148,6 +148,9 @@ const SKILL_DEFS = [
     ap:(s,l)=>{ s.crit += .15*l; s.maxHp -= 25*l; } }
 ];
 const SK = Object.fromEntries(SKILL_DEFS.map(skill => [skill.id, skill]));
+/* 常规技能等级上限统一 +2；max:99 的成长型牌视为无上限，不参与加成。 */
+const SKILL_LEVEL_CAP_BONUS = 2;
+for(const skill of SKILL_DEFS) if(skill.max < 10) skill.max += SKILL_LEVEL_CAP_BONUS;
 const SKILLS = TALENTS.pool.map(({ id, tag, tags }) => ({ ...SK[id], tag, tags }));
 
 /* ── 战场道具 ──
@@ -432,8 +435,9 @@ const EK = {
   anchor:{ n:'压场锚兽', hp:81, hpw:2.9, spd:39, r:19, dmg:14, xp:7, h:46, c:'#9be8ff' },
   conjurer:{ n:'裂隙召唤师', hp:74, hpw:2.7, spd:42, r:17, dmg:8, xp:7, h:43, c:'#edb0ff' }
 };
-/* 同屏敌人上限：超出时移除最早生成的非 Boss 敌人（不掉经验/道具） */
-const ENEMY_CAP = 45;
+/* 同屏敌人上限：超出时移除最早生成的非 Boss 敌人（不掉经验/道具）
+   三倍怪物量需要更高的同屏上限；实际数量仍由 ThreatPacing.enemyCap 控制。 */
+const ENEMY_CAP = 96;
 
 /* ── 角色精灵（Q 版大头 · 时装换色 + 流光） ──
    画布 26 × 25（身体）+ 26 × 7（腿）；锚点在脚底中心。 */
@@ -1034,22 +1038,23 @@ const MON_GY = 38;   // 精灵脚底线（40×40 格内）
 /* ── 受击反馈：朝受击方向的冲击弧 + 碎屑 ── */
 function hitFX(x, y, ang, col, big, height){
   const low = QLEVEL === 0;
-  const n = big ? 3 : low ? 1 : 2;
+  /* 3 倍怪量下每次命中都只留一个短弧 + 两三片碎屑，避免满屏亮点。 */
+  const n = big ? 2 : 1;
   for(let i = 0; i < n; i++){
     G.rings.push({
-      x: x - Math.cos(ang) * (4 + i * 7), y: y - Math.sin(ang) * (4 + i * 7) * .7,
-      r: 2, max: (big ? 20 : 13) + i * 5, life: .20 + i * .04, maxLife: .20 + i * .04,
-      col: col || '#ffe6c0', w: 1.6, arc: ang, height:height
+      x: x - Math.cos(ang) * (4 + i * 6), y: y - Math.sin(ang) * (4 + i * 6) * .7,
+      r: 2, max: (big ? 15 : 10) + i * 4, life: .14 + i * .03, maxLife: .14 + i * .03,
+      col: col || '#ffe6c0', w: 1.2, arc: ang, height:height
     });
   }
-  for(let i = 0; i < (big ? 9 : low ? 2 : 5); i++){
+  for(let i = 0; i < (big ? 6 : low ? 1 : 2); i++){
     const a = ang + Math.PI + rnd(-.9, .9);
-    const v = rnd(40, big ? 190 : 120);
+    const v = rnd(36, big ? 150 : 100);
     G.parts.push({
       x: x, y: height === undefined ? y - rnd(2, 12) : y, height:height,
-      vx: Math.cos(a) * v, vy: Math.sin(a) * v * .6 - rnd(10, 40),
-      life: .22 + Math.random() * .18, max: .4, col: pick([col || '#ffd8a0', '#ffffff', '#ffb066']),
-      r: rnd(1, 2.2), grav: 220
+      vx: Math.cos(a) * v, vy: Math.sin(a) * v * .6 - rnd(8, 32),
+      life: .16 + Math.random() * .12, max: .28, col: pick([col || '#ffd8a0', '#ffe0b0']),
+      r: rnd(.9, 1.7), grav: 220
     });
   }
 }
@@ -1059,30 +1064,30 @@ function addDissolve(e, name){
   const pal = SPRM.ready ? SPRM.paletteOf(name) : ['#c8b8a8'];
   const big = !!e.elite;
   /* ① 细碎像素屑：按本体真实配色剥落，边散边向下沉 */
-  const n = big ? 52 : 38;
+  const n = big ? 26 : 16;
   for(let i = 0; i < n; i++){
     G.parts.push({
       x: e.x + rnd(-e.r * .95, e.r * .95),
       y: e.y - rnd(2, e.h * .98),
       vx: rnd(-34, 34), vy: rnd(-64, 4),
-      life: .60 + Math.random() * .60, max: 1.20,
-      col: pick(pal), r: rnd(1.4, 3.2), grav: 210
+      life: .48 + Math.random() * .44, max: .92,
+      col: pick(pal), r: rnd(1.4, 3.0), grav: 210
     });
   }
   /* ② 几块大外壳碎片：抛得更开、落得更快，先"碎"再"散" */
-  const nc = big ? 7 : 5;
+  const nc = big ? 4 : 3;
   for(let i = 0; i < nc; i++){
     G.parts.push({
       x: e.x + rnd(-e.r * .7, e.r * .7),
       y: e.y - rnd(e.h * .25, e.h * .9),
       vx: rnd(-54, 54), vy: rnd(-96, -16),
-      life: .42 + Math.random() * .30, max: .72,
-      col: pick(pal), r: rnd(3.2, 4.8), grav: 300
+      life: .36 + Math.random() * .26, max: .62,
+      col: pick(pal), r: rnd(3.2, 4.6), grav: 300
     });
   }
-  /* ③ 解体瞬间的一圈"像素剥离"亮边 */
-  G.rings.push({ x:e.x, y:e.y - e.h * .4, r:2, max:e.r * 1.7, life:.26, maxLife:.26,
-                 col: pick(pal), w:1.6 });
+  /* ③ 解体瞬间的一圈"像素剥离"亮边：只给精英，普通小怪不再刷满屏圆环 */
+  if(big) G.rings.push({ x:e.x, y:e.y - e.h * .4, r:2, max:e.r * 1.7, life:.24, maxLife:.24,
+                 col: pick(pal), w:1.4 });
 }
 
 /* ── 焦痕：榴弹/等离子落点（强制留下，不受装饰限制）── */
@@ -3026,6 +3031,9 @@ function newRun(tower = false){
   G.skills = {}; G.slots = []; G.growth = growthSnapshot();
   G.skillLimit = skillCapacity(G.growth);
   if(tower) G.skillLimit = TOWER.skillLimit(G.skillLimit,1);
+  AdaptiveDirector.reset();
+  WaveTypes.reset();
+  lastFloorId = null; lastFloorSwitchAt = -Infinity;
   TALENTS.reset();
   CampaignStory.reset();
   StageEvents.reset();
@@ -3109,6 +3117,8 @@ function setScene(i){
   if(!TOWER.active()) CampaignStory.begin(i);
   StageEvents.begin(i);
   TreasureSites.prepare();
+  /* 进入冰封矿场时以货轨层为起点，第一次下井会触发换层清场 */
+  if(i===2 && !TOWER.active()) lastFloorId = 'surface';
 }
 
 function waveDuration(w){ return CampaignBalance.at(G.stage,w).duration; }
@@ -3120,14 +3130,17 @@ function startWave(spawnDelay = .5, announce = true){
   G.phase = 'wave';
   G.waveT = waveDuration(G.wave);
   G.waveDur = G.waveT;
+  AdaptiveDirector.beginWave();
   ThreatPacing.beginWave();
   const pacing=ThreatPacing.at();
   G.spawnT = Math.max(spawnDelay,pacing.delay || 0);
   TALENTS.queueMilestone();
   if(announce){
     const command=ThreatPacing.commander()?.spec;
-    banner('WAVE ' + G.wave + ' / ' + WAVES_PER_STAGE + ' · ' + pacing.label,
-      command ? command.name+'接近 · '+command.hint : SCENES[G.stage].name, .95);
+    const waveType=WaveTypes.at();
+    const special=waveType.id!=='standard';
+    banner('WAVE ' + G.wave + ' / ' + WAVES_PER_STAGE + ' · ' + pacing.label + (special ? ' · ' + waveType.name : ''),
+      command ? command.name+'接近 · '+command.hint : special ? waveType.hint : SCENES[G.stage].name, special ? 1.15 : .95);
   }
   if(G.wave % 3 === 0 && G.crates.length === 0){
     G.jobs.push({ t:.9, fn:function(){
@@ -3137,8 +3150,9 @@ function startWave(spawnDelay = .5, announce = true){
 }
 
 function endWave(){
-  if(TOWER.active()) return TOWER.endWave();
+  if(TOWER.active()){ AdaptiveDirector.endWave(); return TOWER.endWave(); }
   if(G.phase !== 'wave' || !ThreatPacing.canFinish()) return;
+  AdaptiveDirector.endWave();
   /* 波次结束不再清场：剩余敌人保留，与下一波叠加（解除「时间到就消灭怪物」机制） */
   if(G.wave >= WAVES_PER_STAGE){
     /* 进入 Boss 战前才清一次场，保证首领战干净利落 */
@@ -3178,19 +3192,19 @@ function spawnBoss(kind){
   const origin = FieldMaps.safePoint(point.x,point.y,def.r);
   const b = {
     kind: kind, name: def.n, r: def.r, h: def.h,
-    maxHp: def.hp, hp: def.hp,
+    maxHp: Math.round(def.hp * DIFFICULTY.bossHp), hp: Math.round(def.hp * DIFFICULTY.bossHp),
     x:origin.x, y:origin.y,
     vx:0, vy:0, spd: def.spd,
     t:0, atkCd: 1.0, act:null, face:1,
     flash:0, rot:0, phase:1, ph:0, phT:0, fightT:0, phFlash:0, idx:0, dead:false, deadT:0,
     orbit: rnd(0, TAU),
-    dmg: def.dmg || 16
+    dmg: (def.dmg || 16) * DIFFICULTY.bossDamage
   };
   if(TOWER.active()) TOWER.scaleBoss(b);
   G.boss = b;
   if(!TOWER.active()) ThreatPacing.addBossEscort(b);
-  G.rings.push({ x:b.x, y:b.y, r:6, max:150, life:.7, maxLife:.7, col:def.col, w:3 });
-  G.shake = 10;
+  G.rings.push({ x:b.x, y:b.y, r:6, max:150, life:.7, maxLife:.7, col:def.col, w:2 });
+  G.shake = 5;
 }
 
 /* ── 玩家 ── */
@@ -4438,7 +4452,7 @@ function killEnemy(e, playerKill = true, emberSeed = false){
   }
   if(EK[e.kind].boom){
     const d = dst(e.x, e.y, G.p.x, G.p.y);
-    if(d < 26 + playerRadius()) hurtPlayer(EK[e.kind].dmg);
+    if(d < 26 + playerRadius()) hurtPlayer(e.dmg ?? EK[e.kind].dmg);
     EnemyEffects.burst('fuse',e.x,e.y,0,26);
     G.shake = Math.max(G.shake,2.8);
     aoe(e.x, e.y, 30, 12, e);
@@ -4491,6 +4505,7 @@ function hurtPlayer(dmg){
   }
   const damage = dmg * incomingDamageFactor(G.st);
   if(TOWER.active()) TOWER.noteDamage(damage);
+  AdaptiveDirector.noteDamage(damage);
   p.hp -= damage;
   p.inv = .75;
   p.hurtT = .3;
@@ -4508,6 +4523,7 @@ function hurtPlayer(dmg){
 
 function playerDown(){
   if(TOWER.active()) TOWER.noteDown();
+  AdaptiveDirector.noteDown();
   if(PREPARATIONS.tryLock()) return;
   endMech();
   if(G.revives > 0){
@@ -4999,10 +5015,13 @@ function cullOldestEnemy(){
 
 function enemyTypeStats(kind, profile, elite, hpMul){
   const k = EK[kind];
+  /* DIFFICULTY 是全局基础倍率，AdaptiveDirector 是本局实时压力。
+     两边相乘后，敌人的血量与伤害都走同一条出口，避免某些攻击绕开倍率。 */
   return {
-    hp:(k.hp + k.hpw * CampaignEnemies.healthGrowth(kind,profile)) * hpMul * (elite ? 2.35 : 1),
+    hp:(k.hp + k.hpw * CampaignEnemies.healthGrowth(kind,profile)) * hpMul * (elite ? 2.35 : 1) *
+      DIFFICULTY.enemyHp * AdaptiveDirector.hp(),
     r:k.r * (elite ? 1.24 : 1), h:k.h * (elite ? 1.18 : 1),
-    dmg:k.dmg * profile.damageMul * (elite ? 1.3 : 1),
+    dmg:k.dmg * profile.damageMul * (elite ? 1.3 : 1) * DIFFICULTY.enemyDamage * AdaptiveDirector.damage(),
     spd:k.spd * (1 + .045 * G.stage) * (elite ? .92 : 1),
     fly:!!k.fly, boom:!!k.boom, beam:!!k.beam,
     shoot:k.shoot ? k.shoot * (1 - .06 * G.stage) : 0,
@@ -5014,10 +5033,13 @@ function spawnEnemy(kind, x, y, opt = {}){
   if(G.enemies.length >= ENEMY_CAP && !cullOldestEnemy()) return null;
   const k = EK[kind], waveOrigin = opt.waveOrigin ?? G.wave;
   const profile = CampaignBalance.at(TOWER.active() ? 0 : G.stage,waveOrigin);
+  /* 特殊波次（怪潮/高危/突袭/炮火）只作用于战役 */
+  const waveType = TOWER.active() ? WaveTypes.types.standard : WaveTypes.at(G.stage, waveOrigin);
   const elite = !!opt.elite || (!opt.noElite && G.wave >= 3 && CampaignEnemies.rank(kind)<3 &&
-    Math.random() < profile.eliteChance + (G.waveEliteBoost || 0) * .06);
+    Math.random() < profile.eliteChance + waveType.elite + (G.waveEliteBoost || 0) * .06);
   const hpMul = opt.hpMul || 1;
   const stats = enemyTypeStats(kind,profile,elite,hpMul);
+  stats.hp *= waveType.hp; stats.dmg *= waveType.damage; stats.spd *= waveType.speed;
   const plate=kind==='bastion' ? Math.round(stats.hp*(opt.commander?.name ? .26 : .22)) : 0;
   const e = {
     ...stats, kind:kind, x:x, y:y, vx:0, vy:0, maxHp:stats.hp, elite:elite,
@@ -5034,9 +5056,12 @@ function spawnEnemy(kind, x, y, opt = {}){
   if(!e.fly) FieldMaps.clearRails(e,e.r);
   if(G.stage>0 && CampaignEnemies.rank(kind)===1 && !e.commander) markEliteVariant(e);
   G.enemies.push(e);
-  G.rings.push({ x:e.x, y:e.y, r:2, max:16, life:.3, maxLife:.3, col:SCENES[G.stage].accent, w:1.5 });
+  if(e.elite) G.rings.push({ x:e.x, y:e.y, r:2, max:16, life:.28, maxLife:.28, col:SCENES[G.stage].accent, w:1.3 });
   return e;
 }
+
+/* 换层追踪：冰封矿场升降台用，避免上下井后还是同一批敌人 */
+let lastFloorId = null, lastFloorSwitchAt = -Infinity;
 
 function reformWaveEnemies(floor){
   for(let i=G.enemies.length-1;i>=0;i--){
@@ -5055,6 +5080,8 @@ function reformWaveEnemies(floor){
     if(kind !== e.kind){
       const health = e.hp / e.maxHp;
       const stats = enemyTypeStats(kind,CampaignBalance.at(G.stage,wave),e.elite,e.hpMul ?? 1);
+      const waveType = WaveTypes.at(G.stage, wave);
+      stats.hp *= waveType.hp; stats.dmg *= waveType.damage; stats.spd *= waveType.speed;
       Object.assign(e,stats,{kind:kind,maxHp:stats.hp,hp:stats.hp * health});
       const cooldown = e.eliteCooldown;
       e.eliteAct = e.eliteVariant = null;
@@ -5065,6 +5092,14 @@ function reformWaveEnemies(floor){
     }
     if(!e.fly) FieldMaps.clearRails(e,e.r);
   }
+  /* 冰封矿场升降台换层：清掉上一层追兵，让新楼层重新刷自己的守军。
+     8 秒内反复上下不重复清场，避免用升降台刷掉敌群。 */
+  if(G.stage===2 && lastFloorId && lastFloorId!==floor && G.t>lastFloorSwitchAt+8){
+    G.enemies.length = 0;
+    G.eb.length = 0;
+    lastFloorSwitchAt = G.t;
+  }
+  lastFloorId = floor;
 }
 
 /* ── 刷怪锚点：让敌人从「场景里」钻出来 ──
@@ -5731,9 +5766,9 @@ function updateBossPhases(b, dt){
     b.atkCd = 1.05;
     const ph = def.phases[ni];
     banner(b.name + ' · ' + ph.nm, ph.msg || '', 1.15);
-    G.shake = Math.max(G.shake, 9);
-    G.rings.push({ x:b.x, y:b.y, r:8, max:190, life:.6, maxLife:.6, col:'#ff5c5c', w:4 });
-    addFlash(b.x, b.y, 190, '#ff8a6a', .55);
+    G.shake = Math.max(G.shake, 4.5);
+    G.rings.push({ x:b.x, y:b.y, r:8, max:160, life:.55, maxLife:.55, col:'#ff5c5c', w:2.4 });
+    addFlash(b.x, b.y, 160, '#ff8a6a', .28);
     if(ph.onEnter) ph.onEnter(b);
     SFX.boss();
   }
@@ -6302,20 +6337,71 @@ function nextStage(){
 }
 
 /* ── 波次 ── */
+/* 站点支援：定向炮击。分三轮覆盖信标附近的敌群，落点优先取当前敌人。 */
+function supportStrike(pad){
+  banner('站点炮击抵达','三轮覆盖射击 · 注意落点提示',1.35);
+  for(let n=0;n<3;n++){
+    G.jobs.push({ t:.45+n*.42, fn:function(){
+      const targets = G.enemies.filter(e => !e.dead && e.spawnT <= 0 && d2(e.x,e.y,pad.x,pad.y) < 540**2);
+      const target = targets.length ? targets[(Math.random()*targets.length)|0] : null;
+      const x = clamp(target ? target.x + rnd(-14,14) : pad.x + rnd(-90,90), 40, ARENA.w-40);
+      const y = clamp(target ? target.y + rnd(-10,10) : pad.y + rnd(-70,70), 50, ARENA.h-40);
+      G.rings.push({ x,y,r:6, max:56, life:.34, maxLife:.34, col:'#9fe3c7', w:2.2 });
+      addFlash(x,y,72,'#9fe3c7',.24);
+      spark(x,y,9,'#9fe3c7',130);
+      aoe(x,y,52,90 + G.stage*22,null);
+    }});
+  }
+}
+
+/* ── 地图环境伤害与站点支援 ──
+   SectorClimate 只负责判定与文案；这里按间隔结算沙暴伤害，
+   并在站点支援就绪时生成临时哨戒炮或友方炮击。 */
+let stormHitT = 0;
+function updateFieldHazards(dt){
+  const hazard = typeof SectorClimate.surfaceHazard==='function' ? SectorClimate.surfaceHazard() : null;
+  if(hazard?.active){
+    stormHitT -= dt;
+    if(stormHitT <= 0){
+      stormHitT = hazard.interval || 1;
+      /* SectorClimate 返回的是每秒伤害，按结算间隔折算成单次伤害 */
+      hurtPlayer(Math.max(1, (hazard.dps || 2) * (hazard.interval || 1)));
+    }
+  } else stormHitT = 0;
+  if(typeof SectorClimate.readySupport==='function'){
+    const pad = SectorClimate.readySupport();
+    if(pad){
+      if(pad.kind==='strike'){
+        supportStrike(pad);
+      } else {
+        G.turrets.push({ x:pad.x, y:pad.y, life:18, cd:.25, flash:0, ang:-Math.PI/2, support:true });
+        G.rings.push({ x:pad.x, y:pad.y, r:4, max:48, life:.5, maxLife:.5, col:'#9fe3c7', w:2 });
+        banner('站点支援抵达','临时哨戒炮已部署 · 持续 18 秒',1.35);
+      }
+      if(typeof SectorClimate.consumeSupport==='function') SectorClimate.consumeSupport();
+      SFX.lvl();
+    }
+  }
+}
+
 function updateWaves(dt){
   if(TOWER.active()) return TOWER.update(dt);
+  /* 地下箱庭进行时冻结地表波次，避免两套刷怪互相打架 */
+  if(typeof FieldMaps.dungeonActive==='function' && FieldMaps.dungeonActive()) return;
   if(G.phase !== 'wave') return;
   G.waveT = Math.max(0,G.waveT-dt);
   ThreatPacing.update();
 
-  const curve = CampaignBalance.at(), pacing = ThreatPacing.at();
+  const curve = CampaignBalance.at(), pacing = ThreatPacing.at(), waveType = WaveTypes.at();
   const cap = ThreatPacing.enemyCap();
   const chance=pacing.delay ? 0 : curve.extraChance;
   if(G.waveT > 0 && !ThreatPacing.commander()?.down && G.enemies.length < cap){
     G.spawnT -= dt;
     if(G.spawnT <= 0){
-      G.spawnT = curve.interval*pacing.interval*rnd(.84,1.12);
-      const count = Math.min(cap-G.enemies.length,1+(Math.random()<chance ? 1 : 0));
+      G.spawnT = curve.interval*pacing.interval*rnd(.84,1.12) /
+        DIFFICULTY.enemyCount * AdaptiveDirector.interval() * waveType.interval;
+      const count = Math.min(cap-G.enemies.length,
+        Math.max(1,1+(Math.random()<chance ? 1 : 0)+waveType.count));
       for(let i=0;i<count;i++){
         const pt = spawnPointNear();
         const variantRoll = Math.random();
@@ -6337,19 +6423,20 @@ function spark(x, y, n, col, spd){
   }
 }
 function boom(x, y, big){
-  const n = big ? 22 : 12;
+  const n = big ? 14 : 8;
   for(let i=0;i<n;i++){
-    const a = rnd(0, TAU), v = rnd(20, big ? 190 : 115);
+    const a = rnd(0, TAU), v = rnd(20, big ? 170 : 100);
     G.parts.push({
       x:x, y:y, vx:Math.cos(a) * v, vy:Math.sin(a) * v * .72,
-      life:rnd(.28, .65), max:.65,
-      col: pick(['#fff3c4', '#ffb74d', '#ff6b4a', '#ff3d5a']),
-      r: big ? rnd(2,4) : rnd(1,2.6)
+      life:rnd(.18, .42), max:.42,
+      /* 去掉纯白亮片：小怪死亡只剩暖色碎屑，不会留下一片白点 */
+      col: pick(['#ffd27a', '#ffb74d', '#ff6b4a', '#ff3d5a']),
+      r: big ? rnd(1.8,3.4) : rnd(1,2.2)
     });
   }
-  G.rings.push({ x:x, y:y, r:3, max: big ? 52 : 26, life:.32, maxLife:.32,
-    col: big ? '#ffb74d' : '#ffe9a8', w: big ? 3 : 2 });
-  G.shake = Math.max(G.shake, big ? 7 : 2.5);
+  G.rings.push({ x:x, y:y, r:3, max: big ? 40 : 20, life:.26, maxLife:.26,
+    col: big ? '#ffb74d' : '#ffe0a0', w: big ? 2.5 : 1.6 });
+  G.shake = Math.max(G.shake, big ? 5 : 1.4);
 }
 function explodeFX(x, y, r, height){
   G.rings.push({ x:x, y:y, r:6, max:r, life:.4, maxLife:.4, col:'#ffb060', w:4 });
@@ -8356,9 +8443,11 @@ function drawMechFallback(sx,sy,f,vy,moving,anim,attacking,lum){
 }
 
 function drawEnemy(e){
+  /* 溶解尾巴阶段已完全透明，直接省掉这一帧的绘制 */
+  if(e.dead && e.deadT >= .5) return;
   const sx = Math.round(SX(e.x));
   const sy = Math.round(SY(e.y));
-  const bob = e.fly ? Math.sin(G.t * 3 + e.wob) * 2.5 : 0;
+  const bob = e.fly ? Math.sin(G.t * 3 + e.wob) * 2 : 0;
   const h = e.h;
   const c = e.col;
   const kind = CampaignEnemies.sprite(e);
@@ -8370,18 +8459,30 @@ function drawEnemy(e){
   const fi = Math.floor(e.anim * 1.7) % 4;
   const name = 'm_' + kind + '_' + fi;
   const deadK = e.dead ? clamp(e.deadT / .5, 0, 1) : 0;
-  const dw = 40 * sc * (1 - deadK * .12), dh = 40 * heightScale * (1 - deadK * .28);
+  /* 出生：很轻的由小到大 + 半透明，不再整只幽灵化 */
+  const spawnK = e.spawnT > 0 ? clamp(1 - e.spawnT / .45, 0, 1) : 1;
+  const grow = e.spawnT > 0 ? .94 + .06 * spawnK : 1;
+  const hS = heightScale * grow;
+  const dw = 40 * sc * grow * (1 - deadK * .12), dh = 40 * hS * (1 - deadK * .28);
   const dx = sx - dw / 2;
-  const dy = sy - MON_GY * heightScale * (1 - deadK * .28) + bob;
-  const topY = sy - top*heightScale;
-  const fade = e.dead ? Math.max(0, 1 - e.deadT / .5) : (e.spawnT > 0 ? .55 : 1);
+  const dy = sy - MON_GY * hS * (1 - deadK * .28) + bob;
+  const topY = sy - top * hS;
+  const fade = e.dead ? Math.max(0, 1 - e.deadT / .5) : (e.spawnT > 0 ? .78 + .22 * spawnK : 1);
 
-  /* 接触阴影 */
-  drawAO(sx, sy + 1, e.r * 1.6, (e.dead ? .16 : .40) * (e.fly ? .55 : 1), .38);
+  /* 接触阴影：统一尺寸与透明度；飞行单位更淡更小 */
+  drawAO(sx, sy + 1, e.r * (e.fly ? 1.3 : 1.55), e.dead ? .10 : (e.fly ? .16 : .34), .40);
 
   ctx.save();
   ctx.globalAlpha = fade;
-  if(e.face < 0){
+  /* 玩家几乎在正上/正下时沿用上一帧朝向，避免逐帧翻转让武器/眼睛闪位 */
+  if(!e.dead){
+    const ax = G.p ? G.p.x - e.x : 0;
+    /* 精英冲刺/横扫按技能方向转身，其余按玩家位置；接近正上/正下时沿用上一帧 */
+    const dirX = e.eliteAct ? Math.cos(e.eliteAct.angle) * e.r : ax;
+    if(!e.drawFace) e.drawFace = e.face || 1;
+    else if(Math.abs(dirX) > Math.max(2, e.r * .25)) e.drawFace = dirX >= 0 ? 1 : -1;
+  }
+  if((e.drawFace || e.face) < 0){
     ctx.translate(sx * 2, 0);
     ctx.scale(-1, 1);
   }
@@ -8398,33 +8499,32 @@ function drawEnemy(e){
 
   const frame=SPRM.frames[name];
   if(frame) ctx.drawImage(frame.img,frame.x,frame.y,frame.w,frame.h,dx,dy,dw,dh);
-  if(QLEVEL > 0 || e.elite) rimLight(name, dx, dy, dw, dh, SCENES[G.stage].accent, e.dead ? .05 : .13);
+  /* 精英：只留一圈细金边，不再整只叠黄光 */
+  if(e.elite && !e.dead) rimLight(name, dx, dy, dw, dh, '#ffe14a', .14 * fade);
 
-  /* 受击：整体瞬间闪白（死亡后不再闪，避免尸体变成白影） */
+  /* 受击闪白：更短更淡，只提亮一瞬，避免死亡瞬间变成白块 */
   if(e.flash > 0 && !e.dead){
     const m = SPRM.whiteOf(name);
     if(m){
-      ctx.globalAlpha = fade * Math.min(.92, e.flash * 9);
+      ctx.globalAlpha = fade * Math.min(.48, e.flash * 4);
       ctx.drawImage(m, dx, dy, dw, dh);
       ctx.globalAlpha = fade;
-    }
-  }
-  /* 精英：金色描边光 */
-  if(e.elite){
-    const m = SPRM.tintOf(name, '#ffe14a');
-    if(m){
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = fade * .15;
-      ctx.drawImage(m, dx, dy, dw, dh);
-      ctx.restore();
     }
   }
   /* 冰冻：冷色覆盖 */
   if(e.slowT > 0 && (e.slowAmt || 0) > .3){
     const m = SPRM.tintOf(name, '#9fe8ff');
     if(m){
-      ctx.globalAlpha = fade * .20;
+      ctx.globalAlpha = fade * .16;
+      ctx.drawImage(m, dx, dy, dw, dh);
+      ctx.globalAlpha = fade;
+    }
+  }
+  /* 死亡：压暗尸体，浅色小怪不会留下白色残影 */
+  if(e.dead && deadK < .92){
+    const m = SPRM.tintOf(name, '#241c26');
+    if(m){
+      ctx.globalAlpha = fade * .5;
       ctx.drawImage(m, dx, dy, dw, dh);
       ctx.globalAlpha = fade;
     }
@@ -8432,31 +8532,31 @@ function drawEnemy(e){
   ctx.restore();
   ctx.globalAlpha = 1;
 
-  /* 精英标记 */
+  /* 精英标记：更小的一点金杠 */
   if(e.elite && !e.dead){
-    ctx.fillStyle = 'rgba(255,225,74,.85)';
-    ctx.fillRect(sx - 2, topY - 12, 4, 3);
+    ctx.fillStyle = 'rgba(255,225,74,.72)';
+    ctx.fillRect(sx - 2, Math.round(topY) - 11, 4, 2);
   }
 
-  /* 血条 */
+  /* 血条：更细、位置取整，避免像素抖动 */
   if(!e.dead && e.hp < e.maxHp){
-    const w = Math.max(16, e.r * 2);
-    const bx = sx - w / 2, by = topY - (e.elite ? 9 : 5);
-    ctx.fillStyle = 'rgba(0,0,0,.55)';
-    ctx.fillRect(bx, by, w, 2.5);
+    const w = Math.max(14, Math.round(e.r * 1.8));
+    const bx = Math.round(sx - w / 2), by = Math.round(topY - (e.elite ? 7 : 4));
+    ctx.fillStyle = 'rgba(0,0,0,.42)';
+    ctx.fillRect(bx, by, w, 2);
     ctx.fillStyle = e.elite ? '#ffe14a' : '#ff6a5a';
-    ctx.fillRect(bx, by, w * clamp(e.hp / e.maxHp, 0, 1), 2.5);
+    ctx.fillRect(bx, by, Math.round(w * clamp(e.hp / e.maxHp, 0, 1)), 2);
   }
 
-  /* 灼烧：贴身的橙色辉光 */
+  /* 灼烧：贴身的橙色辉光（更收敛，流畅档不闪） */
   if(e.burnT > 0 && !e.dead){
-    const pl = .6 + .4 * Math.sin(G.t * 12 + e.wob);
+    const pl = QLEVEL === 0 ? 1 : .6 + .4 * Math.sin(G.t * 12 + e.wob);
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = .22 * pl;
+    ctx.globalAlpha = .14 * pl;
     ctx.fillStyle = e.venom ? '#a8e05a' : '#ff8f5c';
     ctx.beginPath();
-    ctx.ellipse(sx, sy - h * .40, e.r * 1.15, h * .52, 0, 0, TAU);
+    ctx.ellipse(sx, sy - h * .38, e.r * 1.05, h * .46, 0, 0, TAU);
     ctx.fill();
     ctx.restore();
     ctx.globalAlpha = 1;
@@ -9171,7 +9271,9 @@ function step(dt){
 
   G.t += dt;
   G.time += dt;
-  if(StageEvents.tick()) return;
+  /* 箱庭内暂停地表随机事件/异常，避免额外刷怪混进房间清空判定 */
+  const inDungeon = typeof FieldMaps.dungeonActive==='function' && FieldMaps.dungeonActive();
+  if(!inDungeon && StageEvents.tick()) return;
 
   G.encounterPlayerFrom = { x:G.p.x, y:G.p.y };
   updatePlayer(dt);
@@ -9186,6 +9288,8 @@ function step(dt){
   updateOrbs(dt);
   updatePicks(dt);
   SectorClimate.tick(dt);
+  updateFieldHazards(dt);
+  if(typeof FieldMaps.tickDungeon==='function') FieldMaps.tickDungeon(dt);
   updateCrates(dt);
   updateJobs(dt);
   if(G.mode !== 'play') return;

@@ -29,7 +29,29 @@ const StageEvents = (() => {
   ];
   // The archive keeps the original 10% wild card as instant support.
   const legacy = [0,5,11,12];
+
+  /* ── 本局战场异常 ──
+     进入战区时从池里抽一个，整区生效；同一局不重复。
+     效果全部挂在既有接口上：recalc / dropChance / G.haz / frostFactor。 */
+  const anomalies = {
+    magnet:{name:'磁暴',icon:'⌁',color:'#9fd8ff',short:'技能冷却 +12%',
+      desc:'技能冷却 +12%，整区生效。',
+      stats:s=>{ s.skillCooldown *= 1.12; }},
+    supply:{name:'补给信号',icon:'▤',color:'#a8f29a',short:'掉落率 +40%',
+      desc:'道具掉落率 +40%，整区生效。',drop:1.4},
+    tremor:{name:'地脉震动',icon:'≋',color:'#ffb36b',short:'每 7s 落石',
+      desc:stage=>'每 7 秒 2 处落石预警，单次 '+(8+stage*2)+' 伤害，整区持续。'},
+    sand:{name:'沙暴',icon:'≈',color:'#e8c58a',short:'弹道散布 +35%',
+      desc:'能见度下降，弹道散布 +35%（远程更难命中），整区生效。',
+      stats:s=>{ s.spreadMul *= 1.35; }},
+    void:{name:'虚空潮汐',icon:'◈',color:'#c9a0ff',short:'敌人移速 +10%',
+      desc:'敌人移速 +10%，整区生效。'},
+    wreck:{name:'装甲残骸',icon:'▣',color:'#c7c1b2',short:'掩体 ×6',
+      desc:'额外 6 处装甲残骸掩体，整区生效。'}
+  };
+  const anomalyPool = Object.keys(anomalies);
   let scheduled = null, active = null;
+  let anomaly = null, used = new Set(), lastAnomaly = '', quakeAt = 0, announcedStage = -1;
 
   function plan(stage,rng=Math.random){
     const region=regions[stage];
@@ -39,8 +61,49 @@ const StageEvents = (() => {
       key:pool[Math.floor(rng()*pool.length)],archive};
   }
 
-  function reset(){ scheduled=active=null; }
-  function begin(stage){ scheduled=G.runMode==='tower'?null:plan(stage); }
+  function reset(){
+    scheduled=active=null;
+    anomaly=null;used=new Set();lastAnomaly='';quakeAt=0;announcedStage=-1;
+  }
+
+  function hasStats(a){ return !!(a && a.stats); }
+
+  function rollAnomaly(stage){
+    let pool=anomalyPool.filter(key=>!used.has(key) && key!==lastAnomaly);
+    if(!pool.length) pool=anomalyPool.filter(key=>!used.has(key));
+    if(!pool.length){ used.clear(); pool=anomalyPool.filter(key=>key!==lastAnomaly); }
+    const key=pool[Math.floor(Math.random()*pool.length)];
+    used.add(key);lastAnomaly=key;
+    anomaly={...anomalies[key],key,stage};
+    quakeAt=G.t+4.5;announcedStage=-1;
+  }
+
+  /* SectorClimate.prepareProps 会先调用一次，保证残骸等地图异常参与烘焙。 */
+  function prepare(stage){
+    if(G.runMode==='tower' || !(stage>=0)){ anomaly=null; return; }
+    if(anomaly && anomaly.stage===stage) return;
+    const had=hasStats(anomaly);
+    rollAnomaly(stage);
+    if(had || hasStats(anomaly)) recalc({fillNewCapacity:false});
+  }
+
+  function anomalyDesc(a=anomaly){
+    if(!a) return '';
+    return typeof a.desc==='function' ? a.desc(a.stage) : a.desc;
+  }
+
+  function begin(stage){
+    scheduled=G.runMode==='tower'?null:plan(stage);
+    prepare(stage);
+    if(G.runMode==='tower' || !anomaly || announcedStage===stage || !G.jobs) return;
+    announcedStage=stage;
+    const key=anomaly.key,desc=anomalyDesc(anomaly);
+    /* 战区横幅由 game.js 在 setScene 之后播放，延后 2.55s 避开它。 */
+    G.jobs.push({t:2.55,fn:function(){
+      if(G.runMode==='tower' || G.stage!==stage || anomaly?.key!==key) return;
+      banner(anomaly.name,'本区异常 · '+desc,2.8);
+    }});
+  }
 
   function clear(reason){
     if(!active) return;
@@ -58,9 +121,10 @@ const StageEvents = (() => {
   function applyStats(s){
     if(active?.move) s.spdMul*=active.move;
     if(active?.rate) s.rateMul*=active.rate;
+    if(anomaly?.stats) anomaly.stats(s);
   }
 
-  function dropChance(elite){ return (elite ? .38 : .09)*(active?.drop || 1); }
+  function dropChance(elite){ return (elite ? .38 : .09)*(active?.drop || 1)*(anomaly?.drop || 1); }
 
   function offer(spec){
     const id=spec.skill?.find(key=>(G.skills[key]||0)<SK[key].max);
@@ -109,14 +173,45 @@ const StageEvents = (() => {
     }
   }
 
+  /* 地脉震动：每 7 秒落在玩家周围两处，1.15 秒预警后由现有落区结算。 */
+  function anomalyTick(){
+    if(!anomaly || G.phase==='clear') return;
+    if(anomaly.key==='void' && G.boss && !G.boss.dead && !G.boss.voidTide){
+      G.boss.spd*=1.1;G.boss.voidTide=true;   // 首领也吃虚空潮汐
+    }
+    if(anomaly.key!=='tremor' || G.t<quakeAt) return;
+    quakeAt=G.t+7;
+    const dmg=8+G.stage*2;
+    for(let i=0;i<2;i++){
+      const a=Math.random()*TAU,r=110+Math.random()*170;
+      const x=clamp(G.p.x+Math.cos(a)*r,48,ARENA.w-48);
+      const y=clamp(G.p.y+Math.sin(a)*r*.8,54,ARENA.h-48);
+      addZone(x,y,36,dmg,1.15);
+    }
+    G.shake=Math.max(G.shake||0,2.5);
+  }
+
   function tick(){
     if(G.mode!=='play' || G.runMode==='tower') return false;
+    anomalyTick();
     if(active?.pack) spawnPack();
     else if(active && G.t>=active.expires) clear('效果已结束');
     return check();
   }
 
-  function status(){
+  function remainingText(){
+    if(G.phase==='boss') return '首领战';
+    if(G.phase==='clear') return '待撤离';
+    const total=typeof WAVES_PER_STAGE==='number'?WAVES_PER_STAGE:14;
+    return '剩'+Math.max(1,total-(G.wave||1)+1)+'波';
+  }
+
+  function anomalyStatus(){
+    if(!anomaly || G.runMode==='tower') return '';
+    return anomaly.name+' · '+anomaly.short+' · '+remainingText();
+  }
+
+  function eventStatus(){
     if(!active) return '';
     const left=Math.max(0,Math.ceil(active.expires-G.t));
     if(active.pack) return '来袭 '+left+'s';
@@ -124,5 +219,12 @@ const StageEvents = (() => {
     return active.name+' '+left+'s';
   }
 
-  return {reset,begin,plan,check,tick,clear,skill,applyStats,dropChance,status};
+  /* HUD 单行：异常 + 当前事件可同时出现，不互相覆盖。 */
+  function status(){
+    return [anomalyStatus(),eventStatus()].filter(Boolean).join(' · ');
+  }
+
+  return {reset,begin,prepare,plan,check,tick,clear,skill,applyStats,dropChance,
+    status,eventStatus,anomalyStatus,anomalyDesc,anomalyInfo:()=>anomaly,
+    anomalyId:()=>anomaly?.key||'',enemySpeedMul:()=>anomaly?.key==='void'?1.1:1};
 })();

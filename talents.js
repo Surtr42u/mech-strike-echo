@@ -23,8 +23,12 @@ const TALENTS = (function(){
   const choiceKeys = ['1','2','3','4','5','6','7','8','9','0','-','='];
   const { cards:majors, queueMilestone, roll:rollMilestone, applyStats, onKill, status } = HEXES;
   const bayonetReach = 38;
+  let picking = false; // 选中动效锁：约 160ms 内屏蔽再次点击/按键，防止重复结算
+  let renderSeq = 0;   // 面板重建序号，用于判断选择逻辑是否已被新一局渲染接管
 
   function reset(){
+    picking = false;
+    renderSeq++;
     G.enhancements = HEXES.createRun();
     G._cards = [];
     G._swap = null;
@@ -84,6 +88,8 @@ const TALENTS = (function(){
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'card';
+    if(card.equipped) button.classList.add('equipped');
+    button.style.setProperty('--i',String(Math.min(i, 4))); // 入场错峰，最多第 5 张
     const key = choiceKeys[i];
     button.setAttribute('aria-keyshortcuts',String(key));
     button.innerHTML =
@@ -94,11 +100,35 @@ const TALENTS = (function(){
       '<span class="lv">' + card.label + '</span>' +
       '<span class="ds">' + card.d + '</span>' +
       (card.risk ? '<span class="rk">' + card.risk + '</span>' : '');
-    button.addEventListener('click', choose);
+    button.addEventListener('click', () => pickCard(button, choose));
     return button;
   }
 
+  // 先亮出选中态，约 160ms 后再走原有选择逻辑；键盘的 button.click() 也走这里
+  function pickCard(button, choose){
+    if(picking || button.classList.contains('picked') || G.mode !== 'level') return;
+    picking = true;
+    const seq = renderSeq;
+    const cards = byId('cards');
+    cards.classList.add('picking');
+    button.classList.add('picked');
+    button.setAttribute('aria-pressed','true');
+    setTimeout(() => {
+      // 面板已关闭或已重建（刷新/换槽位/新局）则不再结算，避免用旧选项覆盖新面板
+      if(!button.isConnected || G.mode !== 'level' || renderSeq !== seq){ picking = false; return; }
+      choose();
+      // 前置校验未通过时面板仍在，撤销选中态并解锁
+      if(G.mode === 'level' && renderSeq === seq && button.isConnected){
+        button.classList.remove('picked');
+        button.removeAttribute('aria-pressed');
+        cards.classList.remove('picking');
+      }
+      picking = false;
+    }, 160);
+  }
+
   function renderCards(options = rollCards(), focusId){
+    renderSeq++;
     G._cards = options;
     const major = options[0].kind === 'major';
     const tier = major ? HEXES.currentTier() : null;
@@ -114,6 +144,7 @@ const TALENTS = (function(){
     byId('lvAscend').hidden = !major || !HEXES.canAscend();
     renderRefresh();
     const cards = byId('cards');
+    cards.classList.remove('picking');
     cards.classList.remove('swap-options');
     cards.classList.toggle('hex-options',major);
     cards.replaceChildren(...options.map((o, i) => {
@@ -147,7 +178,7 @@ const TALENTS = (function(){
   }
 
   function refreshCards(){
-    if(G.mode !== 'level' || G._swap || !G.preparations.refreshLeft || !hasAlternative(G._cards)) return false;
+    if(G.mode !== 'level' || G._swap || picking || !G.preparations.refreshLeft || !hasAlternative(G._cards)) return false;
     const previous = G._cards;
     const cards = previous[0].kind === 'major' ? rollMilestone(previous) : rollCards(previous);
     if(!cards.some(card => !previous.some(old => old.id === card.id))) return false;
@@ -158,7 +189,7 @@ const TALENTS = (function(){
   }
 
   function ascendCards(){
-    if(G.mode !== 'level' || G._swap || G._cards[0]?.kind !== 'major' || !HEXES.ascend()) return false;
+    if(G.mode !== 'level' || G._swap || picking || G._cards[0]?.kind !== 'major' || !HEXES.ascend()) return false;
     renderCards(rollMilestone());
     SFX.lvl();
     return true;
@@ -186,6 +217,7 @@ const TALENTS = (function(){
   }
 
   function startSwap(option){
+    renderSeq++;
     G._swap = option;
     renderRefresh();
     byId('levelTitle').textContent = '选择替换槽位';
@@ -193,10 +225,11 @@ const TALENTS = (function(){
     byId('lvSlots').textContent = '被替换的天赋及等级会移除。';
     byId('lvCancel').hidden = false;
     const cards = byId('cards');
+    cards.classList.remove('picking');
     cards.classList.add('swap-options');
     cards.replaceChildren(...G.slots.map((id, i) => {
       const skill = SK[id], level = G.skills[id];
-      return cardButton({ ...skill, label:'槽位 ' + (i + 1) + ' · Lv' + level, d:skill.d(level), risk:skill.risk?.(level) },
+      return cardButton({ ...skill, label:'槽位 ' + (i + 1) + ' · Lv' + level, d:skill.d(level), risk:skill.risk?.(level), equipped:true },
         i, () => chooseReplacement(id));
     }));
     cards.scrollTop = 0;
@@ -204,6 +237,7 @@ const TALENTS = (function(){
   }
 
   function startMajorSwap(option){
+    renderSeq++;
     G._swap = option;
     renderRefresh();
     byId('levelTitle').textContent = '选择替换海克斯';
@@ -212,17 +246,18 @@ const TALENTS = (function(){
     byId('lvAscend').hidden = true;
     byId('lvCancel').hidden = false;
     const cards = byId('cards');
+    cards.classList.remove('picking');
     cards.classList.add('swap-options');
     cards.replaceChildren(...G.enhancements.chosen.map((id,i) => {
       const card = majors[id];
-      return cardButton({...card,label:HEXES.tierNames[card.tier] + ' · 已持有'},i,() => chooseReplacement(id));
+      return cardButton({...card,label:HEXES.tierNames[card.tier],equipped:true},i,() => chooseReplacement(id));
     }));
     cards.scrollTop = 0;
     cards.firstElementChild?.focus({preventScroll:true});
   }
 
   function cancelSwap(){
-    if(G.mode !== 'level' || !G._swap) return false;
+    if(G.mode !== 'level' || !G._swap || picking) return false;
     const focusId = G._swap.id;
     G._swap = null;
     renderCards(G._cards, focusId);
@@ -235,7 +270,7 @@ const TALENTS = (function(){
   }
 
   function skipReward(){
-    if(!canSkip()) return false;
+    if(picking || !canSkip()) return false;
     G.pending--;
     finishChoice();
     return true;
@@ -288,6 +323,7 @@ const TALENTS = (function(){
 
   function handleKey(key){
     if(G.mode !== 'level') return false;
+    if(picking) return true; // 选中动效收尾中，吞掉按键避免二次选择
     if(key === 'escape') return cancelSwap();
     if(key === 'x') return skipReward();
     if(key === 'r') return refreshCards();

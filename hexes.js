@@ -62,7 +62,15 @@ const BUILD_DRAFT = (function(){
 const HEXES = (function(){
   const tierNames = { silver:'白银', gold:'黄金', prism:'棱彩' };
   const tierColors = { silver:'#b6c5d2', gold:'#ffd172', prism:'#d7aaff' };
-  const milestones = ['0:1','0:4','2:1','4:1'];
+  /* 默认四次选牌：出击、第一区第 4 波、第三区、第五区。
+     「海克斯扩容」战前准备每级追加一次，按 extraMilestones 的顺序插入。 */
+  const baseMilestones = ['0:1','0:4','2:1','4:1'];
+  const extraMilestones = ['1:1','1:8','3:1','3:8','2:8','4:8'];
+  function extraDrafts(){
+    const level = G.growth?.preparations?.hexDraft ?? PROF.preparations?.hexDraft ?? 0;
+    return Math.max(0, Math.min(level, extraMilestones.length));
+  }
+  function milestonesFor(){ return baseMilestones.concat(extraMilestones.slice(0, extraDrafts())); }
   const tank = { kills:8, limit:16, hp:24, stackHp:4, stackSize:1.5, armor:8, slow:5 };
   const bayonet = { speed:22, rangeLoss:22, damage:3.6, flat:20, interval:.40, drain:16, drainLimit:9 };
   const punch = { interval:.28, refund:.65 };
@@ -192,6 +200,28 @@ const HEXES = (function(){
     pandora: { tier:'prism', n:'潘多拉的盒子', ic:'◇',
       d:'将已持有的白银、黄金海克斯逐一换成随机棱彩，本轮再获得 1 项随机棱彩。原有棱彩保留，结果互不重复。',
       risk:'需要持有白银或黄金才会出现。被替换效果与层数移除，已到账军费保留，每局至多选一次。' },
+    /* ── 扩展池：属性向海克斯，保证选取上限提高后仍有足够牌面 ── */
+    servo: { tier:'silver', n:'伺服增压', ic:'↝', d:'移动速度 +9%，武器技能与角色必杀冷却 -7%。',
+      apply:s => { s.spdMul *= 1.09; s.skillCooldown *= .93; } },
+    optic: { tier:'silver', n:'战术目镜', ic:'✧', d:'暴击率 +6 个百分点，暴击伤害 +12%。',
+      apply:s => { s.crit += .06; s.critMul *= 1.12; } },
+    ration: { tier:'silver', n:'野战口粮', ic:'▣', d:'生命上限 +12，拾取范围 +25%。',
+      apply:s => { s.maxHp += 12; s.magnet += .25; } },
+    damper: { tier:'silver', n:'后坐阻尼', ic:'»', d:'主武器射速 +9%，弹丸体积 +10%。',
+      apply:s => { s.rateMul *= 1.09; s.bigMul *= 1.10; } },
+    composite: { tier:'gold', n:'复合装甲', ic:'⛨',
+      get d(){ return `减伤 +18 个百分点，生命上限 +22。常规减伤上限 ${Math.round(ARMOR_LIMIT*100)}%。`; },
+      apply:s => { s.armor += .18; s.maxHp += 22; } },
+    quickdraw: { tier:'gold', n:'快拔套件', ic:'↻', d:'武器技能与角色必杀冷却 -17%，技能强度 +12%。',
+      apply:s => { s.skillCooldown *= .83; s.skillPower *= 1.12; } },
+    salvo: { tier:'gold', n:'齐射协调', ic:'≋', d:'+1 枚散射弹，主武器射速 +10%，散射弹伤害 +12%。',
+      apply:s => { s.barrageExtra += 1; s.rateMul *= 1.10; s.barragePower *= 1.12; } },
+    annihilate: { tier:'prism', n:'歼灭协议', ic:'◆', d:'伤害 +32%，暴击伤害 +30%。',
+      apply:s => { s.dmgPct += .32; s.critMul *= 1.30; } },
+    perpetual: { tier:'prism', n:'永动核心', ic:'↻', d:'主武器射速 +26%，武器技能与角色必杀冷却 -20%。',
+      apply:s => { s.rateMul *= 1.26; s.skillCooldown *= .80; } },
+    juggernaut: { tier:'prism', n:'不屈壁垒', ic:'⬢', d:'生命上限 +70，减伤 +18 个百分点。', risk:'移动速度 -5%。',
+      apply:s => { s.maxHp += 70; s.armor += .18; s.spdMul *= .95; } },
     ...HEX_EXPANSION.cards
   };
   const tags = {
@@ -206,7 +236,10 @@ const HEXES = (function(){
     shock:['control','fire'], arsenal:['summon','control'], unstable:['fire'], overclock:['fire'],
     lance:['pierce','fire'], reactor:['mech'], apex:['crit'], link:['skill'], guard:['guard','fire'],
     flareNet:['burn','control'], storm:['crit','mech'], companionArms:['summon','pierce'],
-    mirror:['guard','skill'], pandora:['fortune']
+    mirror:['guard','skill'], pandora:['fortune'],
+    servo:['mobility','skill'], optic:['crit'], ration:['supplies','guard'], damper:['fire'],
+    composite:['guard'], quickdraw:['skill','fire'], salvo:['fire','control'],
+    annihilate:['fire','crit'], perpetual:['fire','skill'], juggernaut:['guard']
   };
   for(const [id,card] of Object.entries(cards)){
     card.c = tierColors[card.tier];
@@ -223,12 +256,13 @@ const HEXES = (function(){
     const bonus = Math.max(0,Math.min(.50,fortune));
     const goldBonus = bonus * HEX_FORTUNE_GOLD_SHARE;
     const weights = [['silver',.50-bonus],['gold',.35+goldBonus],['prism',.15+bonus-goldBonus]].filter(entry => entry[1] > 0);
-    const tiers = milestones.map(() => mode === 'mixed' ? weighted(weights,rng) : mode);
+    const keys = milestonesFor();
+    const tiers = keys.map(() => mode === 'mixed' ? weighted(weights,rng) : mode);
     if(mode === 'mixed' && tiers.every(tier => tier === tiers[0])){
       tiers[tiers.length-1] = weighted(weights.filter(entry => entry[0] !== tiers[0]),rng);
     }
     const upgrades = tiers.map(tier => tier === 'gold' && goldChance > 0 && rng() < goldChance);
-    return { mode, tiers, upgrades };
+    return { mode, keys, tiers, upgrades };
   }
 
   function createRun(){
@@ -240,7 +274,8 @@ const HEXES = (function(){
 
   function queueMilestone(){
     const state = G.enhancements, key = G.stage + ':' + G.wave;
-    if(!state.pending && milestones.includes(key) && !state.offered.includes(key)) state.pending = key;
+    const keys = state.plan?.keys ?? baseMilestones;
+    if(!state.pending && keys.includes(key) && !state.offered.includes(key)) state.pending = key;
   }
 
   function queueTower(floor){
@@ -281,7 +316,9 @@ const HEXES = (function(){
 
   function currentTier(state = G.enhancements){
     if(state.extra) return state.extra.ascended ? 'prism' : state.extra.tier;
-    return state.ascended.has(state.pending) ? 'prism' : state.plan.tiers[milestones.indexOf(state.pending)];
+    if(state.ascended.has(state.pending)) return 'prism';
+    const index = state.plan.keys.indexOf(state.pending);
+    return state.plan.tiers[index];
   }
 
   function actualPool(tier,state){
@@ -320,7 +357,8 @@ const HEXES = (function(){
   }
 
   function canAscend(state = G.enhancements){
-    const upgrade = state.extra ? state.extra.upgrade : state.plan?.upgrades[milestones.indexOf(state.pending)];
+    const index = state.plan?.keys?.indexOf(state.pending) ?? -1;
+    const upgrade = state.extra ? state.extra.upgrade : index >= 0 ? state.plan.upgrades[index] : null;
     return state.pending && currentTier(state) === 'gold' && upgrade && actualPool('prism',state).length >= DRAFT_CHOICES;
   }
 
@@ -484,7 +522,8 @@ const HEXES = (function(){
   function planLabel(state = G.enhancements){
     if(state.extra?.mode === 'external') return '额外海克斯 · 宝箱奖励';
     if(TOWER.active()) return '海克斯 ' + state.chosen.length + '/' + TOWER.hexLimit + ' · 已完成 ' + state.towerRounds + ' 轮';
-    return '海克斯 ' + state.offered.length + '/' + milestones.length;
+    const total = state.plan?.keys?.length ?? baseMilestones.length;
+    return '海克斯 ' + state.offered.length + '/' + total + (total > baseMilestones.length ? ' · 已扩容' : '');
   }
 
   function status(state = G.enhancements){
