@@ -182,6 +182,12 @@ button.wallet:hover{background:#3b3023;border-color:#a37c4e}
 .card:hover{border-color:var(--pale);background:#2a342e}.card .bar{position:absolute;inset:0 0 auto;height:2px}.card .key{position:absolute;top:7px;right:8px;font:700 .75rem var(--mono);color:#a6b2a8}
 .card .ico{font-size:1.7rem;line-height:1;min-width:41px;height:41px;display:grid;place-items:center;border:1px solid #566257;margin:5px 0 9px}
 .card .nm{font-size:1.05rem;font-weight:800}.card .lv,.card .ds,.card .rk{font-size:.83rem;line-height:1.5}.card .lv{color:var(--pale);margin:3px 0 7px}.card .ds{color:#d0d9ce}.card .rk{color:#ffaa96;margin-top:6px}
+.card-reroll{position:absolute;top:5px;right:26px;z-index:3;width:21px;height:21px;display:grid;place-items:center;
+  border:1px solid #6f7f72;background:#141c1b;color:#d9e6da;font:700 .9rem/1 var(--mono);cursor:pointer;
+  border-radius:3px;transition:border-color .12s,background .12s,color .12s}
+.card-reroll:hover,.card-reroll:focus-visible{border-color:var(--amber);background:#2b2720;color:#ffe0a6;outline:none}
+.card-reroll:active{transform:scale(.94)}
+#cards.picking .card-reroll{pointer-events:none;opacity:.35}
 .slot-count{font-size:.83rem;color:var(--muted);margin-top:12px}.centered{text-align:center}.centered .section-kicker,.centered .primary{justify-content:center;margin-inline:auto}
 .slot-count:empty{display:none}.level-actions{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px}
 .level-actions button{margin-top:12px}.level-actions .slot-count{margin-top:12px}

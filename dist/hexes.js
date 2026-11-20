@@ -391,6 +391,23 @@ const HEXES = (function(){
     return hand;
   }
 
+  /* 独立重掷：只替换手牌中的一张，其余牌保持不动。 */
+  function rerollCard(hand,index){
+    const state = G.enhancements;
+    if(!state?.pending || !Array.isArray(hand) || index < 0 || index >= hand.length) return null;
+    const exclude = new Set(hand.map(card => card.id));
+    const ids = offerIds(state).filter(id => !exclude.has(id));
+    if(!ids.length) return null;
+    const options = ids.map(id => ({id,kind:'major',tags:cards[id].tags}));
+    const profile = typeof TALENTS!=='undefined' && TALENTS.buildProfile ? TALENTS.buildProfile() : {};
+    const picked = BUILD_DRAFT.choose(options,profile,hand)[0];
+    if(!picked) return null;
+    const next = hand.slice();
+    next[index] = picked;
+    state.hand = next;
+    return next;
+  }
+
   function canAscend(state = G.enhancements){
     const index = state.plan?.keys?.indexOf(state.pending) ?? -1;
     const upgrade = state.extra ? state.extra.upgrade : index >= 0 ? state.plan.upgrades[index] : null;
@@ -566,7 +583,7 @@ const HEXES = (function(){
       cards[id].n + (id === 'stipend' ? '已到账' : ''));
   }
 
-  return { makePlan, createRun, queueMilestone, queueTower, queueExternal, offerIds, roll, canAscend, ascend, choose, has, needsReplacement,
+  return { makePlan, createRun, queueMilestone, queueTower, queueExternal, offerIds, roll, rerollCard, canAscend, ascend, choose, has, needsReplacement,
     currentTier, applyStats, onKill, onAttackDamage, onSkillCast, onShieldBlock, onMechStart, onMechSkill, onMechExpiry,
     moveMultiplier, planLabel, status, tierNames, tierColors, cards, bayonet, tagLabels:BUILD_TAGS, tagLabel:BUILD_DRAFT.label };
 })();
