@@ -1285,7 +1285,9 @@ function resize(){
   cv.style.height = h + 'px';
   const preferredScale = Math.min(w / VIEW_W, h / VIEW_H);
   const arenaScale = Math.max(w / ARENA.w, h / (ARENA.h * KZ));
-  const p = Math.max(1, Math.floor(preferredScale * 2) / 2, Math.ceil(arenaScale * 2) / 2);
+  /* 取最近的 0.5 档而不是向下取整：手机横屏若向下取整会突然变成 1×，
+     视野过宽、角色过小；四舍五入能稳定在 1.5×。 */
+  const p = Math.max(1, Math.round(preferredScale * 2) / 2, Math.ceil(arenaScale * 2) / 2);
   VP = p;
   VW = w / p;
   VH = h / p;
@@ -9650,11 +9652,33 @@ function boot(){
   PROF.giftFx = 0;
   saveProf();
   wireTerminal();
-  window.addEventListener('resize', function(){
+  /* 手机地址栏收起/展开、横竖屏切换、内置浏览器视口变化都要重新算一遍。
+     visualViewport 能捕捉 window.resize 漏掉的动态视口变化，统一做防抖。 */
+  let viewportResizeT = 0;
+  function queueViewportResize(){
+    clearTimeout(viewportResizeT);
+    viewportResizeT = setTimeout(function(){
+      if(!G.p || G.mode === 'title' || G.mode === 'shop') return;
+      resize();
+      if(G.mode !== 'play') render();
+    },90);
+  }
+  window.addEventListener('resize', queueViewportResize);
+  window.addEventListener('orientationchange', queueViewportResize);
+  if(window.visualViewport){
+    window.visualViewport.addEventListener('resize', queueViewportResize);
+    window.visualViewport.addEventListener('scroll', queueViewportResize);
+  }
+  /* 部分内置浏览器不派发 resize / 动态地址栏事件，用尺寸轮询兜底。 */
+  if(window.ResizeObserver){
+    const ro = new ResizeObserver(queueViewportResize);
+    ro.observe(document.documentElement);
+    if(document.getElementById('wrap')) ro.observe(document.getElementById('wrap'));
+  }
+  setInterval(function(){
     if(!G.p || G.mode === 'title' || G.mode === 'shop') return;
-    resize();
-    if(G.mode !== 'play') render();
-  });
+    if(window.innerWidth !== SW || window.innerHeight !== SH) queueViewportResize();
+  },600);
 }
 /* 先拉图集，再起游戏；图集失败也不阻塞（绘制层会自动退回程序化） */
 Promise.all([SPRM.load(),FieldMaps.load()]).then(function([ok]){
