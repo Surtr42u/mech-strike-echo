@@ -418,11 +418,12 @@ body{overscroll-behavior:none}
   .skill-rack{max-width:43%}
 }
 @media(max-height:560px) and (orientation:landscape){
-  .vitals{width:clamp(152px,28vw,196px)}
-  .wave-panel{width:clamp(158px,32vw,250px)}
+  .vitals{width:clamp(150px,26vw,188px)}
+  .wave-panel{left:calc(var(--left) + clamp(150px,26vw,188px) + 6px);transform:none;width:clamp(150px,26vw,210px);text-align:left}
   .wave-panel .field-transmission{display:none}
   .vitals .hud-status{font-size:.67rem;line-height:1.3}
   .wave-panel .wave-hazard,.wave-panel .wave-pressure{font-size:.7rem;line-height:1.3}
+  #banner{top:44%;max-width:min(72%,560px)}
 }
 /* 全屏入口与普通图标按钮一致；不支持时由脚本隐藏 */
 .fullscreen-toggle[hidden]{display:none!important}
