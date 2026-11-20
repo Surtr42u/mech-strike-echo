@@ -211,6 +211,14 @@ button.wallet:hover{background:#3b3023;border-color:#a37c4e}
 .stats b{color:#ede9d9;font-weight:700}.stats .earned b{color:var(--amber)}
 .terminal-dialog{width:min(500px,calc(100% - 28px));max-height:calc(100dvh - 28px);margin:auto;overflow:auto}
 .terminal-dialog::backdrop{background:#060d0ddb;backdrop-filter:blur(3px)}.dialog-head{justify-content:space-between;gap:15px;align-items:flex-start}.dialog-head .icon-button{border-color:var(--line)}
+.fullscreen-dialog{width:min(560px,calc(100% - 24px))}
+.fs-steps{list-style:none;margin:0 0 14px;padding:0;display:grid;gap:7px}
+.fs-steps li{display:grid;gap:2px;padding:8px 11px;border-left:2px solid #8d7252;background:#1b2523}
+.fs-steps b{font-size:.84rem;color:var(--pale)}
+.fs-steps span{font-size:.79rem;line-height:1.45;color:#c5d0c7}
+.fullscreen-dialog .fs-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.fullscreen-dialog .fs-actions .primary{flex:1 1 140px}
+.fullscreen-dialog .fs-actions .secondary{flex:0 1 auto}
 .manual-tabs{margin:6px 0 13px;max-width:100%}.manual-tabs button{min-height:44px;white-space:nowrap}
 .manual-tabs [aria-selected="true"]{color:#1e221c;background:var(--pale)}
 .controls-list{border-top:1px solid var(--line)}.controls-list>div{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);font-size:.88rem}
@@ -399,13 +407,22 @@ body{overscroll-behavior:none}
   .field-map-button{width:clamp(88px,24vw,124px)}
   .corner-controls button{width:44px;height:44px}
 }
-@media(pointer:coarse) and (orientation:portrait){
-  .readouts{width:min(52vw,198px)}
-  .skill-rack{max-width:46%}
+@media(max-width:620px) and (orientation:portrait){
+  /* 竖屏把状态与波次并排，给战场留出中间高度；故事行让位给目标/威胁 */
+  .readouts{top:calc(var(--top) + 48px);width:calc(100vw - 112px);grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);align-items:start}
+  .vitals{padding:6px 8px}.wave-panel{padding:5px 8px}
+  .hud-status{font-size:.68rem;line-height:1.35}
+  .wave-panel .field-transmission{display:none}
+  .wave-panel .wave-hazard,.wave-panel .wave-pressure{font-size:.7rem;line-height:1.32}
+  #banner{top:40%;max-width:92%}
+  .skill-rack{max-width:43%}
 }
-@media(pointer:coarse) and (max-height:560px) and (orientation:landscape){
+@media(max-height:560px) and (orientation:landscape){
   .vitals{width:clamp(152px,28vw,196px)}
   .wave-panel{width:clamp(158px,32vw,250px)}
+  .wave-panel .field-transmission{display:none}
+  .vitals .hud-status{font-size:.67rem;line-height:1.3}
+  .wave-panel .wave-hazard,.wave-panel .wave-pressure{font-size:.7rem;line-height:1.3}
 }
 /* 全屏入口与普通图标按钮一致；不支持时由脚本隐藏 */
 .fullscreen-toggle[hidden]{display:none!important}
