@@ -1,5 +1,58 @@
 'use strict';
 
+/* ══════════ 难度总开关 ══════════
+   所有敌我强度倍率集中在这里，改数值不用再翻 spawnEnemy / spawnBoss。
+   enemy* 作用于普通敌人与精英，boss* 只作用于关底首领。 */
+const DIFFICULTY = Object.freeze({
+  enemyCount: 3,     // 刷怪频率倍率（3 = 同时间怪物数量三倍）
+  enemyCap: 2.2,     // 场上同时存在上限倍率
+  enemyHp: 2,        // 敌人生命倍率
+  enemyDamage: 1.5,  // 敌人伤害倍率
+  bossHp: 4,         // 首领生命倍率
+  bossDamage: 2,     // 首领伤害倍率
+  adaptive: {        // 动态难度：玩家打得越好，压力越高
+    interval: .26, hp: .30, damage: .16, cap: .12,
+    rise: .62, decay: .72
+  }
+});
+
+/* ══════════ 动态难度 · 自适应威胁 ══════════
+   每波统计「掉血比例 / 击倒次数」，结算成 heat ∈ [-1, 1]：
+   heat > 0 敌人更多更硬更疼；heat < 0 自动舒缓。
+   敌人血量/伤害倍率对战役与无尽塔同时生效；刷怪频率只在战役里额外缩放，
+   塔内保留自己的 surge/easing 节奏，避免两套节奏互相打架。 */
+const AdaptiveDirector = (() => {
+  const cfg = DIFFICULTY.adaptive;
+  const names = [[-.35,'舒缓'],[.2,'常规'],[.55,'升温'],[.85,'高压'],[Infinity,'极限']];
+  let heat = 0, loss = 0, downs = 0;
+
+  function reset(){ heat = 0; loss = 0; downs = 0; }
+  function beginWave(){ loss = 0; downs = 0; }
+  function noteDamage(amount){
+    if(G.mode !== 'play' || G.phase !== 'wave' || !G.p) return;
+    loss += Math.max(0,amount) / Math.max(1,G.p.maxHp);
+  }
+  function noteDown(){ if(G.phase === 'wave') downs++; }
+  function endWave(){
+    if(G.mode !== 'play') return;
+    const pressure = Math.min(1.4, loss * 1.15 + downs * .6);
+    const ease = Math.max(0, .45 - loss) * .9;   // 几乎无伤 → 加码
+    heat = clamp(heat * cfg.decay + (ease - pressure * .85) * cfg.rise, -1, 1);
+  }
+  function interval(){ return 1 - heat * cfg.interval; }
+  function hp(){ return 1 + heat * cfg.hp; }
+  function damage(){ return 1 + heat * cfg.damage; }
+  function cap(){ return 1 + heat * cfg.cap; }
+  function name(){ return names.find(([limit]) => heat < limit)[1]; }
+  function hudText(){
+    /* 综合压力 = 刷怪密度 × 血量 × 伤害，0% 为原始难度 */
+    const pct = Math.round((1 / interval() * hp() * damage() - 1) * 100);
+    return '威胁 · ' + name() + (pct > 0 ? ' +' + pct + '%' : pct < 0 ? ' ' + pct + '%' : '');
+  }
+  return { reset, beginWave, noteDamage, noteDown, endWave,
+    interval, hp, damage, cap, name, hudText, snapshot:() => ({ heat, loss, downs }) };
+})();
+
 function campaignWaveIndex(stage = G.stage, wave = G.wave){
   return stage * WAVES_PER_STAGE + wave;
 }
@@ -78,6 +131,72 @@ const CampaignEnemies = (() => {
   return { kind, rank, healthGrowth, sprite };
 })();
 
+/* ══════════ 特殊波次 ══════════
+   每个战区随机排出 3–4 个特殊波：怪潮 / 高危 / 突袭 / 炮火。
+   种子每局重掷，意图固定：每区必有 1 波怪潮 + 1 波高危，再随机搭 1–2 波。
+   同一局内暂停、切场景都不会改变已经排好的波次。 */
+const WaveTypes = (() => {
+  const types = {
+    standard:{ id:'standard', name:'常规', hint:'', interval:1, count:0, cap:0, hp:1, damage:1, speed:1, elite:0, bias:null },
+    horde:{ id:'horde', name:'怪潮', hint:'数量压制 · 单体更脆', interval:.70, count:1, cap:14, hp:.82, damage:.9, speed:1, elite:-.03,
+      bias:['runner','burrower','drone','bomber'] },
+    elite:{ id:'elite', name:'高危', hint:'精英集群 · 优先点杀', interval:1.12, count:-1, cap:-8, hp:1.35, damage:1.15, speed:.96, elite:.36, bias:null },
+    rush:{ id:'rush', name:'突袭', hint:'高速单位 · 别被围住', interval:.86, count:0, cap:4, hp:.95, damage:1, speed:1.14, elite:.02,
+      bias:['runner','drone','burrower','bomber','lancer'] },
+    siege:{ id:'siege', name:'炮火', hint:'远程压制 · 注意落点', interval:1.04, count:0, cap:-2, hp:1.05, damage:1.08, speed:.94, elite:.04,
+      bias:['gunner','sniper','caster','lobber','conjurer'] }
+  };
+  const candidates = [3,4,5,6,7,8,9,10,11,12];
+  let seed = (Math.random() * 4294967296) >>> 0;
+  const plans = new Map();
+
+  function hash(stage, wave, salt){
+    let h = (seed ^ Math.imul(stage + 1, 374761393) ^ Math.imul(wave + 1, 668265263) ^ Math.imul(salt + 1, 2246822519)) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  }
+  function shuffle(stage){
+    /* 休整波不排特殊波，避免怪潮把喘息波吃掉；不足 4 个位置时退回全量 */
+    let pool = candidates.filter(wave => !ThreatPacing.at(stage, wave).delay);
+    if(pool.length < 4) pool = candidates.slice();
+    for(let i = pool.length - 1; i > 0; i--){
+      const j = Math.floor(hash(stage, i, 1) * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    return pool;
+  }
+  function plan(stage){
+    let map = plans.get(stage);
+    if(map) return map;
+    const pool = shuffle(stage);
+    map = new Map();
+    map.set(pool[0], 'horde');
+    map.set(pool[1], 'elite');
+    map.set(pool[2], hash(stage, 0, 3) < .5 ? 'rush' : 'siege');
+    if(hash(stage, 0, 5) < .45) map.set(pool[3], hash(stage, 0, 6) < .5 ? 'rush' : 'siege');
+    plans.set(stage, map);
+    return map;
+  }
+  function at(stage = G.stage, wave = G.wave){
+    return types[plan(stage).get(wave)] || types.standard;
+  }
+  /* 特殊波次按权重把刷怪表往对应兵种偏一点，不覆盖精英/守卫逻辑 */
+  function biasKind(maxRank, sample, stage = G.stage, wave = G.wave){
+    const type = at(stage, wave);
+    if(!type.bias) return null;
+    const pool = type.bias.filter(id => CampaignEnemies.rank(id) <= maxRank);
+    if(!pool.length) return null;
+    const index = Math.min(pool.length - 1, Math.floor((((sample % 1) + 1) % 1) * pool.length));
+    return pool[index];
+  }
+  function reset(){
+    seed = (Math.random() * 4294967296) >>> 0;
+    plans.clear();
+  }
+  function label(stage, wave){ const type = at(stage, wave); return type.id === 'standard' ? '' : type.name + ' · ' + type.hint; }
+  return { at, biasKind, reset, label, types, plan };
+})();
+
 const ThreatPacing = (() => {
   const patterns = [
     'ssppgrpprcpccc',
@@ -122,7 +241,11 @@ const ThreatPacing = (() => {
   }
 
   function enemyCap(){
-    return Math.min(ENEMY_CAP,CampaignBalance.at().cap+at().cap);
+    const base = (CampaignBalance.at().cap + at().cap + WaveTypes.at().cap) *
+      DIFFICULTY.enemyCap * AdaptiveDirector.cap();
+    /* 触屏设备同屏数量收一档，保证三倍刷怪下仍能稳帧 */
+    const limit = G.touch ? Math.round(ENEMY_CAP * .75) : ENEMY_CAP;
+    return Math.min(limit, Math.max(6, Math.round(base)));
   }
 
   function routeNote(stage){
@@ -144,6 +267,9 @@ const ThreatPacing = (() => {
     const maxRank=at().delay?1:heavies>=(G.stage>=4?3:2)?2:3;
     const intro=current.spawned++===0 && !FieldMaps.underground() && introductions[G.stage+':'+G.wave];
     if(intro && CampaignEnemies.rank(intro)<=maxRank) return intro;
+    /* 特殊波次：按兵种倾向加权，62% 的刷怪会落到该波的主题兵种上 */
+    const bias=WaveTypes.biasKind(maxRank,(sample+.37)%1);
+    if(bias && Math.random()<.62) return bias;
     return CampaignEnemies.kind(G.stage,G.wave,FieldMaps.floorId(),sample,maxRank);
   }
 

@@ -12,6 +12,8 @@ const BossEffects = (() => {
     void:    ['#452153','#dd88ff','#fff0ff','#240e36']
   };
   const TAU = Math.PI * 2;
+  const DASH_MID = [10,12];
+  const DASH_NONE = [];
   const spokes = Array.from({ length:24 }, (_,i) => [Math.cos(i/24*TAU),Math.sin(i/24*TAU)]);
   const cap = a => Math.max(0,Math.min(1,a));
 
@@ -72,23 +74,34 @@ const BossEffects = (() => {
     const p=pal[kind], k=cap(progress);
     anchor(g,x,y);
     disk(g,r);
-    g.globalAlpha=.52+k*.19;
+    g.globalAlpha=.34+k*.20;
     g.fillStyle=p[0];
     g.fill();
     rim(g,r,p[1],p[3]);
+    /* 外缘进度弧：给玩家一个“还有多久”的明确读数 */
+    if(k>0 && k<1){
+      g.globalAlpha=.75;
+      g.strokeStyle=p[2];
+      g.lineWidth=2.2;
+      g.beginPath();
+      g.arc(0,0,Math.max(2,r-1.2),-Math.PI/2,-Math.PI/2+TAU*k);
+      g.stroke();
+    }
+    g.globalAlpha=.82;
     brackets(g,r,p,k);
-    g.globalAlpha=.44+k*.42;
+    /* 内圈只留四个方向的短箭，减少旋转噪点 */
+    g.globalAlpha=.34+k*.38;
     const q=r*(.87-.55*k);
     for(let i=0;i<24;i+=6){
       g.save();
       g.rotate((i+3)*TAU/24);
-      shape(g,p[2],q-6,0,q+4,-6,q+2,0,q+4,6);
+      shape(g,p[2],q-5,0,q+3,-5,q+1,0,q+3,5);
       g.restore();
     }
-    g.globalAlpha=.70;
+    g.globalAlpha=.62;
     const width=5+k*4;
-    line(g,p[2],1.55,-width,0,width,0);
-    line(g,p[2],1.55,0,-width,0,width);
+    line(g,p[2],1.4,-width,0,width,0);
+    line(g,p[2],1.4,0,-width,0,width);
     g.restore();
   }
 
@@ -101,24 +114,44 @@ const BossEffects = (() => {
     g.arc(0,0,r,Math.PI/2,Math.PI*1.5);
     g.closePath();
     g.fillStyle=p[0];
-    g.globalAlpha=warning ? .59 : .73;
+    g.globalAlpha=warning ? .34 : .44;
     g.fill();
+    /* 双描边：外框压暗、内缘提亮，边界比纯填充更清楚 */
     g.globalAlpha=.92;
     g.strokeStyle=p[3];
-    g.lineWidth=3.8;
+    g.lineWidth=3.4;
     g.stroke();
     g.strokeStyle=p[1];
-    g.lineWidth=1.9;
+    g.lineWidth=1.6;
     g.stroke();
-    const interval=QLEVEL ? 44 : 73;
-    const offset=warning ? 10 + t*24 : 12 + (t*133)%interval;
+    if(warning){
+      // 已蓄力段轻微提亮，读条直观
+      g.globalAlpha=.09+t*.13;
+      g.beginPath();
+      g.moveTo(0,-r);
+      g.lineTo(len*t,-r);
+      g.lineTo(len*t,r);
+      g.lineTo(0,r);
+      g.closePath();
+      g.fillStyle=p[1];
+      g.fill();
+    }
+    /* 中线虚线指出攻击方向，比满屏箭头干净 */
+    g.globalAlpha=warning ? .40 : .52;
+    g.setLineDash(DASH_MID);
+    g.lineDashOffset=-t*(warning ? 36 : 70);
+    line(g,p[1],1.2,0,0,len-4,0);
+    g.setLineDash(DASH_NONE);
+    g.lineDashOffset=0;
+    const interval=QLEVEL ? 62 : 92;
+    const offset=warning ? 14 + t*30 : 16 + (t*120)%interval;
     const right=Math.min(len-13,Math.hypot(VW,VH/KZ)+42);
-    const h=r*.53;
+    const h=r*.46;
     for(let x=offset;x<right;x+=interval){
-      g.globalAlpha=warning ? .47+t*.43 : .85*fade;
-      shape(g,p[1],x-10,-h,x+5,-h*(warning?.36:1),x+15,0,x+5,h*(warning?.36:1),x-10,h,x,0);
-      g.globalAlpha=warning ? .7 : .95*fade;
-      shape(g,p[2],x-5,-h*.48,x+7,0,x-5,h*.48,x-1,0);
+      g.globalAlpha=warning ? .32+t*.28 : .60*fade;
+      shape(g,p[1],x-9,-h,x+4,-h*(warning?.36:1),x+13,0,x+4,h*(warning?.36:1),x-9,h,x,0);
+      g.globalAlpha=warning ? .52 : .70*fade;
+      shape(g,p[2],x-4,-h*.42,x+6,0,x-4,h*.42,x-1,0);
     }
     g.globalAlpha=1;
   }
@@ -135,9 +168,9 @@ const BossEffects = (() => {
       const covered=Math.hypot(b.x-x,b.y-y);
       const span=Math.min(99,covered);
       const start=covered-span;
-      g.globalAlpha=.60;
+      g.globalAlpha=.44;
       shape(g,p[3],start,0,covered-12,-16,covered+2,-11,covered+2,12,covered-15,19);
-      g.globalAlpha=.74;
+      g.globalAlpha=.58;
       for(let i=0;i<(QLEVEL ? 7 : 4);i++){
         const offset=i*13+Math.floor((a.t-a.wind)*90)%13;
         if(offset>span) break;
@@ -152,20 +185,17 @@ const BossEffects = (() => {
     const p=pal[kind], len=h.len, r=h.wide;
     const fade=warning ? 1 : cap(h.life/.23), rise=warning ? 1 : cap(h.t/.085);
     segment(g,h.x,h.y,h.ang);
+    /* 预警阶段只用 lane 的单条中线＋进度段，避免两套虚线叠出噪点 */
     lane(g,p,len,r,warning,warning ? cap(progress) : h.t,fade);
-    if(warning){
-      g.globalAlpha=.85;
-      g.setLineDash([9,9]);
-      line(g,p[2],1.3,0,0,len,0);
-    } else {
-      g.globalAlpha=.66+.32*fade;
+    if(!warning){
+      g.globalAlpha=.52+.30*fade;
       line(g,p[1],Math.max(3,r*(.35+.72*rise*fade)),0,0,len,0);
       line(g,p[2],1.65+r*.25*fade,0,0,len,0);
       const step=QLEVEL ? 43 : 75;
       const right=Math.min(len-12,Math.hypot(VW,VH/KZ)+42);
       const phase=(h.t*(kind==='void' ? 230 : 145))%step;
       for(let k=16+phase;k<right;k+=step){
-        g.globalAlpha=.54;
+        g.globalAlpha=.42;
         if(kind==='prism'){
           const edge=r*.69;
           shape(g,p[2],k-12,-edge,k+2,-edge,k+15,edge,k+12,edge);
@@ -173,7 +203,7 @@ const BossEffects = (() => {
           const fold=.53+.19*Math.sin(k*.065-h.t*15);
           shape(g,p[3],k-14,-r*.84,k+12,-r*.79,k+2,-r*fold,k-5,-r*.27);
           shape(g,p[1],k-15,r*.73,k+3,r*.24,k+14,r*.71,k+2,r*.81);
-          g.globalAlpha=.77*fade;
+          g.globalAlpha=.60*fade;
           shape(g,p[2],k-6,r*.58,k+12,r*.27,k+1,r*.80);
         } else {
           line(g,p[2],1.65,k-10,r*.73,k+13,r*.73);
@@ -188,7 +218,7 @@ const BossEffects = (() => {
     const p=pal[h.bossFx], r=h.r, ice=h.bossFx==='frost';
     const age=cap((h.t-h.arm)/.32), fade=.60+.4*cap(h.life/.65);
     anchor(g,h.x,h.y);
-    g.globalAlpha=(.73+.21*age)*fade;
+    g.globalAlpha=(.62+.20*age)*fade;
     disk(g,r);
     g.fillStyle=p[0];
     g.fill();
@@ -200,12 +230,12 @@ const BossEffects = (() => {
       const [dx,dy]=spokes[i], [ax,ay]=spokes[(i+3)%24];
       const inner=r*(.12+((i*7)%11)*.041), outer=r*(.59+(i%5)*.092);
       const x=dx*inner, y=dy*inner;
-      g.globalAlpha=(.35+.44*age)*fade;
+      g.globalAlpha=(.28+.36*age)*fade;
       if(ice){
         shape(g,i%3 ? p[1] : p[3],x,y,dx*outer,dy*outer,ax*outer*.78,ay*outer*.78);
         const bx=dx*outer*.68, by=dy*outer*.68;
         const rise=(7+(i*7)%14)*(.46+.54*age), width=3+(i%4);
-        g.globalAlpha=.88*fade;
+        g.globalAlpha=.78*fade;
         shape(g,p[3],bx-width-2,by,bx+width,by-2,bx+width*2,by+2,bx+1,by+5);
         shape(g,'#588da9',bx-width,by,bx+2,by-rise,bx+width+2,by-3,bx+1,by+3);
         shape(g,p[2],bx-width,by,bx+2,by-rise,bx+1,by-3);
@@ -219,14 +249,14 @@ const BossEffects = (() => {
         g.lineTo(kx+dy*5,ky-dx*5);
         g.lineTo(bx,by);
         g.strokeStyle=p[1];
-        g.lineWidth=2.7;
+        g.lineWidth=2.4;
         g.stroke();
-        g.globalAlpha=.8*fade;
+        g.globalAlpha=.62*fade;
         const shift=((phase+i*7)%12)/12;
         g.fillStyle=shift>.52 ? p[2] : p[1];
         g.fillRect(Math.round(x+(bx-x)*shift-1),Math.round(y+(by-y)*shift),2,2);
         if(QLEVEL && shift>.3 && shift<.75){
-          g.globalAlpha=(.79-shift)*fade;
+          g.globalAlpha=(.62-shift*.7)*fade;
           g.fillRect(Math.round(kx+dy*shift*16),Math.round(ky-dx*shift*16-7),2,3);
         }
       }
@@ -240,7 +270,7 @@ const BossEffects = (() => {
     const p=pal[h.bossFx], r=h.r, w=SHOCKWAVE_HALF_WIDTH;
     anchor(g,h.x,h.y);
     disk(g,r);
-    g.globalAlpha=.85;
+    g.globalAlpha=.68;
     g.lineWidth=w*2+3;
     g.strokeStyle=p[3];
     g.stroke();
@@ -250,6 +280,14 @@ const BossEffects = (() => {
     g.strokeStyle=p[2];
     g.lineWidth=2;
     g.stroke();
+    if(QLEVEL){
+      // 内圈细线：把“边界”和“填充”分开，读范围更准
+      disk(g,Math.max(2,r-w));
+      g.globalAlpha=.34;
+      g.lineWidth=1.2;
+      g.strokeStyle=p[2];
+      g.stroke();
+    }
     const step=QLEVEL ? 2 : 4;
     for(let i=0;i<24;i+=step){
       g.save();
@@ -286,17 +324,17 @@ const BossEffects = (() => {
         g.rotate((i+.15)*TAU/24);
         const radius=r*(.67+u*.27), tip=radius*(.78+(i%5)*.053);
         const width=6+(i%3)*4;
-        g.globalAlpha=(1-u)*.80;
+        g.globalAlpha=(1-u)*.58;
         shape(g,p[3],0,0,radius*.49,-width,tip,-width*.62,radius*.65,width*.37,tip,width,radius*.43,width);
         shape(g,p[1],radius*.30,width*.63,tip,-width*.26,radius*.57,width*.40,tip,width);
         if(u<.62){
-          g.globalAlpha=1-u*1.3;
+          g.globalAlpha=.85-u*1.2;
           chip(g,p[2],radius*.65,-width-9*u,2+((i+1)%3));
         }
         g.restore();
       }
       if(u<.36){
-        g.globalAlpha=.7*(1-u/.36);
+        g.globalAlpha=.48*(1-u/.36);
         const inner=r*(.16+u*1.38);
         shape(g,p[1],-inner,0,-inner*.6,-inner*.44,0,-inner*.55,inner*.65,-inner*.40,inner,0,inner*.65,inner*.32,0,inner*.45,-inner*.7,inner*.35);
         chip(g,p[2],0,0,Math.max(3,inner*.44));
@@ -316,13 +354,14 @@ const BossEffects = (() => {
     const shell=(b.muzzleStyle==='vent' && pulsing) || a?.visual==='shell' || a?.visual==='shells';
     const flame=b.kind==='molten' && a?.visual==='flame';
     const forward=shell || flame;
-    const x=SX(b.x)+(forward ? b.face*b.r*.50 : 0);
-    const y=SY(b.y)-b.h*(lift ? .35 : b.kind==='void' ? .86 : .67);
+    /* 熔心喷火口在模型右前方：枪口光点跟着炉口走，而不是浮在胸口 */
+    const x=SX(b.x)+(forward ? b.face*b.r*(flame ? .42 : .50) : 0);
+    const y=SY(b.y)-b.h*(lift ? .35 : b.kind==='void' ? .86 : flame ? .45 : .67);
     g.save();
     g.translate(x,y);
     const n=5+b.r*(.23+wind*.24);
     if(wind>0){
-      g.globalAlpha=.38+wind*.48;
+      g.globalAlpha=.30+wind*.38;
       const step=QLEVEL ? 4 : 6;
       for(let i=0;i<24;i+=step){
         const angle=(i/24*TAU)+(a.t || 0)*(b.kind==='void' ? -1.8 : 1);
@@ -337,13 +376,13 @@ const BossEffects = (() => {
     if(pulsing && forward){
       const angle=b.muzzleAng, age=since/.16, size=(1-age)*(flame ? 22 : 29);
       g.rotate(Math.atan2(Math.sin(angle)*KZ,Math.cos(angle)));
-      g.globalAlpha=.93*(1-age);
+      g.globalAlpha=.78*(1-age);
       shape(g,p[1],-4,0,2,-8,size*.60,-4,size+6,0,size*.56,5,2,8);
       shape(g,p[2],-4,0,5,-5,size*.74,0,4,4);
       if(QLEVEL) for(let i=0;i<4;i++) chip(g,p[1],5+age*38+i*4,(i-1.5)*age*16,1.5);
     } else if(pulsing || (lift && release>.03)){
       const progress=pulsing ? since/.16 : 1-release;
-      g.globalAlpha=(1-progress)*.85;
+      g.globalAlpha=(1-progress)*.72;
       const step=QLEVEL ? 3 : 6, spread=n*(.51+progress*.9);
       for(let i=0;i<24;i+=step){
         const [dx,dy]=spokes[i];

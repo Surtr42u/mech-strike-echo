@@ -14,8 +14,8 @@ const TOWER = (function(){
   const areaAttackers = ['lobber','anchor'];
   const paces = {
     steady:{name:'标准',interval:1,extra:1},
-    easing:{name:'舒缓',interval:1.1,extra:.9},
-    surge:{name:'紧凑',interval:.9,extra:1.1}
+    easing:{name:'舒缓',interval:1.12,extra:.88},
+    surge:{name:'紧凑',interval:.84,extra:1.18}
   };
 
   function active(){ return G.runMode === 'tower'; }
@@ -58,8 +58,8 @@ const TOWER = (function(){
     const fights = waves*waveDuration(floor,2);
     const expected = fights + (isBossFloor(floor) ? 28 : 14);
     const elapsed = G.t - startedAt;
-    if(down || loss >= .5 || elapsed > expected + 15) return 'easing';
-    if(loss <= .18 && elapsed <= expected - 6) return 'surge';
+    if(down || loss >= .45 || elapsed > expected + 15) return 'easing';
+    if(loss <= .20 && elapsed <= expected - 5) return 'surge';
     return 'steady';
   }
   function startWave(spawnDelay,announce){

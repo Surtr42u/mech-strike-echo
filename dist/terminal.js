@@ -25,7 +25,9 @@ const pictograms = {
   chart:'M3 20h18 M5 16v-4h3v4z M11 16V8h3v8z M17 16V4h3v12z',
   save:'M4 4h13l3 3v13H4z M8 4v6h8V4 M8 20v-6h8v6',
   pause:'M6 4h3v16H6z M15 4h3v16h-3z', close:'M5 5l14 14 M19 5L5 19',
-  touch:'M7 12l2 2V6a1.5 1.5 0 0 1 3 0v6-2a1.5 1.5 0 0 1 3 0v2a1.5 1.5 0 0 1 3 0l2 1v3l-3 5h-6l-5-7z'
+  touch:'M7 12l2 2V6a1.5 1.5 0 0 1 3 0v6-2a1.5 1.5 0 0 1 3 0v2a1.5 1.5 0 0 1 3 0l2 1v3l-3 5h-6l-5-7z',
+  expand:'M4 9V4h5 M20 9V4h-5 M4 15v5h5 M20 15v5h-5',
+  compress:'M9 4v5H4 M15 4v5h5 M9 20v-5H4 M15 20v-5h5'
 };
 function inkIcon(canvas, name) {
   canvas.dataset.icon = name;
@@ -389,6 +391,51 @@ function showReport(win,withdrawn) {
   updateLoadout();
   byId('btnRetry').focus({preventScroll:true});
 }
+/* ── 全屏 ──
+   Android / 桌面 Chrome 走标准 API；iPhone Safari 不支持页面全屏，直接隐藏入口。
+   进入全屏时顺带尝试锁定横屏，失败不影响游戏。 */
+function fullscreenSupported() {
+  const root = document.documentElement;
+  return !!(document.fullscreenEnabled || document.webkitFullscreenEnabled ||
+    root.requestFullscreen || root.webkitRequestFullscreen);
+}
+function isFullscreen() {
+  return !!(document.fullscreenElement || document.webkitFullscreenElement);
+}
+function syncFullscreen() {
+  const on = isFullscreen();
+  document.querySelectorAll('.fullscreen-toggle').forEach(button => {
+    const label = on ? '退出全屏' : '进入全屏';
+    button.setAttribute('aria-label', label);
+    button.title = label;
+    const icon = button.querySelector('canvas');
+    if (icon) inkIcon(icon, on ? 'compress' : 'expand');
+  });
+  const toggle = byId('settingFullscreen');
+  if (toggle) syncSwitch(toggle, on, '全屏显示');
+}
+async function toggleFullscreen() {
+  if (!fullscreenSupported()) {
+    banner('当前浏览器不支持全屏', 'iPhone 可「添加到主屏幕」后从桌面启动', 2.2);
+    return;
+  }
+  try {
+    if (isFullscreen()) {
+      if (document.exitFullscreen) await document.exitFullscreen();
+      else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+    } else {
+      const root = document.documentElement;
+      await (root.requestFullscreen ? root.requestFullscreen({ navigationUI: 'hide' }) : root.webkitRequestFullscreen());
+      try { await screen.orientation?.lock?.('landscape'); } catch (e) { /* 桌面浏览器不支持锁定 */ }
+    }
+  } catch (e) {
+    banner('全屏被浏览器拒绝', '再点一次，或检查站点的全屏权限', 2.2);
+  }
+  syncFullscreen();
+}
+document.addEventListener('fullscreenchange', syncFullscreen);
+document.addEventListener('webkitfullscreenchange', syncFullscreen);
+
 function wireTerminal() {
   document.querySelectorAll('canvas[data-icon]').forEach(c => inkIcon(c,c.dataset.icon));
   byId('btnStart').onclick = () => startGame();
@@ -421,6 +468,10 @@ function wireTerminal() {
   byId('weaponAction').onclick = weaponSkill;
   document.querySelectorAll('[data-bag]').forEach(b => b.onclick = () => useItem(Number(b.dataset.bag)));
   for(const id of ['btnSound','btnMute','settingSound']) byId(id).onclick = toggleSound;
+  for(const id of ['btnFullscreen','btnFullscreenCombat','settingFullscreen']) {
+    const button = byId(id);
+    if(button) button.onclick = toggleFullscreen;
+  }
   for(const id of ['openSettings','pauseSettings']) byId(id).onclick = () => byId('settingsDialog').showModal();
   wireManual();
   document.querySelectorAll('.dialog-close').forEach(b => b.onclick = () => b.closest('dialog').close());
@@ -442,6 +493,11 @@ function wireTerminal() {
     byId('routeList').append(line);
   });
   if(G.touch) byId('titleHint').textContent = '左侧拖动移动 · 右侧点按技能';
+  if(!fullscreenSupported()) {
+    document.querySelectorAll('.fullscreen-toggle').forEach(button => { button.hidden = true; });
+    byId('settingFullscreen')?.closest('.setting-row')?.setAttribute('hidden','');
+  }
+  syncFullscreen();
   updateQLabel();
   syncSound();
   syncSwitch(byId('settingMotion'),!reducedEffects,'镜头震动与强闪光');
@@ -506,13 +562,37 @@ function paintInstruments(force) {
     G.phase === 'boss' ? '首领接近' : '敌潮 ' + pad2(G.wave) + ' / ' + (tower ? TOWER.waves : WAVES_PER_STAGE));
   putText(instrument('waveDetail'),boss ? '阶段 ' + boss.phase + ' / ' + BOSS_PHASES[boss.kind].phases.length : G.phase === 'wave' ? Math.max(0,Math.ceil(G.waveT)) + 's' : '');
   meterFill('waveFill',boss ? boss.hp/boss.maxHp : G.phase === 'wave' ? G.waveT/G.waveDur : 1);
+  /* 地下箱庭：波次面板改为房间进度，普通敌潮计数暂时让位 */
+  const dungeon = typeof FieldMaps.dungeonInfo==='function' ? FieldMaps.dungeonInfo() : null;
+  if(dungeon?.active){
+    putText(instrument('waveName'),dungeon.title || ('箱庭 ' + dungeon.room + ' / ' + dungeon.total));
+    putText(instrument('waveDetail'),dungeon.hint || '');
+    meterFill('waveFill',dungeon.total ? dungeon.room / dungeon.total : 0);
+  }
+  const hazardLine = instrument('hudHazard');
+  const hazardText = [
+    typeof SectorClimate.stormStatus==='function' ? SectorClimate.stormStatus() : '',
+    typeof SectorClimate.facilityStatus==='function' ? SectorClimate.facilityStatus() : '',
+    typeof SectorClimate.supportStatus==='function' ? SectorClimate.supportStatus() : ''
+  ].filter(Boolean).join(' · ');
+  putText(hazardLine,hazardText);
+  hazardLine.hidden = !hazardText;
   const command=ThreatPacing.commander();
   const pressure=instrument('wavePressure'), threat=instrument('threatHealth');
+  const waveType = tower ? null : WaveTypes.at();
+  const typeTag = waveType && waveType.id !== 'standard' ? waveType.name : '';
   const phaseText = tower ? (G.phase==='wave' ? TOWER.rule().name + '　' : '') + TOWER.paceLabel() :
-    G.phase==='wave' ? ThreatPacing.at().label : '';
+    G.phase==='wave' ? [ThreatPacing.at().label,typeTag].filter(Boolean).join(' · ') : '';
   pressure.hidden=!phaseText;
   putText(pressure,command?.spec && !command.down ? command.spec.name+(command.body?'':'接近') : phaseText);
+  if(waveType && waveType.hint) pressure.title = waveType.name + ' · ' + waveType.hint;
+  else pressure.removeAttribute('title');
+  const threatLine = instrument('hudThreat');
+  const threatText = G.phase === 'wave' ? AdaptiveDirector.hudText() : '';
+  putText(threatLine,threatText);
+  threatLine.hidden = !threatText;
   threat.hidden=!command?.body || command.down;
+  if(dungeon?.active){ pressure.hidden = threatLine.hidden = threat.hidden = true; }
   if(!threat.hidden){
     const body=command.body;
     meterFill('threatFill',(body.hp+body.plate)/(body.maxHp+body.maxPlate));
