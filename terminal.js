@@ -402,6 +402,15 @@ let deferredInstallPrompt = null;
 function isStandaloneMode(){
   return !!(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
 }
+function paintBuildTag(){
+  const tag = byId('buildTag');
+  if(!tag) return;
+  tag.textContent = '界面版本 20261121b · 视口 ' + innerWidth + '×' + innerHeight +
+    ' · DPR ' + (window.devicePixelRatio || 1).toFixed(1);
+}
+window.addEventListener('resize', paintBuildTag);
+window.addEventListener('orientationchange', paintBuildTag);
+if(window.visualViewport) window.visualViewport.addEventListener('resize', paintBuildTag);
 function fullscreenSupported() {
   const root = document.documentElement;
   return !!(document.fullscreenEnabled || document.webkitFullscreenEnabled ||
@@ -561,6 +570,7 @@ function wireTerminal() {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
   syncFullscreen();
+  paintBuildTag();
   updateQLabel();
   syncSound();
   syncSwitch(byId('settingMotion'),!reducedEffects,'镜头震动与强闪光');
