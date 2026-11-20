@@ -1,15 +1,15 @@
 'use strict';
 
 const HEX_EXPANSION = (() => {
-  const cadence={every:3,power:1.65};
-  const follow={rounds:2,seconds:3,power:1.45};
+  const cadence={every:3,power:1.55};
+  const follow={rounds:2,seconds:3,power:1.38};
   const longSight=Object.freeze({range:180,bonus:.18});
   const relay={interval:5,power:1.34};
   const march={meters:155,energy:7,refund:.85};
   const stride={meters:205,rounds:2,pierce:3};
-  const hunter={interval:2.4,seconds:2,speed:1.35,rate:1.28};
-  const hive={interval:2.2,rounds:3,power:1.42};
-  const exit={refund:.50,rounds:5,power:1.58,seconds:5,lockedRounds:3,lockedPower:1.40,interval:4};
+  const hunter={interval:2.4,seconds:2,speed:1.28,rate:1.24};
+  const hive={interval:2.2,rounds:3,power:1.36};
+  const exit={refund:.50,rounds:5,power:1.48,seconds:5,lockedRounds:3,lockedPower:1.34,interval:4};
   const cards={
     frostCoat:{tier:'silver',n:'凝霜底剂',ic:'❄',tags:['control','fire'],
       d:'弹丸附加一级冻结效果，普攻弹速 +8%。',apply:s=>{s.freeze++;s.bspdMul*=1.08;}},
@@ -28,9 +28,9 @@ const HEX_EXPANSION = (() => {
       d:'每次变身延长 2 秒，环绕机炮及哨戒炮开火间隔 -8%。',apply:s=>{s.mechDuration+=2;s.deployCooldown*=.92;}},
 
     tripleCadence:{tier:'gold',n:'三拍增幅',ic:'≋',tags:['fire'],
-      d:'每第三次普攻的一枚主弹伤害 +65%。刺刀、技能和机甲射击不计入。'},
+      d:'每第三次普攻的一枚主弹伤害 +55%。刺刀、技能和机甲射击不计入。'},
     followThrough:{tier:'gold',n:'起手连拍',ic:'➤',tags:['skill','fire'],
-      d:'施放 Q/E 后，3 秒内前两次普攻各有一枚主弹伤害 +45%。重复施放重新计时，弹数不叠。'},
+      d:'施放 Q/E 后，3 秒内前两次普攻各有一枚主弹伤害 +38%。重复施放重新计时，弹数不叠。'},
     staticPierce:{tier:'gold',n:'贯击响雷',ic:'⌁',tags:['pierce','control'],
       d:'每次普攻的一枚主弹从第二个命中目标开始，生效时眩晕该目标 0.72 秒。共用 1 秒间隔。'},
     thermalClamp:{tier:'gold',n:'寒焰阀',ic:'❄',tags:['burn','control'],
@@ -45,19 +45,19 @@ const HEX_EXPANSION = (() => {
       enter:()=>{G.shield++;}},
 
     supercritical:{tier:'prism',n:'炽霜临界',ic:'✷',tags:['burn','control'],
-      d:'弹丸附加一级灼烧及冻结。每次普攻的一枚主弹命中已灼烧且减速的敌人后，向 90 范围内最多 3 名其他敌人各造成 24 基础伤害。间隔 1.4 秒。',
+      d:'弹丸附加一级灼烧及冻结。每次普攻的一枚主弹命中已灼烧且减速的敌人后，向 90 范围内最多 3 名其他敌人各造成 20 基础伤害。间隔 1.4 秒。',
       apply:s=>{s.burn++;s.freeze++;}},
     phaseStride:{tier:'prism',n:'游弋贯星',ic:'⤢',tags:['mobility','pierce'],
       d:'移动速度 +12%。驾驶员每走 205 距离，补满下一至两次普攻的主弹贯穿充能，每发穿透 +3。',
       apply:s=>{s.spdMul*=1.12;}},
     pursuitCrit:{tier:'prism',n:'追光猎手',ic:'✧',tags:['crit','mobility','fire'],
-      d:'普攻主弹造成有效暴击时，移动速度 +35%、普攻射速 +28%，持续 2 秒。间隔 2.4 秒。'},
+      d:'普攻主弹造成有效暴击时，移动速度 +28%、普攻射速 +24%，持续 2 秒。间隔 2.4 秒。'},
     siegeHive:{tier:'prism',n:'蜂群齐射',ic:'◉',tags:['summon','fire'],
-      d:'增加 1 台环绕机炮。机炮或哨戒炮的直接弹丸造成有效伤害时，补满下一至三次普攻主弹的火力，每发伤害 +42%。间隔 2.2 秒。',
+      d:'增加 1 台环绕机炮。机炮或哨戒炮的直接弹丸造成有效伤害时，补满下一至三次普攻主弹的火力，每发伤害 +36%。间隔 2.2 秒。',
       apply:s=>{s.drone++;}},
     ejectSalvo:{tier:'prism',n:'退场超载',ic:'ϟ',tags:['mech','skill','fire'],
-      d:'机甲自然退场时退还 Q/E 各自剩余冷却的一半，随后 5 秒内前 5 次普攻各有一枚主弹伤害 +58%。',
-      risk:'机甲锁定时，改为施放 Q/E 后 5 秒内前 3 次主弹伤害 +40%，间隔 4 秒。'},
+      d:'机甲自然退场时退还 Q/E 各自剩余冷却的一半，随后 5 秒内前 5 次普攻各有一枚主弹伤害 +48%。',
+      risk:'机甲锁定时，改为施放 Q/E 后 5 秒内前 3 次主弹伤害 +34%，间隔 4 秒。'},
     wardPulse:{tier:'prism',n:'逆序护航',ic:'⬢',tags:['guard','control'],
       d:'立即补足 2 层护盾。最后一层盾被击破时，145 范围内最多 3 名敌人各受 28 基础伤害，减速 65% 持续 2.4 秒。间隔 7 秒。',
       enter:()=>{G.shield=Math.max(G.shield,2);}},
@@ -178,7 +178,7 @@ const HEX_EXPANSION = (() => {
     if(opt.pierceIndex>0 && has('staticPierce') && ready('staticPierce',1)) target.stun=Math.max(target.stun||0,.72);
     if(burning && has('thermalClamp')) chill(target,.39,1.6);
     if(burning && frozen && has('supercritical') && ready('supercritical',1.4))
-      pulse(target.x,target.y,90,24,'#debaff',target);
+      pulse(target.x,target.y,90,20,'#debaff',target);
   }
 
   function companionShot(unit){

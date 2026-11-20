@@ -207,7 +207,7 @@ function mechPulse(echo){
 function useMechSkill(){
   if(!canUseMechSkill()) return false;
   const mech = currentMech(), p = G.p;
-  G.mechCd = mech.skill.cooldown;
+  G.mechCd = mech.skill.cooldown * (G.st.mechSkillCooldown ?? 1);
   HEXES.onMechSkill();
   p.atkT = .2;
   if(mech.id === 'heavy'){

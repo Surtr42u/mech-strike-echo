@@ -1,41 +1,81 @@
 /* The lift changes the active floor. Both layouts share one combat clock and enemy budget. */
 const FieldMaps = (() => {
   const source = {
-    lift:{x:618,y:398}, breaker:{x:522,y:348}, core:{x:400,y:86}, relay:{x:100,y:110}
+    lift:{x:618,y:398}, breaker:{x:522,y:348}, core:{x:190,y:150}, relay:{x:890,y:550}
   };
-  /* 落日废土 B1：入口厅 → 泵房 → 排风配电室。折返走廊 + 掩体，不是规整九宫格。 */
+  /* 落日废土 B1：卸料厅 → 泵房 → 冷却塔 → 仓储环廊 → 排风配电室。
+     五间厅室占满四象限，走廊带折角与掩体，不是规整九宫格。墙体统一 16px。 */
   const dungeonWalls = [
-    /* 入口厅（升降机所在） */
-    {x:486,y:640,w:330,h:16}, {x:800,y:300,w:16,h:356}, {x:484,y:300,w:16,h:356},
-    {x:484,y:284,w:116,h:16}, {x:672,y:284,w:144,h:16},
-    {x:536,y:520,w:92,h:18}, {x:736,y:446,w:18,h:92}, {x:676,y:590,w:86,h:16},
-    /* 泵房 */
-    {x:344,y:44,w:376,h:16}, {x:344,y:44,w:16,h:68}, {x:344,y:168,w:16,h:48},
-    {x:704,y:44,w:16,h:172}, {x:344,y:200,w:256,h:16}, {x:672,y:200,w:48,h:16},
-    {x:470,y:132,w:82,h:16}, {x:600,y:86,w:16,h:62}, {x:610,y:150,w:58,h:16},
-    /* 排风配电室（小 Boss 房） */
-    {x:44,y:44,w:272,h:16}, {x:44,y:44,w:16,h:312}, {x:44,y:340,w:272,h:16},
-    {x:300,y:44,w:16,h:52}, {x:300,y:184,w:16,h:172},
-    {x:150,y:78,w:22,h:58}, {x:86,y:250,w:96,h:18}, {x:250,y:230,w:18,h:70},
-    /* 两条联络走廊 */
-    {x:584,y:200,w:16,h:84}, {x:672,y:200,w:16,h:84},
-    {x:300,y:96,w:44,h:16}, {x:300,y:168,w:44,h:16}
+    /* 0 卸料厅（升降机所在，中下偏右） */
+    {x:354,y:250,w:332,h:16}, {x:354,y:536,w:332,h:16},
+    {x:354,y:266,w:16,h:270}, {x:670,y:266,w:16,h:60}, {x:670,y:406,w:16,h:130},
+    {x:430,y:360,w:80,h:18}, {x:560,y:460,w:18,h:60}, {x:440,y:460,w:60,h:18},
+    {x:480,y:300,w:22,h:22}, {x:640,y:500,w:22,h:22},
+    /* 1 泵房（右上） */
+    {x:684,y:24,w:332,h:16}, {x:684,y:270,w:216,h:16}, {x:980,y:270,w:36,h:16},
+    {x:684,y:40,w:16,h:130}, {x:684,y:250,w:16,h:20}, {x:1000,y:40,w:16,h:230},
+    {x:760,y:120,w:80,h:16}, {x:860,y:170,w:16,h:60}, {x:740,y:200,w:60,h:16},
+    {x:920,y:80,w:20,h:20},
+    /* 2 冷却塔（左上） */
+    {x:24,y:24,w:332,h:16}, {x:24,y:270,w:96,h:16}, {x:200,y:270,w:156,h:16},
+    {x:24,y:40,w:16,h:230}, {x:340,y:40,w:16,h:40}, {x:340,y:160,w:16,h:110},
+    {x:100,y:110,w:70,h:16}, {x:240,y:160,w:16,h:60}, {x:90,y:200,w:60,h:16},
+    {x:280,y:70,w:20,h:20},
+    /* 3 仓储环廊（左下） */
+    {x:24,y:434,w:216,h:16}, {x:320,y:434,w:36,h:16}, {x:24,y:680,w:332,h:16},
+    {x:24,y:450,w:16,h:230}, {x:340,y:450,w:16,h:150},
+    {x:110,y:530,w:90,h:16}, {x:120,y:620,w:16,h:40}, {x:260,y:560,w:16,h:60},
+    {x:150,y:470,w:80,h:16},
+    /* 4 排风配电室（小 Boss 房，右下） */
+    {x:684,y:424,w:332,h:16}, {x:684,y:700,w:332,h:16},
+    {x:684,y:440,w:16,h:112}, {x:684,y:632,w:16,h:68}, {x:1000,y:440,w:16,h:260},
+    {x:760,y:500,w:80,h:18}, {x:880,y:600,w:18,h:60}, {x:760,y:620,w:60,h:16},
+    {x:928,y:470,w:18,h:50},
+    /* 0→1 东侧折返走廊 */
+    {x:686,y:310,w:214,h:16}, {x:686,y:406,w:294,h:16},
+    {x:884,y:286,w:16,h:24}, {x:980,y:286,w:16,h:120},
+    /* 1→2 顶部 Z 形走廊 */
+    {x:356,y:64,w:180,h:16}, {x:424,y:160,w:16,h:90}, {x:520,y:64,w:16,h:106},
+    {x:356,y:160,w:68,h:16}, {x:520,y:154,w:164,h:16},
+    /* 2→3 左侧折返走廊 */
+    {x:104,y:286,w:16,h:80}, {x:104,y:366,w:136,h:16}, {x:320,y:286,w:16,h:80},
+    {x:224,y:382,w:16,h:52}, {x:320,y:366,w:16,h:68},
+    /* 3→4 底部折返走廊 */
+    {x:356,y:584,w:64,h:16}, {x:356,y:680,w:144,h:16},
+    {x:404,y:552,w:16,h:48}, {x:500,y:632,w:16,h:48}, {x:516,y:632,w:168,h:16}
   ];
   const doorLayout = [
-    {x:600,y:284,w:72,h:16,axis:'h'},
-    {x:344,y:112,w:16,h:56,axis:'v'}
+    {x:670,y:326,w:16,h:80,axis:'v'},
+    {x:684,y:170,w:16,h:80,axis:'v'},
+    {x:120,y:270,w:80,h:16,axis:'h'},
+    {x:340,y:600,w:16,h:80,axis:'v'}
   ];
   const dungeonRooms = [
-    {name:'卸料厅', bounds:{x:500,y:300,w:300,h:340}, count:12, elites:1,
-      spawns:[[530,340],[750,340],[770,450],[740,570],[620,590],[520,560],[530,460],
-        [680,320],[510,570],[720,500],[760,410],[520,390]],
+    {name:'卸料厅', bounds:{x:370,y:266,w:300,h:270}, count:16, elites:1,
+      spawns:[[400,300],[450,320],[520,300],[580,300],[620,300],[650,340],
+        [400,420],[400,500],[450,500],[520,500],[600,510],[650,480],
+        [400,350],[520,400],[600,440],[480,510],[440,320],[560,330]],
       kinds:['burrower','runner','gunner','shellback']},
-    {name:'泵房', bounds:{x:360,y:60,w:344,h:140}, count:14, elites:2,
-      spawns:[[420,72],[470,90],[560,80],[660,80],[690,120],[680,180],[620,170],
-        [540,180],[440,180],[380,110],[390,170],[500,110],[580,110],[650,140]],
+    {name:'泵房', bounds:{x:700,y:40,w:300,h:230}, count:18, elites:2,
+      spawns:[[720,70],[780,70],[840,70],[900,60],[960,60],
+        [720,140],[780,160],[820,180],[900,140],[960,130],
+        [720,230],[780,240],[840,220],[900,250],[960,230],
+        [820,100],[910,200],[940,180]],
       kinds:['burrower','runner','tank','gunner','caster','shellback']},
-    {name:'排风配电室', bounds:{x:60,y:60,w:240,h:280}, count:1, elites:1,
-      spawns:[[210,260]], kinds:['bastion'], boss:true}
+    {name:'冷却塔', bounds:{x:40,y:40,w:300,h:230}, count:20, elites:2,
+      spawns:[[60,60],[120,60],[180,60],[240,60],[320,60],
+        [60,140],[60,170],[200,110],[220,120],[300,140],
+        [60,240],[120,240],[180,220],[210,250],[300,230],
+        [320,180],[200,180],[130,160],[250,100],[310,120]],
+      kinds:['burrower','runner','tank','gunner','caster','shellback']},
+    {name:'仓储环廊', bounds:{x:40,y:450,w:300,h:230}, count:18, elites:2,
+      spawns:[[60,480],[100,480],[250,480],[300,480],
+        [60,560],[80,620],[200,580],[300,540],
+        [60,660],[100,660],[180,640],[220,660],[310,660],
+        [240,510],[140,580],[300,620],[60,530],[230,540]],
+      kinds:['burrower','runner','tank','gunner','caster','shellback']},
+    {name:'排风配电室', bounds:{x:700,y:440,w:300,h:260}, count:1, elites:1,
+      spawns:[[850,590]], kinds:['bastion'], boss:true}
   ];
   const step = 32;
   let lift, breaker, core, relay, lowerLift, liner, bridgeValve, rails, doors, roomRects, cols, rows;
@@ -43,6 +83,16 @@ const FieldMaps = (() => {
   const rectAt = r => ({x:r.x*ARENA.w/1040, y:r.y*ARENA.h/720,
     w:r.w*ARENA.w/1040, h:r.h*ARENA.h/720});
   const inRect = (r,x,y,pad=0) => x>r.x-pad && x<r.x+r.w+pad && y>r.y-pad && y<r.y+r.h+pad;
+  /* 房间数量全部从 dungeonRooms 推导：最后一间固定是 Boss 厅。 */
+  const bossIndex = () => dungeonRooms.length - 1;
+  const coreRoom = dungeonRooms.findIndex(room => inRect(room.bounds,source.core.x,source.core.y));
+  const dungeonState = () => ({
+    started:false,room:0,phase:'fight',
+    spawned:dungeonRooms.map(()=>false),
+    cleared:dungeonRooms.map(()=>false),
+    marks:dungeonRooms.map(()=>[]),
+    boss:null,bossDown:false,liftHintT:0,t:0
+  });
   const offsets = [[1,0],[-1,0],[0,1],[0,-1]];
   const images = {};
   let field = null;
@@ -73,8 +123,7 @@ const FieldMaps = (() => {
     field = stage === 0 || mine ? {
       mine,inside:false,power:false,vent:false,surface:null,tunnel:null,nav:null,target:-1,liftReady:0,
       bridge:false, bridgeT:-9, cliff:null, bridgeRect:null,
-      dungeon: mine ? null : {started:false,room:0,phase:'fight',spawned:[false,false,false],
-        cleared:[false,false,false],marks:[[],[],[]],boss:null,bossDown:false,liftHintT:0,t:0}
+      dungeon: mine ? null : dungeonState()
     } : null;
     if(field){
       const stations = mine ? MineFloor.stations : source;
@@ -133,7 +182,7 @@ const FieldMaps = (() => {
       const {pads,track} = MineFloor.bake(g,m,rails,point);
       return {ground:floor,marks,props:[],pads,anchors:[],track};
     }
-    /* 三间厅室的底板：磨损钢板 + 接缝，和走廊连成折返动线 */
+    /* 五间厅室的底板：磨损钢板 + 接缝，和走廊连成折返动线 */
     for(const room of dungeonRooms){
       const p = point(room.bounds.x,room.bounds.y), size = point(room.bounds.w,room.bounds.h);
       g.fillStyle = '#1d3036'; g.fillRect(p.x,p.y,size.x,size.y);
@@ -152,17 +201,22 @@ const FieldMaps = (() => {
       if(w>h) for(let i=8;i<w-7;i+=26) g.fillRect(x+i,y-1,9,3);
       else for(let i=8;i<h-7;i+=26) g.fillRect(x+3,y+i,3,9);
     }
-    /* 磨损黄线：升降机 → 1 号门 → 泵房核心 → 2 号门 → 排风台 */
+    /* 磨损黄线：升降机 → 各门洞 → 各厅室中心 → 排风配电台 */
+    const guide = [
+      [618,398],[678,366],[940,366],[940,300],[850,155],
+      [692,210],[480,210],[480,120],[360,120],[190,155],
+      [160,240],[160,320],[280,320],[280,445],[190,565],
+      [300,640],[348,640],[460,640],[460,590],[690,590],[850,570],[890,550]
+    ];
     m.strokeStyle='#c2a15eaa'; m.lineWidth=3; m.setLineDash([12,11]);
-    m.beginPath(); m.moveTo(lift.x,lift.y);
-    for(const [x,y] of [[636,360],[636,220],[600,170],[470,170],[400,130],[352,140],[250,140],[100,110]]){
-      const p=point(x,y); m.lineTo(p.x,p.y);
-    }
+    m.beginPath();
+    guide.forEach(([x,y],i)=>{
+      const p=point(x,y);
+      if(i) m.lineTo(p.x,p.y); else m.moveTo(p.x,p.y);
+    });
     m.stroke();
-    m.beginPath(); m.moveTo(point(470,170).x,point(470,170).y);
-    m.lineTo(core.x,core.y); m.stroke();
     m.setLineDash([]);
-    const pads = [point(530,560),point(690,160),point(190,290)];
+    const pads = [point(500,340),point(930,240),point(290,240),point(90,470),point(820,470)];
     return {ground:floor,marks,props:[],pads,anchors:[]};
   }
 
@@ -182,7 +236,7 @@ const FieldMaps = (() => {
     G.enemies.length = 0;
     G.eb.length = 0;
     if(field.vent){
-      d.spawned = [true,true,true]; d.cleared = [true,true,true];
+      d.spawned.fill(true); d.cleared.fill(true);
       d.bossDown = true; d.phase = 'done';
       for(const door of doors) door.open = true;
     } else {
@@ -243,17 +297,17 @@ const FieldMaps = (() => {
     return field.inside || (field.dungeon.started && !field.vent);
   }
   function dungeonInfo(){
-    const total = 3;
+    const total = dungeonRooms.length, last = bossIndex();
     if(!field || field.mine || !field.dungeon)
       return {active:false,room:0,total,phase:'done',title:'',hint:''};
     const d = field.dungeon, active = dungeonActive();
-    const phase = field.vent ? 'done' : d.bossDown ? 'vent' : d.room >= 2 ? 'boss' : 'fight';
-    const idx = Math.min(2,d.room);
+    const phase = field.vent ? 'done' : d.bossDown ? 'vent' : d.room >= last ? 'boss' : 'fight';
+    const idx = Math.min(last,d.room);
     const room = d.started ? idx + 1 : 0;
     let title = '箱庭 · 待进入';
     let hint = '合上电闸，乘升降机下井';
     if(d.started){
-      title = phase === 'done' ? '箱庭已肃清' : '箱庭 ' + (idx+1) + ' / 3 · ' + dungeonRooms[idx].name;
+      title = phase === 'done' ? '箱庭已肃清' : '箱庭 ' + (idx+1) + ' / ' + total + ' · ' + dungeonRooms[idx].name;
       if(phase === 'done') hint = field.vent ? '乘升降机返回地表' : '排风配电台已启动';
       else if(phase === 'vent') hint = '小 Boss 已击破 · 启动排风配电台';
       else if(phase === 'boss') hint = '击破排风守卫（高血量精英）';
@@ -441,11 +495,11 @@ const FieldMaps = (() => {
       d.marks[i].push(e);
       made++;
     }
-    if(made){ d.spawned[i]=true; d.phase=i>=2?'boss':'fight'; return true; }
+    if(made){ d.spawned[i]=true; d.phase=i>=bossIndex()?'boss':'fight'; return true; }
     return false;
   }
   function spawnBossRoom(){
-    const d=field.dungeon, spec=roomRects[2];
+    const d=field.dungeon, last=bossIndex(), spec=roomRects[last];
     const cap=typeof ENEMY_CAP==='number'?ENEMY_CAP:96;
     if(G.enemies.length>=cap-2) return false;
     const base=spec.spawns[0], origin=safePoint(base.x,base.y,32);
@@ -454,9 +508,9 @@ const FieldMaps = (() => {
       commander:{name:'排风守卫 · 锈锚',hint:'重装指挥官 · 击破后解锁排风配电台',col:'#ffc887'}
     });
     if(!e) return false;
-    e.dungeonRoom=2; e.dungeonBoss=true;
-    d.boss=e; d.spawned[2]=true; d.phase='boss';
-    d.marks[2].push(e);
+    e.dungeonRoom=last; e.dungeonBoss=true;
+    d.boss=e; d.spawned[last]=true; d.phase='boss';
+    d.marks[last].push(e);
     banner('排风守卫 · 锈锚','高血量精英指挥官 · 击破后解锁排风配电台',1.8);
     return true;
   }
@@ -482,27 +536,28 @@ const FieldMaps = (() => {
       return;
     }
     if(!d.started) return;
+    const last=bossIndex();
     /* 只在玩家真正踏进下一间厅室时推进；已清理的房间不会回退 */
     const here=roomRects.findIndex(r=>inRect(r.bounds,G.p.x,G.p.y));
     if(here>d.room && d.cleared.slice(0,here).every(Boolean)) d.room=here;
     if(!d.spawned[d.room] && !d.cleared[d.room]){
-      if(d.room>=2) spawnBossRoom(); else spawnRoom(d.room);
+      if(d.room>=last) spawnBossRoom(); else spawnRoom(d.room);
     }
-    /* 战斗房清空只统计本房间刷出的敌人 */
-    for(let i=0;i<2;i++){
+    /* 战斗房清空只统计本房间刷出的敌人；清空一间开一道门 */
+    for(let i=0;i<last;i++){
       if(!d.spawned[i] || d.cleared[i] || i>d.room) continue;
       if(roomAlive(i)) continue;
       d.cleared[i]=true;
-      if(i===0) openDoor(0,'箱庭 1 肃清 · 通道开启','卸料厅已肃清，通往泵房的门已开启');
-      else openDoor(1,'箱庭 2 肃清 · 通道开启','泵房已肃清，通往排风配电室的门已开启');
+      openDoor(i,'箱庭 '+(i+1)+' 肃清 · 通道开启',
+        dungeonRooms[i].name+'已肃清，通往'+dungeonRooms[i+1].name+'的门已开启');
     }
     /* 小 Boss 击破 → 排风台解除封锁 */
-    if(d.spawned[2] && !d.bossDown){
+    if(d.spawned[last] && !d.bossDown){
       const b=d.boss;
       if(!b || b.dead || G.enemies.indexOf(b)<0){
-        d.bossDown=true; d.cleared[2]=true; d.phase='vent';
+        d.bossDown=true; d.cleared[last]=true; d.phase='vent';
         d.liftHintT=Math.max(d.liftHintT,G.t+5);
-        G.rings.push({x:b?.x??roomCenter(2).x,y:b?.y??roomCenter(2).y,
+        G.rings.push({x:b?.x??roomCenter(last).x,y:b?.y??roomCenter(last).y,
           r:8,max:170,life:.7,maxLife:.7,col:'#ffc887',w:2.4});
         banner('排风守卫已击破','排风配电台解锁 · 启动排风',1.55);
         CampaignStory.transmit('小 Boss 已击破，排风配电台解除封锁。');
@@ -556,7 +611,7 @@ const FieldMaps = (() => {
     } else if(use.action==='vent') {
       field.vent=true; G.buff.stasis=Math.max(G.buff.stasis,5);
       if(field.dungeon){
-        field.dungeon.phase='done'; field.dungeon.cleared[2]=true;
+        field.dungeon.phase='done'; field.dungeon.cleared[bossIndex()]=true;
         for(const door of doors) door.open=true;
         invalidateNav();
       }
@@ -567,7 +622,7 @@ const FieldMaps = (() => {
       setFloor(!field.inside);
       field.liftReady = G.t + .65;
       if(field.mine) banner(field.inside?'B1 · 冻晶矿井':'F1 · 冰封矿场',field.inside?'先开地热架桥阀，再过断崖':'已回到货轨层',1.1);
-      else banner(field.inside?'B1 · 地下箱庭':'F1 · 落日废土',field.inside?'清空三间厅室并启动排风':
+      else banner(field.inside?'B1 · 地下箱庭':'F1 · 落日废土',field.inside?'清空各厅室并启动排风':
           field.vent?'尘暴已停 · 查看灯标':'地表尘暴持续',1.1);
     }
     SFX.pick(); paintInstruments(true);
@@ -586,12 +641,12 @@ const FieldMaps = (() => {
   function dungeonObjective(){
     const d=field.dungeon;
     if(!d) return 'B1 · 沿黄线前进';
+    const total=dungeonRooms.length, last=bossIndex();
     if(field.vent) return 'B1 · 排风已启动 · 乘升降机返回地表';
     if(d.bossDown) return 'B1 · 排风配电台已解锁 · 启动排风';
-    if(d.room>=2) return 'B1 · 箱庭 3/3 · 击破排风守卫';
-    if(d.cleared[d.room]) return d.room===0?
-      'B1 · 通道开启 · 前往箱庭 2/3':'B1 · 通道开启 · 前往箱庭 3/3';
-    return 'B1 · 箱庭 '+(d.room+1)+'/3 · 肃清当前厅室';
+    if(d.room>=last) return 'B1 · 箱庭 '+total+'/'+total+' · 击破排风守卫';
+    if(d.cleared[d.room]) return 'B1 · 通道开启 · 前往箱庭 '+(d.room+2)+'/'+total;
+    return 'B1 · 箱庭 '+(d.room+1)+'/'+total+' · 肃清当前厅室';
   }
 
   function paintFieldHud() {
@@ -692,7 +747,7 @@ const FieldMaps = (() => {
     const d=field.dungeon;
     for(const door of doors) drawDoor(door);
     if(!d) return;
-    const b=roomRects[2]?.bounds;
+    const last=bossIndex(), b=roomRects[last]?.bounds;
     if(b){
       const alive=!d.bossDown;
       ctx.save();
@@ -708,7 +763,7 @@ const FieldMaps = (() => {
       ctx.fillText(label,SX(b.x+b.w/2),SY(b.y)-7);
       ctx.restore();
     }
-    if(d.started && !d.cleared[d.room] && d.room<2){
+    if(d.started && !d.cleared[d.room] && d.room<last){
       const r=roomRects[d.room].bounds;
       ctx.save();
       ctx.font='bold 9px sans-serif'; ctx.textAlign='left';
@@ -787,16 +842,16 @@ const FieldMaps = (() => {
 
   function dungeonTarget(){
     if(!field.inside) return CampaignStory.beacon() || (field.power?lift:breaker);
-    const d=field.dungeon;
+    const d=field.dungeon, last=bossIndex();
     if(field.vent) return lift;
     if(!d) return lift;
     if(d.bossDown) return relay;
-    if(d.room>=2){
+    if(d.room>=last){
       const b=d.boss;
-      return b && !b.dead ? b : roomCenter(2);
+      return b && !b.dead ? b : roomCenter(last);
     }
-    if(d.cleared[d.room]) return roomCenter(Math.min(2,d.room+1));
-    if(d.room===1 && !CampaignStory.coreBonus()) return core;
+    if(d.cleared[d.room]) return roomCenter(Math.min(last,d.room+1));
+    if(d.room===coreRoom && !CampaignStory.coreBonus()) return core;
     return roomCenter(d.room);
   }
 
@@ -887,7 +942,7 @@ const FieldMaps = (() => {
         g.stroke();
       } else {
         if(field.dungeon && !field.dungeon.bossDown){
-          const b=roomRects[2].bounds;
+          const b=roomRects[bossIndex()].bounds;
           g.fillStyle='#793f3655';g.fillRect(x(b.x),y(b.y),b.w*sx,b.h*sy);
         }
         for(const door of doors){
@@ -927,7 +982,7 @@ const FieldMaps = (() => {
         mark(relay,'#f2c96e',size,field.dungeon?.bossDown?'排风配电台 · 已解锁':'排风配电台');
         if(!CampaignStory.coreBonus()) mark(core,'#aaf0cf',size,'稳压核心');
         if(field.dungeon && !field.dungeon.bossDown){
-          mark(roomCenter(2),'#ff8573',size,'小 Boss 房');
+          mark(roomCenter(bossIndex()),'#ff8573',size,'小 Boss 房');
         }
       }
       else mark(breaker,'#f2c96e',size,'应急电闸');
