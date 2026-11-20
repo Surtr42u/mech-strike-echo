@@ -32,26 +32,59 @@ const StageEvents = (() => {
 
   /* ── 本局战场异常 ──
      进入战区时从池里抽一个，整区生效；同一局不重复。
-     效果全部挂在既有接口上：recalc / dropChance / G.haz / frostFactor。 */
+     效果全部挂在既有接口上：recalc / dropChance / G.haz / frostFactor。
+     tone 只用于抽取配平与 HUD 标记：负 = 纯负面，混 = 利弊并存，正 = 纯增益。
+     每个战役 5 区保证「正/混」与「负/混」各至少 2 个，且首区不出纯负面。 */
   const anomalies = {
-    magnet:{name:'磁暴',icon:'⌁',color:'#9fd8ff',short:'技能冷却 +12%',
+    magnet:{tone:'负',name:'磁暴',icon:'⌁',color:'#9fd8ff',short:'技能冷却 +12%',
       desc:'技能冷却 +12%，整区生效。',
       stats:s=>{ s.skillCooldown *= 1.12; }},
-    supply:{name:'补给信号',icon:'▤',color:'#a8f29a',short:'掉落率 +40%',
+    supply:{tone:'正',name:'补给信号',icon:'▤',color:'#a8f29a',short:'掉落率 +40%',
       desc:'道具掉落率 +40%，整区生效。',drop:1.4},
-    tremor:{name:'地脉震动',icon:'≋',color:'#ffb36b',short:'每 7s 落石',
+    tremor:{tone:'负',name:'地脉震动',icon:'≋',color:'#ffb36b',short:'每 7s 落石',
       desc:stage=>'每 7 秒 2 处落石预警，单次 '+(8+stage*2)+' 伤害，整区持续。'},
-    sand:{name:'沙暴',icon:'≈',color:'#e8c58a',short:'弹道散布 +35%',
+    sand:{tone:'负',name:'沙暴',icon:'≈',color:'#e8c58a',short:'弹道散布 +35%',
       desc:'能见度下降，弹道散布 +35%（远程更难命中），整区生效。',
       stats:s=>{ s.spreadMul *= 1.35; }},
-    void:{name:'虚空潮汐',icon:'◈',color:'#c9a0ff',short:'敌人移速 +10%',
-      desc:'敌人移速 +10%，整区生效。'},
-    wreck:{name:'装甲残骸',icon:'▣',color:'#c7c1b2',short:'掩体 ×6',
-      desc:'额外 6 处装甲残骸掩体，整区生效。'}
+    void:{tone:'负',name:'虚空潮汐',icon:'◈',color:'#c9a0ff',short:'敌人移速 +10%',
+      desc:'敌人移速 +10%，整区生效。',enemySpd:1.1},
+    wreck:{tone:'正',name:'装甲残骸',icon:'▣',color:'#c7c1b2',short:'掩体 ×6',
+      desc:'额外 6 处装甲残骸掩体，整区生效。'},
+    ionfog:{tone:'负',name:'离子雾',icon:'☁',color:'#b6e3ff',short:'射击 12% 哑火',
+      desc:'枪械射击有 12% 概率哑火，但道具掉落率 +15% 作为补偿，整区生效。',
+      miss:.12,drop:1.15},
+    quicksand:{tone:'负',name:'流沙带',icon:'⌛',color:'#e0b96a',short:'移速 -12%',
+      desc:'地面松软下陷，移动速度 -12%，整区生效。',
+      stats:s=>{ s.spdMul *= .88; }},
+    corrosion:{tone:'负',name:'酸蚀雨',icon:'☣',color:'#b7e56a',short:'护甲 -10% · 受伤 +5%',
+      desc:'酸雨腐蚀装甲：护甲减伤 -10%，受到伤害 +5%，整区生效。',
+      stats:s=>{ s.armor -= .10; s.dmgTaken += .05; }},
+    static:{tone:'混',name:'静电风暴',icon:'⚡',color:'#b9e6ff',short:'冷却 +15% · 开局护盾 +1',
+      desc:'技能冷却 +15%，但进入战区时获得 1 层护盾，整区生效。',
+      stats:s=>{ s.skillCooldown *= 1.15; },shield:1},
+    overclock:{tone:'混',name:'过载电网',icon:'⚙',color:'#ff9a5c',short:'射速 +18% · 受伤 +8%',
+      desc:'电网过载：射速 +18%，但受到伤害 +8%，整区生效。',
+      stats:s=>{ s.rateMul *= 1.18; s.dmgTaken += .08; }},
+    mirage:{tone:'混',name:'海市蜃楼',icon:'✧',color:'#ffc9f0',short:'散布 +30% · 暴击 +5%',
+      desc:'热浪扭曲弹道：弹道散布 +30%，暴击率 +5%，整区生效。',
+      stats:s=>{ s.spreadMul *= 1.30; s.crit += .05; }},
+    gravity:{tone:'混',name:'重力异常',icon:'◒',color:'#c7b7ff',short:'移速 -9% · 敌速 -6%',
+      desc:'重力场紊乱：移动速度 -9%，敌人移速 -6%，整区生效。',
+      stats:s=>{ s.spdMul *= .91; },enemySpd:.94},
+    lucky:{tone:'正',name:'幸运潮汐',icon:'❖',color:'#ffd76a',short:'掉落 +30% · 精英更肥',
+      desc:'道具掉落率 +30%，精英掉落率额外 +15%，整区生效。',
+      drop:1.3,eliteDrop:1.15},
+    blackout:{tone:'混',name:'断电区',icon:'◐',color:'#8f9bb3',short:'拾取 -30% · 掉落 +25%',
+      desc:'照明失效：拾取范围 -30%，但道具掉落率 +25%，整区生效。',
+      stats:s=>{ s.magnet *= .70; },drop:1.25}
   };
   const anomalyPool = Object.keys(anomalies);
+  const TONE_MARK = {负:'危险',混:'风险',正:'增益'};
+  const CAMPAIGN_SECTORS = 5;
+  const MIN_TONE = 2;                 // 正/混、负/混 各至少 2 个
   let scheduled = null, active = null;
   let anomaly = null, used = new Set(), lastAnomaly = '', quakeAt = 0, announcedStage = -1;
+  let posMix = 0, negMix = 0, shieldStage = -1;
 
   function plan(stage,rng=Math.random){
     const region=regions[stage];
@@ -64,16 +97,37 @@ const StageEvents = (() => {
   function reset(){
     scheduled=active=null;
     anomaly=null;used=new Set();lastAnomaly='';quakeAt=0;announcedStage=-1;
+    posMix=negMix=0;shieldStage=-1;
   }
 
   function hasStats(a){ return !!(a && a.stats); }
 
+  /* 抽取：不重复 + 不连区重复 + 首区不出纯负面 + 全局正负配平。
+     配平是贪心的：若剩余战区数已经不够补足某项下限，本区就必须抽对应倾向。
+     混合（混）同时计入正、负两侧，所以不会把池子逼死。 */
   function rollAnomaly(stage){
     let pool=anomalyPool.filter(key=>!used.has(key) && key!==lastAnomaly);
     if(!pool.length) pool=anomalyPool.filter(key=>!used.has(key));
-    if(!pool.length){ used.clear(); pool=anomalyPool.filter(key=>key!==lastAnomaly); }
+    if(!pool.length){ used.clear(); posMix=negMix=0; pool=anomalyPool.filter(key=>key!==lastAnomaly); }
+    if(stage===0){
+      const opener=pool.filter(key=>anomalies[key].tone!=='负');
+      if(opener.length) pool=opener;
+    }
+    const left=Math.max(0,CAMPAIGN_SECTORS-stage)-1;   // 本区之后还剩几区
+    const mustPos=Math.max(0,MIN_TONE-posMix)>left;
+    const mustNeg=Math.max(0,MIN_TONE-negMix)>left;
+    if(mustPos || mustNeg){
+      const fit=pool.filter(key=>{
+        const tone=anomalies[key].tone;
+        return (!mustPos || tone!=='负') && (!mustNeg || tone!=='正');
+      });
+      if(fit.length) pool=fit;
+    }
     const key=pool[Math.floor(Math.random()*pool.length)];
+    const tone=anomalies[key].tone;
     used.add(key);lastAnomaly=key;
+    if(tone!=='负') posMix++;
+    if(tone!=='正') negMix++;
     anomaly={...anomalies[key],key,stage};
     quakeAt=G.t+4.5;announcedStage=-1;
   }
@@ -85,6 +139,12 @@ const StageEvents = (() => {
     const had=hasStats(anomaly);
     rollAnomaly(stage);
     if(had || hasStats(anomaly)) recalc({fillNewCapacity:false});
+    /* 静电风暴：每区入场的一次性护盾（不走 stats，避免与护盾上限混淆）。 */
+    if(anomaly.shield && shieldStage!==stage){
+      shieldStage=stage;
+      G.shield=(G.shield||0)+anomaly.shield;
+      G.shieldFx=.5;
+    }
   }
 
   function anomalyDesc(a=anomaly){
@@ -124,7 +184,10 @@ const StageEvents = (() => {
     if(anomaly?.stats) anomaly.stats(s);
   }
 
-  function dropChance(elite){ return (elite ? .38 : .09)*(active?.drop || 1)*(anomaly?.drop || 1); }
+  function dropChance(elite){
+    return (elite ? .38*(anomaly?.eliteDrop || 1) : .09) *
+      (active?.drop || 1) * (anomaly?.drop || 1);
+  }
 
   function offer(spec){
     const id=spec.skill?.find(key=>(G.skills[key]||0)<SK[key].max);
@@ -179,6 +242,9 @@ const StageEvents = (() => {
     if(anomaly.key==='void' && G.boss && !G.boss.dead && !G.boss.voidTide){
       G.boss.spd*=1.1;G.boss.voidTide=true;   // 首领也吃虚空潮汐
     }
+    if(anomaly.key==='gravity' && G.boss && !G.boss.dead && !G.boss.gravTide){
+      G.boss.spd*=.94;G.boss.gravTide=true;   // 重力异常同样拖慢首领
+    }
     if(anomaly.key!=='tremor' || G.t<quakeAt) return;
     quakeAt=G.t+7;
     const dmg=8+G.stage*2;
@@ -208,7 +274,13 @@ const StageEvents = (() => {
 
   function anomalyStatus(){
     if(!anomaly || G.runMode==='tower') return '';
-    return anomaly.name+' · '+anomaly.short+' · '+remainingText();
+    return (TONE_MARK[anomaly.tone]||'异常')+' · '+anomaly.name+' · '+anomaly.short+' · '+remainingText();
+  }
+
+  /* 离子雾的哑火率；其他异常或塔模式返回 0。 */
+  function missChance(){
+    if(!anomaly || G.runMode==='tower') return 0;
+    return anomaly.miss || 0;
   }
 
   function eventStatus(){
@@ -224,7 +296,7 @@ const StageEvents = (() => {
     return [anomalyStatus(),eventStatus()].filter(Boolean).join(' · ');
   }
 
-  return {reset,begin,prepare,plan,check,tick,clear,skill,applyStats,dropChance,
+  return {reset,begin,prepare,plan,check,tick,clear,skill,applyStats,dropChance,missChance,
     status,eventStatus,anomalyStatus,anomalyDesc,anomalyInfo:()=>anomaly,
-    anomalyId:()=>anomaly?.key||'',enemySpeedMul:()=>anomaly?.key==='void'?1.1:1};
+    anomalyId:()=>anomaly?.key||'',enemySpeedMul:()=>anomaly?.enemySpd||1};
 })();

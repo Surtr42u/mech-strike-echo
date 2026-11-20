@@ -180,7 +180,8 @@ const TOWER = (function(){
     if(G.parts.length > particleLimit) G.parts.splice(0,G.parts.length-particleLimit);
   }
   function settle(){
-    const points = Math.min(1000,G.tower.cleared*50);
+    const base = Math.min(1000,G.tower.cleared*50);
+    const points = Math.round(base * (typeof PREPARATIONS!=='undefined' ? PREPARATIONS.settleMultiplier() : 1));
     PROF.pts += points;
     PROF.total += points;
     saveProf();

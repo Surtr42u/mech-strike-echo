@@ -164,25 +164,48 @@ const TALENTS = (function(){
     return eligible.some(id => !cards.some(card => card.id === id));
   }
 
+  function refreshState(){
+    const major = G._cards[0]?.kind === 'major';
+    const hexLeft = major ? (G.enhancements?.hexRefreshLeft ?? 0) : 0;
+    const hexMax = major ? (G.enhancements?.hexRefreshMax ?? 0) : 0;
+    const { refreshLeft, refreshMax } = G.preparations;
+    return { major, hexLeft, hexMax, refreshLeft, refreshMax,
+      left:hexLeft + refreshLeft, max:hexMax + refreshMax };
+  }
+
   function renderRefresh(){
     const button = byId('lvRefresh'), note = byId('lvRefreshNote');
-    const { refreshLeft, refreshMax } = G.preparations;
-    button.hidden = !refreshMax || !!G._swap;
+    const state = refreshState();
+    const { major, hexLeft, hexMax, refreshLeft, refreshMax } = state;
+    button.hidden = !state.max || !!G._swap;
     note.textContent = '';
     if(button.hidden) return;
     const alternative = hasAlternative(G._cards);
-    button.disabled = !refreshLeft || !alternative;
-    byId('lvRefreshLabel').textContent = '刷新选项 ' + refreshLeft + ' / ' + refreshMax;
-    if(!refreshLeft) note.textContent = '本局刷新次数已用完';
+    button.disabled = !state.left || !alternative;
+    byId('lvRefreshLabel').textContent = major ?
+      '海克斯重掷 ' + hexLeft + ' / ' + hexMax :
+      '刷新选项 ' + refreshLeft + ' / ' + refreshMax;
+    if(!state.left) note.textContent = major ? '本局重掷次数已用完' : '本局刷新次数已用完';
     else if(!alternative) note.textContent = '没有其他可选牌';
+    else if(major && !hexLeft) note.textContent = '海克斯重掷已用尽 · 本次消耗备战刷新 ' + refreshLeft + ' / ' + refreshMax;
   }
 
   function refreshCards(){
-    if(G.mode !== 'level' || G._swap || picking || !G.preparations.refreshLeft || !hasAlternative(G._cards)) return false;
+    if(G.mode !== 'level' || G._swap || picking) return false;
+    const major = G._cards[0]?.kind === 'major';
+    const hex = G.enhancements;
+    const hexLeft = major ? (hex?.hexRefreshLeft ?? 0) : 0;
+    if((!hexLeft && !G.preparations.refreshLeft) || !hasAlternative(G._cards)) return false;
     const previous = G._cards;
-    const cards = previous[0].kind === 'major' ? rollMilestone(previous) : rollCards(previous);
-    if(!cards.some(card => !previous.some(old => old.id === card.id))) return false;
-    G.preparations.refreshLeft--;
+    const previousHand = major ? hex.hand : null;
+    const cards = major ? rollMilestone(previous) : rollCards(previous);
+    if(!cards.some(card => !previous.some(old => old.id === card.id))){
+      if(major && previousHand) hex.hand = previousHand; // 未出现新牌时回滚预掷结果，不扣次数
+      return false;
+    }
+    if(hexLeft) hex.hexRefreshLeft--;
+    else G.preparations.refreshLeft--;
+    if(major) hex.hand = cards;
     renderCards(cards);
     SFX.pick();
     return true;

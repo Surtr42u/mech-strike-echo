@@ -373,14 +373,18 @@ function showReport(win,withdrawn) {
   fieldResult.hidden = !win;
   if(win) putText(fieldResult,CampaignStory.ending() + (PROF.tower.unlocked ? ' · 无尽塔已解锁' : ''));
   const points = settle(win);
+  const bounty = Math.round((PREPARATIONS.settleMultiplier() - 1) * 100);
   const values = [
     tower ? ['到达',TOWER.label()] : ['战区',SCENES[G.stage].name],
     tower ? ['本局通关',G.tower.cleared + ' 层'] : ['波次',G.wave + ' / ' + WAVES_PER_STAGE],
     ['击破',G.kills],['得分',numberFormat.format(G.score)],
     ['等级','LV ' + G.lv],['用时',Math.floor(G.time/60) + ':' + String(Math.floor(G.time%60)).padStart(2,'0')],
-    ['局内技能',G.slots.length + ' / ' + G.skillLimit],tower ? ['最高通关',PROF.tower.best + ' 层'] : ['最高得分',numberFormat.format(PROF.best)],
-    ['获得积分','+' + numberFormat.format(points)],['积分余额',numberFormat.format(PROF.pts)]
+    ['局内技能',G.slots.length + ' / ' + G.skillLimit],tower ? ['最高通关',PROF.tower.best + ' 层'] : ['最高得分',numberFormat.format(PROF.best)]
   ];
+  if(bounty > 0) values.push(['赏金协议','+' + bounty + '%']);
+  const attLoot = typeof WeaponAttachments !== 'undefined' ? WeaponAttachments.runLoot() : [];
+  if(attLoot.length) values.push(['本局配件',attLoot.length + ' 件 · ' + attLoot.join('、')]);
+  values.push(['获得积分','+' + numberFormat.format(points)],['积分余额',numberFormat.format(PROF.pts)]);
   const stats = byId('overStats');
   stats.replaceChildren();
   for(const [name,value] of values) {
@@ -598,7 +602,7 @@ function paintInstruments(force) {
     meterFill('threatFill',(body.hp+body.plate)/(body.maxHp+body.maxPlate));
   }
   putText(instrument('comboText'),G.combo >= 5 ? G.combo + ' 连击' : '');
-  const active = [['over','过载'],['magnet','磁吸'],['stasis','停滞'],['fleet','疾风'],['rad','辐射'],['luck','幸运'],['weak','虚弱']];
+  const active = [['over','过载'],['magnet','磁吸'],['stasis','停滞'],['fleet','疾风'],['supportDrone','僚机'],['guard','守护'],['rad','辐射'],['luck','幸运'],['weak','虚弱']];
   const effects = active.filter(([k])=>G.buff[k]>0).map(([k,n])=>n+' '+Math.ceil(G.buff[k])+'s');
   const incident=StageEvents.status();
   if(incident) effects.push(incident);

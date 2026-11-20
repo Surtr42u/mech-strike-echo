@@ -355,16 +355,23 @@ const PROF = {
   skin:0, weapon:'rifle', mech:DEFAULT_MECH,
   ownSkins:[0], ownWeapons:['rifle'],
   growth:{ levels:{}, weaponLevels:{} },
-  preparations:{}, tower:{unlocked:false,best:0}
+  preparations:{}, tower:{unlocked:false,best:0},
+  attachments:WeaponAttachments.read(null)
 };
+/* 每把武器一份装配；正式数据存于 PROF.attachments.equipped，旧字段名只作只读入口。 */
+Object.defineProperty(PROF,'weaponAttachments',{
+  get:function(){ return PROF.attachments.equipped; }, enumerable:false
+});
 let loadedProf = null;
 function loadProf(){
+  let rawAtt = null;
   try{
     const raw = storeGet(PKEY);
     if(!raw){ PROF.gift = 1; return; }   /* 全新存档：默认值已是 5000 */
     const o = JSON.parse(raw);
     if(!o || typeof o !== 'object' || Array.isArray(o)) return;
     loadedProf = o;
+    rawAtt = o.attachments;
     if(typeof o.pts === 'number') PROF.pts = Math.max(0, o.pts | 0);
     PROF.gift = o.gift ? 1 : 0;
     if(!PROF.gift){
@@ -392,6 +399,10 @@ function loadProf(){
     PROF.tower = TOWER.read(o.tower);
     PROF.mech = equippedMech(o.mech);
   }catch(e){}
+  finally{
+    /* 旧档没有配件字段：read 会补齐基础配件与每把武器的默认装配。 */
+    PROF.attachments = WeaponAttachments.read(rawAtt);
+  }
 }
 function saveProf(){
   const data = JSON.stringify({...loadedProf,...PROF});
@@ -1538,7 +1549,8 @@ function collectLights(){
   }
   // 地上的道具 / 补给箱
   for(let i = 0; i < G.picks.length; i++){
-    const o = G.picks[i], d = IT[o.id];
+    const o = G.picks[i];
+    const d = WeaponAttachments.isPick(o.id) ? WeaponAttachments.pickDef(o.id) : IT[o.id];
     if(!d) continue;
     addLight(o.x, o.y, 38, d.c, .34 + Math.sin(G.t * 4.2 + o.x * .05) * .10, 1);
   }
@@ -1795,7 +1807,7 @@ const G = {
   p:null, st:null,
   bullets:[], eb:[], enemies:[], orbs:[], parts:[], texts:[], rings:[],
   haz:[], drones:[], turrets:[], mines:[], booms:[],
-  picks:[], crates:[], jobs:[], bag:[null, null], buff:{ over:0, magnet:0, stasis:0, fleet:0, rad:0, luck:0, weak:0 },
+  picks:[], crates:[], jobs:[], bag:[null, null], buff:{ over:0, magnet:0, stasis:0, fleet:0, rad:0, luck:0, weak:0, supportDrone:0, guard:0 },
   weapon:'rifle', wcd:0, wcdMax:1, wbuff:{ focus:0, heat:0 },
   ccd:0, ccdMax:1, cbuff:{ rate:0, spd:0, dmg:0, armor:0, extra:0 },
   lightsFx:[],
@@ -2949,9 +2961,10 @@ function baseStats(){
     burn:0, freeze:0, blast:0, chain:0, shield:0,
     drone:0, turret:0, mine:0, boom:0,
     barrage:0, bigMul:1, fleet:0,
-    skillPower:1, skillCooldown:1, barragePower:1, barrageExtra:0,
+    skillPower:1, skillCooldown:1, weaponSkillCooldown:1, barragePower:1, barrageExtra:0,
     bodyScale:1, gunRangeMul:1, mechLocked:false,
-    pierceRetention:.7, mechPower:1, mechDuration:0, deployCooldown:1, deployPower:1, deployPierce:0,
+    pierceRetention:.7, mechPower:1, mechDuration:0, mechSkillCooldown:1, energyGain:1,
+    deployCooldown:1, deployPower:1, deployPierce:0,
     /* 共鸣与被动扩展位 */
     lifeAdd:0, spreadMul:1, bspdMul:1, boomMul:1, elemMul:1,
     burnMul:1, selfBurn:0, dmgTaken:0, noMedkit:false
@@ -2998,6 +3011,8 @@ function recalc({ fillNewCapacity = true } = {}){
   if(b.armor > 0) s.armor += .25;
   if(b.extra > 0) s.extra += 2;
   TALENTS.applyStats(s);
+  PREPARATIONS.applyStats(s);
+  WeaponAttachments.applyStats(s);
   StageEvents.applyStats(s);
   s.armor += CampaignStory.linerBonus();
   /* 生命上限兜底：易碎/玻璃大炮叠满也不至于变成 0 血 */
@@ -3035,6 +3050,7 @@ function newRun(tower = false){
   WaveTypes.reset();
   lastFloorId = null; lastFloorSwitchAt = -Infinity;
   TALENTS.reset();
+  WeaponAttachments.resetRun();
   CampaignStory.reset();
   StageEvents.reset();
   TreasureSites.reset();
@@ -3051,7 +3067,7 @@ function newRun(tower = false){
   G.bag[0] = G.bag[1] = null;
   G.buff.over = G.buff.magnet = G.buff.stasis = 0;
   G.buff.fleet = 0; G.fleetKill = 0;
-  G.buff.rad = G.buff.luck = G.buff.weak = 0;
+  G.buff.rad = G.buff.luck = G.buff.weak = 0; G.buff.supportDrone = 0; G.buff.guard = 0;
   G.waveEliteBoost = 0; G._event = null;
   G.selfBurnT = 0;
   G.emberSpreadAt = -Infinity;
@@ -3076,10 +3092,10 @@ function newRun(tower = false){
   G.st = null;
   recalc();
   PREPARATIONS.startRun();
-  G.wcdMax = abilityCooldown(WEP().sk.cd);
+  G.wcdMax = WeaponAttachments.weaponSkillCooldown(abilityCooldown(WEP().sk.cd));
   G.ccdMax = abilityCooldown(SKIN().act?.cd ?? 1);
   G.p.hp = G.p.maxHp;
-  G.shield = G.st.shield || 0;
+  G.shield = (G.st.shield || 0) + (G.preparations.startShield || 0);
   G.cam.x = G.p.x; G.cam.y = G.p.y;
   setScene(0);
   startWave();
@@ -3392,9 +3408,22 @@ function fire(target){
   const oved = G.buff.over > 0;
   const volley = weaponVolley(w,s,p);
   p.fireT = volley.interval;
-  p.flashT = .07;
   p.atkT = .16;
   p.shotAngle = ang;
+  /* 战区异常：离子雾等干扰会让枪械哑火，打空这一轮 */
+  const miss = typeof StageEvents.missChance==='function' ? StageEvents.missChance() : 0;
+  if(miss > 0 && Math.random() < miss){
+    p.flashT = .04;
+    floatText(p.x, p.y - 20, '干扰 · 哑火', '#ff9f9f');
+    for(let i=0;i<4;i++){
+      G.parts.push({
+        x:muzzle.x, y:muzzle.y, vx:rnd(16,52), vy:-rnd(12,38),
+        life:.34, max:.34, col:'#8d9498', r:2, height:BULLET_H
+      });
+    }
+    return;
+  }
+  p.flashT = .07;
 
   const n = volley.count;
   const railFork=w.id==='sniper' && WeaponLinks.railEnabled();
@@ -3574,7 +3603,7 @@ function weaponSkill(){
   if(G.mode !== 'play' || G.mechT > 0 || !G.p || G.p.hp <= 0) return false;
   if(G.wcd > 0) return false;
   const w = WEP(), p = G.p;
-  G.wcd = G.wcdMax = abilityCooldown(w.sk.cd);
+  G.wcd = G.wcdMax = WeaponAttachments.weaponSkillCooldown(abilityCooldown(w.sk.cd));
   HEXES.onSkillCast('ccd');
   G.shake = Math.max(G.shake, 6);
   addFlash(p.x, p.y, 130, w.c, .7);
@@ -4324,7 +4353,8 @@ function updateChar(dt){
 
 function addEnergy(v){
   if(G.mechT > 0 || G.mode !== 'play' || G.st.mechLocked) return;
-  G.energy = Math.min(100, G.energy + v);
+  /* 能量回收模块（机甲基础强化）：对击杀与电池统一加成。 */
+  G.energy = Math.min(100, G.energy + v * (G.st?.energyGain ?? 1));
 }
 
 /* ── 子弹 ── */
@@ -4458,7 +4488,9 @@ function killEnemy(e, playerKill = true, emberSeed = false){
     aoe(e.x, e.y, 30, 12, e);
   }
   // 道具掉落：精英更容易爆货
-  if(Math.random() < StageEvents.dropChance(e.elite)) dropItem(e.x, e.y);
+  if(Math.random() < StageEvents.dropChance(e.elite) * PREPARATIONS.lootMultiplier()) dropItem(e.x, e.y);
+  // 武器配件：只从精英身上小概率掉落，不进入普通随机道具池
+  if(e.elite && Math.random() < .12) WeaponAttachments.drop(e.x, e.y);
 }
 
 function damageBoss(b, dmg, crit, hx, hy, opt){
@@ -4503,7 +4535,7 @@ function hurtPlayer(dmg){
     SFX.hit();
     return;
   }
-  const damage = dmg * incomingDamageFactor(G.st);
+  const damage = dmg * incomingDamageFactor(G.st) * (G.buff.guard > 0 ? .7 : 1);
   if(TOWER.active()) TOWER.noteDamage(damage);
   AdaptiveDirector.noteDamage(damage);
   p.hp -= damage;
@@ -4633,6 +4665,27 @@ function updatePicks(dt){
 }
 
 function takeItem(id, x, y){
+  /* 武器配件走独立收藏流程：不进背包，拾取即带出局外 */
+  if(WeaponAttachments.isPick(id)){
+    const got = WeaponAttachments.collect(id);
+    if(!got) return;
+    const def = got.def;
+    G.picksGot++;
+    G.rings.push({ x:x, y:y, r:4, max:34, life:.36, maxLife:.36, col:def.color, w:2.5 });
+    spark(x, y, 10, def.color, 100);
+    if(got.duplicate){
+      if(got.refund > 0) floatText(x, y, def.name + ' · 重复配件 +' + got.refund + ' 积分', def.color, true);
+      else floatText(x, y, def.name + ' · 已拥有', def.color, true);
+      banner(got.refund > 0 ? '重复配件' : '已拥有配件',
+        got.refund > 0 ? def.name + ' · 折算 ' + got.refund + ' 积分' : def.name, 1.25);
+      SFX.pick();
+    } else {
+      floatText(x, y, def.name + ' · 已收录', def.color, true);
+      banner('配件已带出局外', def.name + (got.equipped ? ' · 已自动装配' : ' · 可在武器调校装配'), 1.6);
+      SFX.lvl();
+    }
+    return;
+  }
   const def = IT[id];
   if(!def) return;
   G.picksGot++;
@@ -4797,6 +4850,8 @@ function tickBuff(dt){
   if(b.rad > 0){ b.rad -= dt; if(G.p && G.p.hp > 0) G.p.hp = Math.max(1, G.p.hp - 2.2 * dt); }
   if(b.luck > 0) b.luck -= dt;
   if(b.weak > 0) b.weak -= dt;
+  if(b.supportDrone > 0) b.supportDrone -= dt;
+  if(b.guard > 0) b.guard -= dt;
   if(G.shieldFx > 0) G.shieldFx -= dt;
   // 时滞：新刷出来的敌人也一起慢下来
   if(b.stasis > 0){
@@ -4890,7 +4945,7 @@ function updateCrates(dt){
 
 /* ── 绘制 ── */
 function drawPick(o){
-  const def = IT[o.id];
+  const def = WeaponAttachments.isPick(o.id) ? WeaponAttachments.pickDef(o.id) : IT[o.id];
   if(!def) return;
   const bob = Math.sin(G.t * 4 + o.x * .1) * 2.2;
   const sx = SX(o.x), sy = SY(o.y) - 11 + bob;
@@ -5424,11 +5479,13 @@ function enemyShoot(e, ux, uy){
 function syncCompanions(dt){
   const p = G.p, s = G.st;
 
-  // 环绕机炮
-  while(G.drones.length < s.drone){
-    G.drones.push({ cd: rnd(0, .5), flash:0 });
+  // 环绕机炮（站点支援的僚机额外 +2，到期自动撤离）
+  const wing = G.buff.supportDrone > 0 ? 2 : 0;
+  const wantDrones = s.drone + wing;
+  while(G.drones.length < wantDrones){
+    G.drones.push({ cd: rnd(0, .5), flash:0, wing:G.drones.length >= s.drone });
   }
-  while(G.drones.length > s.drone) G.drones.pop();
+  while(G.drones.length > wantDrones) G.drones.pop();
   const dn = G.drones.length;
   for(let i=0;i<dn;i++){
     const d = G.drones[i];
@@ -5443,7 +5500,7 @@ function syncCompanions(dt){
         const ang = Math.atan2(t.y - d.y, t.x - d.x);
         G.bullets.push({
           x:d.x, y:d.y, vx:Math.cos(ang) * 460, vy:Math.sin(ang) * 460,
-          dmg:s.dmg*.55*s.deployPower*HEX_EXPANSION.companionShot(d), pierce:s.deployPierce, hits:[], life:.9, hexCompanion:true,
+          dmg:s.dmg*.55*s.deployPower*HEX_EXPANSION.companionShot(d)*(d.wing?1.2:1), pierce:s.deployPierce, hits:[], life:.9, hexCompanion:true,
           crit: Math.random() < s.crit, r: 2.2
         });
         d.cd = .66 * s.deployCooldown; d.flash = .08;
@@ -5474,7 +5531,7 @@ function syncCompanions(dt){
         tu.ang = ang;
         G.bullets.push({
           x:tu.x, y:tu.y, vx:Math.cos(ang) * 440, vy:Math.sin(ang) * 440,
-          dmg:s.dmg*.75*s.deployPower*HEX_EXPANSION.companionShot(tu), pierce:s.deployPierce, hits:[], life:1, hexCompanion:true,
+          dmg:s.dmg*.75*s.deployPower*(tu.power||1)*HEX_EXPANSION.companionShot(tu), pierce:s.deployPierce, hits:[], life:1, hexCompanion:true,
           crit: Math.random() < s.crit, r: 2.4
         });
         tu.cd = .5 * s.deployCooldown; tu.flash = .08;
@@ -6162,6 +6219,9 @@ function bossDown(b){
   G.enemies.length = 0;
   // 首领的集装箱：一批补给
   dropLoot(b.x, b.y, guard ? 2 : 4, true);
+  // 首领必掉武器配件；第三战区起额外多掉 1 件
+  const attDrops = G.stage >= 2 ? 2 : 1;
+  for(let i=0;i<attDrops;i++) WeaponAttachments.drop(b.x + rnd(-22, 22), b.y + rnd(-16, 16));
   G.jobs.push({ t: .9, fn: function(){
     if(G.phase !== 'boss' || G.bossEncounter !== encounter) return;
     if(TOWER.active()){ TOWER.complete(b); return; }
@@ -6339,7 +6399,8 @@ function nextStage(){
 /* ── 波次 ── */
 /* 站点支援：定向炮击。分三轮覆盖信标附近的敌群，落点优先取当前敌人。 */
 function supportStrike(pad){
-  banner('站点炮击抵达','三轮覆盖射击 · 注意落点提示',1.35);
+  const power = pad.power || (90 + G.stage*22);
+  banner('站点炮击抵达',(pad.banner || '三轮覆盖射击') + ' · 注意落点提示',1.35);
   for(let n=0;n<3;n++){
     G.jobs.push({ t:.45+n*.42, fn:function(){
       const targets = G.enemies.filter(e => !e.dead && e.spawnT <= 0 && d2(e.x,e.y,pad.x,pad.y) < 540**2);
@@ -6349,15 +6410,92 @@ function supportStrike(pad){
       G.rings.push({ x,y,r:6, max:56, life:.34, maxLife:.34, col:'#9fe3c7', w:2.2 });
       addFlash(x,y,72,'#9fe3c7',.24);
       spark(x,y,9,'#9fe3c7',130);
-      aoe(x,y,52,90 + G.stage*22,null);
+      aoe(x,y,52,power,null);
     }});
   }
 }
 
 /* ── 地图环境伤害与站点支援 ──
    SectorClimate 只负责判定与文案；这里按间隔结算沙暴伤害，
-   并在站点支援就绪时生成临时哨戒炮或友方炮击。 */
+   并在站点支援就绪时生成对应支援单位。 */
 let stormHitT = 0;
+
+function supportTurret(pad){
+  const life = pad.duration || 22;
+  G.turrets.push({ x:pad.x, y:pad.y, life, cd:.25, flash:0, ang:-Math.PI/2,
+    support:true, power:pad.power || 1 });
+  G.rings.push({ x:pad.x, y:pad.y, r:4, max:48, life:.5, maxLife:.5, col:'#9fe3c7', w:2 });
+  banner('站点哨戒炮抵达',(pad.banner || '临时炮台已部署') + ' · 持续 ' + Math.round(life) + ' 秒',1.35);
+}
+
+function supportDroneWing(pad){
+  const life = pad.duration || 20;
+  G.buff.supportDrone = Math.max(G.buff.supportDrone, life);
+  G.rings.push({ x:pad.x, y:pad.y, r:6, max:56, life:.5, maxLife:.5, col:'#9fe3c7', w:2 });
+  spark(pad.x, pad.y, 10, '#9fe3c7', 110);
+  banner('僚机护航抵达',(pad.banner || '两架支援无人机加入护航') + ' · 持续 ' + Math.round(life) + ' 秒',1.4);
+}
+
+function supportRepair(pad){
+  const maxHp = G.p.maxHp;
+  const pct = Math.max(10, pad.power || 30);
+  heal(maxHp * pct / 100);
+  for(let i=1;i<=8;i++){
+    G.jobs.push({ t:i * .9, fn:function(){
+      if(G.mode !== 'play' || G.phase === 'clear' || !G.p || G.p.hp <= 0) return;
+      heal(Math.max(1, maxHp * .02));
+    }});
+  }
+  G.rings.push({ x:pad.x, y:pad.y, r:5, max:46, life:.5, maxLife:.5, col:'#a3efbd', w:2 });
+  banner('维修无人机抵达','立即恢复 '+Math.round(pct)+'% 生命 · 8 秒持续修复',1.45);
+}
+
+function supportShield(pad){
+  const layers = Math.max(1, Math.round(pad.power || 3));
+  const guard = pad.duration || 6;
+  G.shield = Math.min(6, G.shield + layers);
+  G.shieldFx = .85;
+  G.buff.guard = Math.max(G.buff.guard, guard);
+  G.rings.push({ x:pad.x, y:pad.y, r:6, max:58, life:.55, maxLife:.55, col:'#b9c7ff', w:2.4 });
+  addFlash(pad.x, pad.y, 60, '#b9c7ff', .22);
+  banner('护盾发生器抵达','护盾 +' + layers + ' 层 · ' + guard + ' 秒内受伤 -30%',1.4);
+}
+
+function supportEmp(pad){
+  const stun = Math.max(1, pad.power || 2.5);
+  G.eb.length = 0;
+  for(const e of G.enemies) if(!e.dead) e.stun = Math.max(e.stun || 0, stun);
+  if(G.boss && !G.boss.dead) G.boss.stun = Math.max(G.boss.stun || 0, stun * .65);
+  G.rings.push({ x:pad.x, y:pad.y, r:20, max:Math.max(VW, VH) * 1.4, life:.62, maxLife:.62, col:'#b9f2ff', w:3 });
+  G.flash = Math.max(G.flash, .26);
+  addFlash(pad.x, pad.y, 90, '#b9f2ff', .3);
+  banner('电磁脉冲抵达','敌弹清空 · 敌人麻痹 ' + stun.toFixed(1) + ' 秒',1.4);
+}
+
+function supportMines(pad){
+  const dmg = 85 + (G.stage || 0) * 25;
+  for(let i=0;i<6;i++){
+    const a = i * TAU / 6 + rnd(-.16, .16);
+    const x = clamp(pad.x + Math.cos(a) * rnd(22, 52), 36, ARENA.w - 36);
+    const y = clamp(pad.y + Math.sin(a) * rnd(16, 40), 44, ARENA.h - 36);
+    G.mines.push({ x, y, t:0, arm:.6, dmg });
+  }
+  G.rings.push({ x:pad.x, y:pad.y, r:6, max:58, life:.55, maxLife:.55, col:'#ffd48a', w:2 });
+  banner('地雷阵抵达','信标周围布设 6 枚感应雷',1.35);
+}
+
+function applySupport(pad){
+  if(pad.kind === 'strike') supportStrike(pad);
+  else if(pad.kind === 'drone') supportDroneWing(pad);
+  else if(pad.kind === 'repair') supportRepair(pad);
+  else if(pad.kind === 'shield') supportShield(pad);
+  else if(pad.kind === 'emp') supportEmp(pad);
+  else if(pad.kind === 'mines') supportMines(pad);
+  else supportTurret(pad);
+  if(typeof CampaignStory !== 'undefined' && CampaignStory.transmit)
+    CampaignStory.transmit((pad.label || '站点支援') + ' · 支援已抵达战场');
+}
+
 function updateFieldHazards(dt){
   const hazard = typeof SectorClimate.surfaceHazard==='function' ? SectorClimate.surfaceHazard() : null;
   if(hazard?.active){
@@ -6371,13 +6509,7 @@ function updateFieldHazards(dt){
   if(typeof SectorClimate.readySupport==='function'){
     const pad = SectorClimate.readySupport();
     if(pad){
-      if(pad.kind==='strike'){
-        supportStrike(pad);
-      } else {
-        G.turrets.push({ x:pad.x, y:pad.y, life:18, cd:.25, flash:0, ang:-Math.PI/2, support:true });
-        G.rings.push({ x:pad.x, y:pad.y, r:4, max:48, life:.5, maxLife:.5, col:'#9fe3c7', w:2 });
-        banner('站点支援抵达','临时哨戒炮已部署 · 持续 18 秒',1.35);
-      }
+      applySupport(pad);
       if(typeof SectorClimate.consumeSupport==='function') SectorClimate.consumeSupport();
       SFX.lvl();
     }
@@ -8593,14 +8725,21 @@ function drawMine(m){
 
 function drawTurret(t2){
   const sx = SX(t2.x), sy = SY(t2.y);
+  const body = t2.support ? '#2c4a48' : '#3a3a44';
+  const plate = t2.support ? '#4d746f' : '#5a5a68';
+  const barrel = t2.support ? '#7fd8c4' : '#8a8a9a';
   ctx.fillStyle = 'rgba(0,0,0,.36)';
   ctx.beginPath(); ctx.ellipse(sx, sy, 9, 4, 0, 0, TAU); ctx.fill();
-  ctx.fillStyle = '#3a3a44';
+  ctx.fillStyle = body;
   ctx.fillRect(sx - 7, sy - 10, 14, 10);
-  ctx.fillStyle = '#5a5a68';
+  ctx.fillStyle = plate;
   ctx.fillRect(sx - 7, sy - 10, 14, 2);
-  ctx.fillStyle = '#8a8a9a';
+  ctx.fillStyle = barrel;
   ctx.fillRect(sx - 2, sy - 16, 4, 7);
+  if(t2.support){
+    ctx.fillStyle = '#9fe3c7';
+    ctx.fillRect(sx - 6, sy - 8, 2, 2); ctx.fillRect(sx + 4, sy - 8, 2, 2);
+  }
   ctx.save();
   ctx.translate(sx, sy - 14);
   ctx.rotate(t2.ang);
@@ -8618,13 +8757,13 @@ function drawDrone(d){
   const sx = SX(d.x), sy = SY(d.y);
   ctx.fillStyle = 'rgba(0,0,0,.26)';
   ctx.beginPath(); ctx.ellipse(sx, SY(d.y) + 14, 6, 2.5, 0, 0, TAU); ctx.fill();
-  ctx.fillStyle = '#8a9ac8';
+  ctx.fillStyle = d.wing ? '#3f7f72' : '#8a9ac8';
   ctx.fillRect(sx - 5, sy - 12, 10, 7);
-  ctx.fillStyle = '#c8d4ff';
+  ctx.fillStyle = d.wing ? '#8fe3c7' : '#c8d4ff';
   ctx.fillRect(sx - 5, sy - 12, 10, 2);
   ctx.fillStyle = Math.floor(G.t * 6) % 2 ? '#9dffd8' : '#eafff5';
   ctx.fillRect(sx - 1, sy - 10, 3, 3);
-  ctx.fillStyle = 'rgba(180,220,255,.28)';
+  ctx.fillStyle = d.wing ? 'rgba(143,227,199,.3)' : 'rgba(180,220,255,.28)';
   ctx.fillRect(sx - 8, sy - 15, 16, 1.5);
   if(d.flash > 0){
     ctx.fillStyle = '#fff';
@@ -9185,14 +9324,15 @@ function settle(win){
   G.settled = true;
   if(TOWER.active()) return TOWER.settle();
   const depth = G.stage + (G.phase === 'clear' ? 1 : 0);
-  const pts = Math.round(
-    G.kills * 1.1 +
-    G.score * .05 +
-    depth * 70 +
-    (G.phase === 'clear' ? 50 : 0) +
+  const base = Math.round(
+    G.kills * 1.5 +
+    G.score * .065 +
+    depth * 85 +
+    (G.phase === 'clear' ? 60 : 0) +
     G.lv * 8 +
-    (win ? 350 : 0)
+    (win ? 500 : 0)
   );
+  const pts = Math.round(base * PREPARATIONS.settleMultiplier());
   PROF.pts += pts;
   PROF.total += pts;
   PROF.runs++;
@@ -9491,8 +9631,9 @@ function pickWep(id){
 
 function recalcGun(){
   G.wcd = 0;
-  G.wcdMax = abilityCooldown(WEP().sk.cd);
   if(G.st) recalc();
+  /* 必须在 recalc 之后取值：配件里的 weaponSkillCooldown 来自新的 G.st */
+  G.wcdMax = WeaponAttachments.weaponSkillCooldown(abilityCooldown(WEP().sk.cd));
 }
 
 function boot(){

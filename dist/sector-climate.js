@@ -17,11 +17,32 @@ const SectorClimate = (() => {
   ];
   const weatherPeriod=26, dayPeriod=104, gateCooldown=9, shelterRadius=106;
   /* 沙暴侵蚀 / 支援信标 / 地图机关常量 */
-  const stormShelterRadius=86, stormInterval=1, supportHold=3.5, supportArm=18, supportRadius=48;
+  const stormShelterRadius=86, stormInterval=1, supportHold=1.7, supportArm=12, supportRadius=90;
+  const supportCooldownBase=32, supportCooldownStep=3, supportCooldownCap=12;
+  /* 信标间距：太近会互相遮挡判定，取略大于呼叫半径的值 */
+  const supportBeaconGap=110;
+  /* 六种站点支援。power 为随战区成长的强度值（语义见 kind 注释）：
+     turret=炮塔伤害倍率 / strike=每轮爆心伤害 / drone=僚机强度 /
+     repair=立即回复百分比 / shield=护盾层数 / emp=麻痹秒数。
+     banner 是给主代理横幅复用的短句，具体数值由主代理用 power/duration 拼接。 */
   const supportKinds=[
-    {kind:'turret',label:'哨戒炮塔',color:'#7fe7d2'},
-    {kind:'strike',label:'定向炮击',color:'#ffc06e'}
+    {kind:'turret',label:'哨戒炮',color:'#7fe7d2',icon:'炮',
+      banner:'临时炮台已部署',power:1.15,step:.15,cap:2.05,duration:22,radius:290},
+    {kind:'strike',label:'定点炮击',color:'#ffc06e',icon:'击',
+      banner:'三轮覆盖射击',power:90,step:22,cap:178,duration:1.9,radius:540},
+    {kind:'drone',label:'僚机护航',color:'#8ec5ff',icon:'机',
+      banner:'两架僚机加入护航',power:14,step:3,cap:29,duration:20,radius:260},
+    {kind:'repair',label:'维修无人机',color:'#7dffb0',icon:'修',
+      banner:'立即修复 · 8 秒持续再生',power:30,step:2,cap:40,duration:8,radius:0},
+    {kind:'shield',label:'护盾发生器',color:'#c4b5ff',icon:'盾',
+      banner:'护盾展开 · 短暂守护',power:3,step:.5,cap:5,round:true,duration:6,radius:0},
+    {kind:'emp',label:'电磁脉冲',color:'#7fe3ff',icon:'磁',
+      banner:'敌弹清空 · 范围麻痹',power:2.5,step:.25,cap:3.5,duration:2.5,radius:340}
   ];
+  const supportKindBy={};
+  for(const k of supportKinds) supportKindBy[k.kind]=k;
+  /* 地表/地下通用兜底点（相对竞技场比例）。地下会用 FieldMaps.safePoint 推到可站立处。 */
+  const supportFallbacks=[[.50,.54],[.30,.62],[.70,.40]];
   const lavaSpots=[
     [.14,.18],[.86,.18],[.14,.82],[.86,.82],[.08,.50],[.92,.50],
     [.50,.08],[.50,.92],[.32,.30],[.68,.30],[.32,.70],[.68,.70]
@@ -44,7 +65,8 @@ const SectorClimate = (() => {
     const lava=spec?.id==='valve'?{level:0,next:20,cd:0,used:new Set(),placed:[]}:null;
     state={stage, elapsed:0, sky:stage===0?'dust':forecasts[stage]?.[0] || null, spec, pads,
       used:false, charges:0, cooling:0, jumpCd:0, strike:null, nextStrike:4,
-      support:{phase:'idle',armT:0,cd:0,cdMax:0,ready:-1,armed:-1,beacons:null,charge:[],markers:null},
+      support:{phase:'idle',armT:0,cd:0,cdMax:0,ready:-1,armed:-1,beacons:null,charge:[],markers:null,
+        floor:'',padsRef:null,lastKinds:[]},
       facility, lava};
   }
 
@@ -62,19 +84,30 @@ const SectorClimate = (() => {
   function mineOpen(){ return state?.spec?.id==='heater' && state.used; }
 
   function mapMarkers(){
-    if(FieldMaps.underground()) return noMarkers;
     if(!state) return noMarkers;
-    const pads=surfaceShelters();
-    if(!state.support.beacons) return pads;
-    if(!state.support.markers){
-      const extra=[];
-      for(const b of state.support.beacons){
-        if(pads.some(p=>d2(p.x,p.y,b.x,b.y)<10**2)) continue;
-        extra.push(Object.freeze({x:b.x,y:b.y,name:'支援信标',color:b.color,support:true}));
+    const s=state.support;
+    /* 支援信标现在地表/地下都存在；floorId 或补给点数组变化会在 supportBeacons 里清缓存。 */
+    const list=supportBeacons();
+    if(floorKey()!=='surface'){
+      if(!list.length) return noMarkers;
+      if(!s.markers){
+        s.markers=Object.freeze(list.map(b=>Object.freeze({
+          x:b.x,y:b.y,name:b.label,color:b.color,support:true
+        })));
       }
-      state.support.markers=extra.length?Object.freeze(pads.concat(extra)):pads;
+      return s.markers;
     }
-    return state.support.markers;
+    const pads=surfaceShelters();
+    if(!list.length) return pads;
+    if(!s.markers){
+      const extra=[];
+      for(const b of list){
+        if(pads.some(p=>d2(p.x,p.y,b.x,b.y)<10**2)) continue;
+        extra.push(Object.freeze({x:b.x,y:b.y,name:b.label,color:b.color,support:true}));
+      }
+      s.markers=extra.length?Object.freeze(pads.concat(extra)):pads;
+    }
+    return s.markers;
   }
 
   function guideMarker(){
@@ -244,34 +277,132 @@ const SectorClimate = (() => {
   }
 
   /* ── 支援信标 ──
-     优先取本图气候补给点；不足 2 个时用地表补给投放点补位。
-     信标只负责状态与位置，炮塔/友方落区由主代理生成。 */
+     地表取气候补给点 + 地表投放点，地下取 field-maps 的隧道补给点；
+     统一筛成 3 个彼此拉开距离的信标，每个信标随机分配一种支援。
+     信标只负责状态与位置，炮塔/僚机/脉冲等效果由主代理按 kind 生成。 */
+  function floorKey(){
+    if(typeof FieldMaps!=='undefined' && typeof FieldMaps.floorId==='function'){
+      try{ return FieldMaps.floorId() || 'surface'; }catch(_){}
+    }
+    return under()?'underground':'surface';
+  }
+
+  /* 换层或补给点数组被重建时，信标/地图标记/充能全部作废，避免地表与地下串味。 */
+  function syncSupportFloor(){
+    const s=state?.support;
+    if(!s) return false;
+    const floor=floorKey();
+    const padsRef=Array.isArray(G.supplyPads)?G.supplyPads:null;
+    if(s.floor===floor && s.padsRef===padsRef) return false;
+    s.floor=floor;s.padsRef=padsRef;
+    s.beacons=null;s.markers=null;s.charge=[];
+    if(s.phase==='arming'||s.phase==='ready'){
+      s.phase='idle';s.ready=-1;s.armed=-1;s.armT=0;
+    }
+    return true;
+  }
+
+  function supportPower(k,stage){
+    const raw=k.power+Math.min(Math.max(0,k.cap-k.power),(stage||0)*(k.step||0));
+    return k.round?Math.round(raw):Math.round(raw*100)/100;
+  }
+
+  function supportSpec(b){
+    const def=supportKindBy[b.kind] || supportKinds[0];
+    const stage=Math.max(0,G.stage||0);
+    return {x:b.x,y:b.y,kind:def.kind,label:def.label,color:def.color,icon:def.icon,
+      power:supportPower(def,stage),radius:def.radius,duration:def.duration,banner:def.banner};
+  }
+
+  function nearestBeacon(list,within){
+    if(!G.p || !list.length) return -1;
+    let idx=-1,best=within>0?within*within:Infinity;
+    for(let i=0;i<list.length;i++){
+      const d=d2(G.p.x,G.p.y,list[i].x,list[i].y);
+      if(d<=best){best=d;idx=i;}
+    }
+    return idx;
+  }
+
+  /* 地下兜底：固定比例点 + FieldMaps.safePoint 推到可站立处，结果确定可复现。 */
+  function beaconFallback(i){
+    const [fx,fy]=supportFallbacks[i%supportFallbacks.length];
+    let x=clamp(ARENA.w*fx,58,ARENA.w-58), y=clamp(ARENA.h*fy,64,ARENA.h-58);
+    if(typeof FieldMaps!=='undefined' && typeof FieldMaps.safePoint==='function'){
+      const p=FieldMaps.safePoint(x,y,16);
+      if(p && Number.isFinite(p.x) && Number.isFinite(p.y)){x=p.x;y=p.y;}
+    }
+    return {x,y};
+  }
+
+  function beaconCandidates(floor){
+    const out=[];
+    const add=p=>{
+      if(!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) return;
+      for(const q of out) if(d2(p.x,p.y,q.x,q.y)<supportBeaconGap**2) return;
+      out.push(p);
+    };
+    if(floor==='surface') for(const p of surfaceShelters()) add(p);
+    if(Array.isArray(G.supplyPads)) for(const p of G.supplyPads) add(p);
+    return out;
+  }
+
+  /* 最远点采样：第一个取优先级最高的点，其余每次补“离已选点最远”的点。 */
+  function spreadPicks(pool,count){
+    if(pool.length<=count) return pool.slice();
+    const picks=[pool[0]], rest=pool.slice(1);
+    while(picks.length<count && rest.length){
+      let best=-1,bestD=-1;
+      for(let i=0;i<rest.length;i++){
+        let d=Infinity;
+        for(const q of picks) d=Math.min(d,d2(rest[i].x,rest[i].y,q.x,q.y));
+        if(d>bestD){bestD=d;best=i;}
+      }
+      if(best<0) break;
+      picks.push(rest.splice(best,1)[0]);
+    }
+    return picks;
+  }
+
+  /* 随机分配且尽量不重复：3 个信标种类互不相同，并避开上一次同位置的种类。 */
+  function rollBeaconKinds(n){
+    const s=state.support, prev=Array.isArray(s.lastKinds)?s.lastKinds:[];
+    const order=supportKinds.map((_,i)=>i);
+    for(let i=order.length-1;i>0;i--){
+      const j=(Math.random()*(i+1))|0, t=order[i];
+      order[i]=order[j];order[j]=t;
+    }
+    const out=[],used=new Set();
+    for(let i=0;i<n;i++){
+      let pick=-1;
+      for(const idx of order){
+        if(used.has(idx) || prev[i]===supportKinds[idx].kind) continue;
+        pick=idx;break;
+      }
+      if(pick<0) for(const idx of order){ if(!used.has(idx)){pick=idx;break;} }
+      if(pick<0) break;
+      used.add(pick);out.push(supportKinds[pick]);
+    }
+    s.lastKinds=out.map(k=>k.kind);
+    return out;
+  }
+
   function supportBeacons(){
     const s=state?.support;
     if(!s || towerOn()) return noMarkers;
+    syncSupportFloor();
     if(s.beacons) return s.beacons;
-    if(under()) return noMarkers;
-    const picks=[];
-    const pads=surfaceShelters();
-    if(pads.length>=2) picks.push(pads[0],pads[pads.length-1]);
-    else if(pads.length===1) picks.push(pads[0]);
-    if(picks.length<2 && Array.isArray(G.supplyPads)){
-      const pool=G.supplyPads.filter(p=>p && picks.every(q=>d2(p.x,p.y,q.x,q.y)>60**2));
-      while(picks.length<2 && pool.length){
-        let best=-1,bestD=-1;
-        for(let i=0;i<pool.length;i++){
-          const p=pool[i];
-          const d=picks.length?Math.min(...picks.map(q=>d2(p.x,p.y,q.x,q.y))):d2(p.x,p.y,ARENA.w/2,ARENA.h/2);
-          if(d>bestD){bestD=d;best=i;}
-        }
-        if(best<0) break;
-        picks.push(pool.splice(best,1)[0]);
-      }
+    const floor=floorKey();
+    const picks=spreadPicks(beaconCandidates(floor),3);
+    for(let i=0;picks.length<3 && i<supportFallbacks.length;i++){
+      const p=beaconFallback(i);
+      if(picks.every(q=>d2(p.x,p.y,q.x,q.y)>=supportBeaconGap**2)) picks.push(p);
     }
-    if(!picks.length && !pads.length && !Array.isArray(G.supplyPads)) return noMarkers;
+    if(!picks.length) return noMarkers;
+    const kinds=rollBeaconKinds(picks.length);
     s.beacons=Object.freeze(picks.map((p,i)=>{
-      const k=supportKinds[i%2];
-      return Object.freeze({x:p.x,y:p.y,kind:k.kind,label:k.label,color:k.color});
+      const k=kinds[i%kinds.length];
+      return Object.freeze({x:p.x,y:p.y,kind:k.kind,label:k.label,color:k.color,icon:k.icon});
     }));
     s.charge=s.beacons.map(()=>0);
     s.markers=null;
@@ -281,6 +412,7 @@ const SectorClimate = (() => {
   function tickSupport(dt){
     const s=state.support;
     if(!s || towerOn()) return;
+    syncSupportFloor();
     if(s.cd>0){
       s.cd=Math.max(0,s.cd-dt);
       if(s.cd<=1e-6){s.cd=0;s.phase='idle';s.charge=s.charge.map(()=>0);}
@@ -291,16 +423,13 @@ const SectorClimate = (() => {
       if(s.armT<=1e-6){s.armT=0;s.phase='ready';s.ready=s.armed;s.armed=-1;}
       return;
     }
-    if(s.phase==='ready' || under() || !G.p) return;
+    if(s.phase==='ready') return;
     const list=supportBeacons();
     if(!list.length) return;
-    let idx=-1,best=supportRadius**2;
-    for(let i=0;i<list.length;i++){
-      const d=d2(G.p.x,G.p.y,list[i].x,list[i].y);
-      if(d<=best){best=d;idx=i;}
-    }
+    const idx=nearestBeacon(list,supportRadius);
     if(idx<0) return;
-    s.charge[idx]+=dt;
+    /* 宽松判定：离圈不清零，进度保留并继续累积；只有呼叫/冷却才重置。 */
+    s.charge[idx]=(s.charge[idx]||0)+dt;
     if(s.charge[idx]>=supportHold){
       s.charge[idx]=supportHold;
       s.phase='arming';s.armed=idx;s.armT=supportArm;
@@ -312,27 +441,29 @@ const SectorClimate = (() => {
     if(!s || towerOn()) return '';
     const list=supportBeacons();
     if(!list.length) return '';
-    if(s.phase==='cooldown') return '支援冷却 '+Math.ceil(s.cd)+'s';
-    if(s.phase==='arming') return '支援信标 · 呼叫中 '+Math.ceil(s.armT)+'s';
+    const near=nearestBeacon(list,supportRadius*2);
+    const nearLabel=near>=0?' · '+list[near].label:'';
+    if(s.phase==='cooldown') return '支援冷却 '+Math.ceil(s.cd)+'s'+nearLabel;
+    if(s.phase==='arming'){
+      const b=list[s.armed];
+      return '呼叫中 '+Math.ceil(s.armT)+'s'+(b?' · '+b.label:'');
+    }
     if(s.phase==='ready'){
       const b=list[s.ready];
-      return '支援已就绪'+(b?' · '+b.label:'')+(under()?' · 返回地表投放':'');
+      return '支援已就绪'+(b?' · '+b.label:'');
     }
-    if(under() || !G.p) return '';
-    let idx=-1,best=supportRadius**2;
-    for(let i=0;i<list.length;i++){
-      const d=d2(G.p.x,G.p.y,list[i].x,list[i].y);
-      if(d<=best){best=d;idx=i;}
+    const hot=nearestBeacon(list,supportRadius);
+    if(hot>=0){
+      return list[hot].label+' · 充能 '+(s.charge[hot]||0).toFixed(1)+'/'+supportHold+'s';
     }
-    if(idx<0) return '';
-    return '支援信标 · '+list[idx].label+' '+s.charge[idx].toFixed(1)+'/'+supportHold+'s';
+    return near>=0?'支援信标 · '+list[near].label+' · 待呼叫':'';
   }
 
   function readySupport(){
     const s=state?.support;
-    if(!s || towerOn() || under() || s.phase!=='ready' || s.ready<0) return null;
+    if(!s || towerOn() || s.phase!=='ready' || s.ready<0) return null;
     const b=supportBeacons()[s.ready];
-    return b?{x:b.x,y:b.y,kind:b.kind,label:b.label}:null;
+    return b?supportSpec(b):null;
   }
 
   function consumeSupport(){
@@ -340,7 +471,7 @@ const SectorClimate = (() => {
     if(!out) return null;
     const s=state.support;
     s.phase='cooldown';s.ready=-1;s.armed=-1;
-    s.cd=s.cdMax=45+Math.min(15,(G.stage||0)*3);
+    s.cd=s.cdMax=supportCooldownBase+Math.min(supportCooldownCap,(G.stage||0)*supportCooldownStep);
     s.charge=s.charge.map(()=>0);
     return out;
   }
@@ -648,13 +779,26 @@ const SectorClimate = (() => {
     g.restore();
   }
 
-  /* 支援信标：地面环 + 进度环 + 呼叫/就绪倒计时。 */
+  /* 支援信标：地面环 + 充能/呼叫/冷却进度 + 就绪脉冲；地表与地下都绘制。
+     最近信标在可充能时额外显示淡淡的呼叫范围圈，避免玩家贴边猜距离。 */
   function drawSupportMarkers(g){
     const s=state?.support;
-    if(!s || towerOn() || G.mode!=='play' || under()) return;
+    if(!s || towerOn() || G.mode!=='play') return;
     const list=supportBeacons();
     if(!list.length) return;
     const cooling=s.phase==='cooldown';
+    const near=nearestBeacon(list,supportRadius);
+    const focus=s.phase==='arming'?s.armed:s.phase==='ready'?s.ready:near;
+    if(focus>=0 && focus<list.length && !cooling){
+      const nb=list[focus], nx=SX(nb.x), ny=SY(nb.y), pad=supportRadius+34;
+      if(nx>-pad && nx<VW+pad && ny>-pad*KZ-30 && ny<VH+pad*KZ+40){
+        g.save();
+        g.strokeStyle=nb.color;g.lineWidth=1.2;g.setLineDash([5,8]);
+        g.globalAlpha=.10+.05*(.5+.5*Math.sin(G.t*3+nb.x*.01));
+        g.beginPath();g.ellipse(nx,ny,supportRadius,supportRadius*KZ,0,0,TAU);g.stroke();
+        g.setLineDash([]);g.restore();
+      }
+    }
     for(let i=0;i<list.length;i++){
       const b=list[i], x=SX(b.x), y=SY(b.y);
       if(x<-60||x>VW+60||y<-50||y>VH+60) continue;
@@ -663,14 +807,14 @@ const SectorClimate = (() => {
         prog=1-Math.max(0,s.cd)/Math.max(1,s.cdMax);
         text='冷却 '+Math.ceil(s.cd)+'s';
       } else if(s.phase==='arming' && s.armed===i){
-        prog=1-s.armT/supportArm;
-        text='呼叫 '+Math.ceil(s.armT)+'s';
+        prog=clamp(1-s.armT/supportArm,0,1);
+        text='呼叫 '+Math.ceil(s.armT)+'s';hot=true;
       } else if(s.phase==='ready' && s.ready===i){
         prog=1;text='就绪';hot=true;
       } else {
         const charge=s.charge[i]||0;
         prog=clamp(charge/supportHold,0,1);
-        text=charge>0?charge.toFixed(1)+'/'+supportHold+'s':'待机';
+        text=charge>0?('充能 '+charge.toFixed(1)+(i===near?'/'+supportHold+'s':'s')):'待机';
       }
       g.save();g.translate(x,y);
       const col=b.color;
@@ -684,6 +828,11 @@ const SectorClimate = (() => {
         g.globalAlpha=hot ? .95 : .8;
         g.beginPath();g.ellipse(0,0,23,23*KZ,0,-Math.PI/2,-Math.PI/2+TAU*prog);g.stroke();
       }
+      /* 最近信标：更粗的外圈充能弧，和普通进度环区分开 */
+      if(i===near && !cooling && s.phase==='idle' && prog>0){
+        g.globalAlpha=.9;g.lineWidth=3;
+        g.beginPath();g.ellipse(0,0,29,29*KZ,0,-Math.PI/2,-Math.PI/2+TAU*prog);g.stroke();
+      }
       g.globalAlpha=1;g.strokeStyle=col;g.lineWidth=1.6;
       g.beginPath();g.moveTo(0,0);g.lineTo(0,-13);g.stroke();
       g.fillStyle=hot?'#fff4c8':col;
@@ -694,7 +843,8 @@ const SectorClimate = (() => {
       }
       g.globalAlpha=1;g.font='bold 8px sans-serif';g.textAlign='center';
       g.lineWidth=2.7;g.strokeStyle='#0d1720';
-      g.strokeText(b.label,0,30);g.fillStyle=col;g.fillText(b.label,0,30);
+      const label=(b.icon?b.icon+' ':'')+b.label;
+      g.strokeText(label,0,30);g.fillStyle=col;g.fillText(label,0,30);
       if(text){
         g.font='bold 7px sans-serif';g.lineWidth=2.4;
         g.strokeText(text,0,39);g.fillStyle=hot?'#fff1b8':'#e8ddc4';g.fillText(text,0,39);

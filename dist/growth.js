@@ -27,6 +27,19 @@ const GROWTH_MODULES = {
     apply:(s,n) => { s.barragePower += n / 100; s.barrageExtra = 1; } },
   haste:{ name:'急速模块', icon:'»', label:'技能冷却', step:-4, unit:'%',
     desc:'缩短武器主动与驾驶员必杀的冷却时间。', apply:(s,n) => { s.skillCooldown += n / 100; } },
+  mechPower:{ name:'机甲火力', icon:'⟡', label:'机甲伤害', step:5, unit:'%',
+    desc:'提高铁砧、疾刃、星幕三种机甲的攻击伤害 5%。基础强化会写入下次出击的配置快照。',
+    apply:(s,n) => { s.mechPower += n / 100; } },
+  mechDuration:{ name:'机甲续航', icon:'◷', label:'变身时间', step:1.2, unit:' 秒',
+    value:level => (level ? '+' + (level * 1.2).toFixed(1) + ' 秒' : '0 秒'),
+    desc:'三种机甲每次变身的持续时间 +1.2 秒。下次出击时生效。',
+    apply:(s,n) => { s.mechDuration = Math.round((s.mechDuration + n) * 10) / 10; } },
+  mechEnergy:{ name:'能量回收', icon:'ϟ', label:'能量获取', step:8, unit:'%',
+    desc:'击破敌人与拾取能量电池时，机甲能量获取 +8%，三种机甲通用。下次出击时生效。',
+    apply:(s,n) => { s.energyGain += n / 100; } },
+  mechSkillCd:{ name:'机甲技冷却', icon:'⌁', label:'机甲技冷却', step:-4, unit:'%',
+    desc:'三种机甲的机甲技冷却时间 -4%。下次出击时生效。',
+    apply:(s,n) => { s.mechSkillCooldown += n / 100; } },
   capacity:{ name:'技能扩容', icon:'▦', label:'局内技能上限', step:CAPACITY_PER_LEVEL, unit:' 种',
     base:BASE_SKILL_CAPACITY, costs:[1200, 3000],
     desc:'每级多持有两种局内技能，下次出击时生效。各技能的等级上限维持原值。' },
@@ -176,6 +189,60 @@ function showHangarDetail(row){
   byId('shopDetail').append(node('div','detail-tag','等级 ' + row.level + ' / ' + row.max + ' · ' + hangarStatus(row)),
     node('h3','',row.name),node('p','',row.desc),growthComparison(row.label,row.current,row.next),
     growthBuyButton('buyUpgrade',row.cost,row.buy,!row.active));
+  if(typeof WeaponAttachments !== 'undefined' && typeof hangarGroup === 'string' && hangarGroup === 'tuning' &&
+     typeof WP !== 'undefined' && Object.hasOwn(WP,row.id)){
+    byId('shopDetail').append(attachmentPanel(row.id,row));
+  }
+}
+
+/* 武器调校：三槽配件。点击槽位在已拥有的同槽配件之间循环，基础配件始终保底。 */
+function attachmentPanel(weaponId,row){
+  const panel = node('section','attachment-panel');
+  const all = WeaponAttachments.list(), held = WeaponAttachments.owned();
+  const head = node('div','attachment-head');
+  head.append(node('strong','','武器配件'),
+    node('small','attachment-count','配件库 ' + held.length + ' / ' + all.length));
+  panel.append(head);
+  const wrap = node('div','attachment-slots');
+  const load = WeaponAttachments.equipped(weaponId);
+  for(const slot of WeaponAttachments.slots()){
+    const options = held.filter(def => def.slot === slot.id);
+    const currentId = load[slot.id];
+    const current = WeaponAttachments.definition(currentId) || options[0];
+    const button = node('button','attachment-slot');
+    button.type = 'button';
+    if(current) button.style.setProperty('--att-color',current.color);
+    button.setAttribute('aria-label',slot.name + '：' + (current ? current.name : '未装配') + '，点击切换');
+    button.append(node('small','attachment-slot-label',
+        slot.name + ' · ' + (current ? WeaponAttachments.rarityName(current.rarity) : '未装配')),
+      node('strong','attachment-slot-name',current ? current.name : '未装配'),
+      node('span','attachment-slot-desc',current ? current.desc : '该槽位暂无可用配件。'));
+    if(options.length > 1){
+      const index = Math.max(0,options.findIndex(def => def.id === currentId));
+      button.append(node('small','attachment-slot-hint','点击切换 · ' + (index + 1) + ' / ' + options.length));
+      button.onclick = () => {
+        const next = WeaponAttachments.cycle(weaponId,slot.id);
+        if(!next) return;
+        SFX.pick();
+        refreshTuningDetail(row);
+      };
+    } else {
+      button.disabled = true;
+      button.append(node('small','attachment-slot-hint','击败精英或首领可获得更多配件'));
+    }
+    wrap.append(button);
+  }
+  panel.append(wrap,
+    node('p','attachment-hint','配件拾取后立即带出局外，按武器单独保存；装配在下次出击时生效。'));
+  return panel;
+}
+
+function refreshTuningDetail(row){
+  const detail = byId('shopDetail');
+  const top = detail.scrollTop;
+  detail.replaceChildren();
+  showHangarDetail(row);
+  detail.scrollTop = top;
 }
 
 function hangarStatus(row){

@@ -150,6 +150,21 @@ button.wallet:hover{background:#3b3023;border-color:#a37c4e}
 .growth-comparison strong{font-size:.92rem;color:var(--text)}.growth-comparison span:nth-child(3) strong{color:var(--mint)}
 .shop-detail #buyUpgrade{min-height:44px;padding:7px 9px;font-size:.83rem;letter-spacing:0}
 .tuning-link{margin-top:9px;min-height:44px;padding:7px 9px;font-size:.83rem}
+/* 武器调校：三槽配件 */
+.attachment-panel{margin-top:14px;padding-top:11px;border-top:1px solid var(--line)}
+.attachment-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:7px}
+.attachment-head strong{font-size:.92rem;color:#efd7af}
+.attachment-count{font:.72rem var(--mono);color:#b8c4b5;white-space:nowrap}
+.attachment-slots{display:grid;gap:6px}
+.attachment-slot{display:grid;gap:2px;width:100%;min-height:48px;padding:7px 10px;text-align:left;color:var(--text);
+  background:#172123;border:1px solid #3d4b45;border-left:3px solid var(--att-color,#8aa2bd);transition:background .15s,border-color .15s}
+.attachment-slot:hover:not(:disabled){background:#1e2a27;border-color:var(--att-color,#8aa2bd)}
+.attachment-slot:disabled{opacity:.9;cursor:default}
+.attachment-slot-label{font:.66rem var(--mono);letter-spacing:.06em;color:#b8c4b5}
+.attachment-slot-name{font-size:.94rem;font-weight:750;color:var(--att-color,#d6e4da);line-height:1.35}
+.attachment-slot-desc{font-size:.78rem;line-height:1.45;color:#c0c9c1}
+.attachment-slot-hint{font:.66rem var(--mono);color:#93a49b}
+.attachment-hint{margin:8px 0 0;font-size:.75rem;line-height:1.5;color:#9fb0a6}
 #hudGrowth{color:var(--pale);flex-basis:100%}
 /* In-game and system dialogs */
 .veil{display:flex;align-items:center;justify-content:center;padding:18px max(16px,var(--safe-r)) max(16px,var(--safe-b)) max(16px,var(--safe-l));background:#07100ed9;overflow:auto}
@@ -296,6 +311,9 @@ button.wallet:hover{background:#3b3023;border-color:#a37c4e}
   .hangar-filters{margin-bottom:8px;width:100%}.hangar-filters button{flex:1;padding-inline:6px;font-size:.78rem}
   #hangarFilters:not([hidden]) + .shop-layout .catalog-side{min-height:120px}
   .growth-comparison{margin:8px 0;padding:6px 0}
+  .attachment-panel{margin-top:10px;padding-top:8px}.attachment-slots{gap:5px}
+  .attachment-slot{padding:6px 8px;min-height:46px}.attachment-slot-desc{font-size:.75rem}
+  .attachment-hint{font-size:.72rem}
   .cards.swap-options{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
   #openManual{width:auto;min-height:44px;padding-inline:4px;gap:4px}
   #openManual .icon{width:16px;height:16px}
