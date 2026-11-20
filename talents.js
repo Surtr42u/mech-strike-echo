@@ -92,14 +92,29 @@ const TALENTS = (function(){
     button.style.setProperty('--i',String(Math.min(i, 4))); // 入场错峰，最多第 5 张
     const key = choiceKeys[i];
     button.setAttribute('aria-keyshortcuts',String(key));
+    const refresh = refreshState();
+    const canReroll = !G._swap && refresh.left > 0;
     button.innerHTML =
       '<span class="bar" style="background:' + card.c + '"></span>' +
       '<span class="key">' + key + '</span>' +
+      (canReroll ? '<span class="card-reroll" role="button" tabindex="0" aria-label="独立重掷这张牌" title="独立重掷 · 剩余 ' + refresh.left + ' 次">↻</span>' : '') +
       '<span class="ico" style="color:' + card.c + '">' + card.ic + '</span>' +
       '<span class="nm">' + card.n + '</span>' +
       '<span class="lv">' + card.label + '</span>' +
       '<span class="ds">' + card.d + '</span>' +
       (card.risk ? '<span class="rk">' + card.risk + '</span>' : '');
+    const reroll = button.querySelector('.card-reroll');
+    if(reroll){
+      const rerollThis = event => {
+        event.preventDefault();
+        event.stopPropagation();
+        rerollCardAt(i);
+      };
+      reroll.addEventListener('click', rerollThis);
+      reroll.addEventListener('keydown', event => {
+        if(event.key === 'Enter' || event.key === ' ') rerollThis(event);
+      });
+    }
     button.addEventListener('click', () => pickCard(button, choose));
     return button;
   }
@@ -165,50 +180,76 @@ const TALENTS = (function(){
   }
 
   function refreshState(){
-    const major = G._cards[0]?.kind === 'major';
+    const major = G._cards && G._cards[0] && G._cards[0].kind === 'major';
     const hexLeft = major ? (G.enhancements?.hexRefreshLeft ?? 0) : 0;
     const hexMax = major ? (G.enhancements?.hexRefreshMax ?? 0) : 0;
-    const { refreshLeft, refreshMax } = G.preparations;
+    const refreshLeft = G.preparations?.refreshLeft ?? 0;
+    const refreshMax = G.preparations?.refreshMax ?? 0;
     return { major, hexLeft, hexMax, refreshLeft, refreshMax,
       left:hexLeft + refreshLeft, max:hexMax + refreshMax };
   }
 
+  /* 类似 LoL 的独立重掷：每张牌右上角一个 ↻，只换这一张，其余牌不动。 */
   function renderRefresh(){
     const button = byId('lvRefresh'), note = byId('lvRefreshNote');
+    button.hidden = true;
+    if(G._swap){ note.textContent = ''; return; }
     const state = refreshState();
-    const { major, hexLeft, hexMax, refreshLeft, refreshMax } = state;
-    button.hidden = !state.max || !!G._swap;
-    note.textContent = '';
-    if(button.hidden) return;
-    const alternative = hasAlternative(G._cards);
-    button.disabled = !state.left || !alternative;
-    byId('lvRefreshLabel').textContent = major ?
-      '海克斯重掷 ' + hexLeft + ' / ' + hexMax :
-      '刷新选项 ' + refreshLeft + ' / ' + refreshMax;
-    if(!state.left) note.textContent = major ? '本局重掷次数已用完' : '本局刷新次数已用完';
-    else if(!alternative) note.textContent = '没有其他可选牌';
-    else if(major && !hexLeft) note.textContent = '海克斯重掷已用尽 · 本次消耗备战刷新 ' + refreshLeft + ' / ' + refreshMax;
+    note.textContent = state.left ? '独立重掷 ' + state.left + ' / ' + state.max + ' · 点卡牌右上角 ↻' :
+      (state.max ? '独立重掷已用完' : '');
+  }
+
+  function payReroll(major){
+    if(major && (G.enhancements?.hexRefreshLeft ?? 0) > 0){
+      G.enhancements.hexRefreshLeft--;
+      return true;
+    }
+    if((G.preparations?.refreshLeft ?? 0) > 0){
+      G.preparations.refreshLeft--;
+      return true;
+    }
+    return false;
+  }
+
+  function rerollCardAt(index){
+    if(G.mode !== 'level' || G._swap || picking) return false;
+    const hand = G._cards;
+    if(!Array.isArray(hand) || !hand[index]) return false;
+    const major = hand[index].kind === 'major';
+    const state = refreshState();
+    if(!state.left) return false;
+    let next = null;
+    if(major){
+      next = HEXES.rerollCard(hand,index);
+    } else {
+      const exclude = new Set(hand.map(card => card.id));
+      const options = regularOptions().filter(card => !exclude.has(card.id));
+      if(options.length){
+        const picked = BUILD_DRAFT.choose(options,buildProfile(),hand)[0];
+        if(picked){
+          next = hand.slice();
+          next[index] = picked;
+        }
+      }
+    }
+    if(!next) return false;
+    if(!payReroll(major)) return false;
+    renderCards(next,next[index].id);
+    SFX.pick();
+    return true;
+  }
+
+  function focusedCardIndex(){
+    const cards = byId('cards').children;
+    const active = document.activeElement;
+    for(let i=0;i<cards.length;i++){
+      if(cards[i] === active || cards[i].contains(active)) return i;
+    }
+    return 0;
   }
 
   function refreshCards(){
-    if(G.mode !== 'level' || G._swap || picking) return false;
-    const major = G._cards[0]?.kind === 'major';
-    const hex = G.enhancements;
-    const hexLeft = major ? (hex?.hexRefreshLeft ?? 0) : 0;
-    if((!hexLeft && !G.preparations.refreshLeft) || !hasAlternative(G._cards)) return false;
-    const previous = G._cards;
-    const previousHand = major ? hex.hand : null;
-    const cards = major ? rollMilestone(previous) : rollCards(previous);
-    if(!cards.some(card => !previous.some(old => old.id === card.id))){
-      if(major && previousHand) hex.hand = previousHand; // 未出现新牌时回滚预掷结果，不扣次数
-      return false;
-    }
-    if(hexLeft) hex.hexRefreshLeft--;
-    else G.preparations.refreshLeft--;
-    if(major) hex.hand = cards;
-    renderCards(cards);
-    SFX.pick();
-    return true;
+    return rerollCardAt(focusedCardIndex());
   }
 
   function ascendCards(){
@@ -359,5 +400,5 @@ const TALENTS = (function(){
   }
 
   return { groups, pool, majors, reset, rollCards, queueMilestone, rollMilestone, applyStats, onKill, status, tryBayonet, buildProfile,
-    renderCards, openLevel, openReward, chooseCard, chooseReplacement, cancelSwap, skipReward, refreshCards, ascendCards, handleKey, regularOptions };
+    renderCards, openLevel, openReward, chooseCard, chooseReplacement, cancelSwap, skipReward, refreshCards, rerollCardAt, ascendCards, handleKey, regularOptions };
 })();

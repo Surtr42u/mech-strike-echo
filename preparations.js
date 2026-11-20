@@ -5,7 +5,7 @@ const PREPARATIONS = (function(){
   const starterItem = 'emp';
   const specs = {
     refresh: { name:'选牌刷新', icon:'⇄', label:'每局刷新次数', grades:[0,1,2],
-      desc:'重选普通或阶段大强化时，可按 R 或点刷新。至少出现一张新牌时才消耗次数。',
+      desc:'普通强化或海克斯选牌时，可点卡牌右上角 ↻ 独立重掷一张；也可按 R 重掷当前聚焦的牌。至少出现一张新牌才消耗次数。',
       value:level => level + ' 次' },
     lock: { name:'应急锁血', icon:'⛨', label:'每局致死保护', grades:[2],
       desc:'每局首次受到致死伤害时保留 1 点生命，并无敌 2 秒。优先于复活。',
