@@ -398,6 +398,10 @@ function showReport(win,withdrawn) {
 /* ── 全屏 ──
    Android / 桌面 Chrome 走标准 API；iPhone Safari 不支持页面全屏，直接隐藏入口。
    进入全屏时顺带尝试锁定横屏，失败不影响游戏。 */
+let deferredInstallPrompt = null;
+function isStandaloneMode(){
+  return !!(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+}
 function fullscreenSupported() {
   const root = document.documentElement;
   return !!(document.fullscreenEnabled || document.webkitFullscreenEnabled ||
@@ -406,25 +410,41 @@ function fullscreenSupported() {
 function isFullscreen() {
   return !!(document.fullscreenElement || document.webkitFullscreenElement);
 }
+function showFullscreenHelp(){
+  const dialog = byId('fullscreenDialog');
+  if(!dialog) return false;
+  const mode = byId('fullscreenMode');
+  if(mode){
+    mode.textContent = isStandaloneMode() ?
+      '当前已从桌面图标启动，通常不会再显示地址栏和底部导航。' :
+      '当前在浏览器标签页或内置浏览器中打开，顶部地址栏和底部导航属于浏览器本身，网页无法直接隐藏。';
+  }
+  const install = byId('fsInstall');
+  if(install) install.hidden = !deferredInstallPrompt;
+  if(!dialog.open) dialog.showModal();
+  byId('fsClose')?.focus({preventScroll:true});
+  return true;
+}
 function syncFullscreen() {
-  const on = isFullscreen();
+  const on = isFullscreen(), supported = fullscreenSupported();
   document.querySelectorAll('.fullscreen-toggle').forEach(button => {
-    const label = on ? '退出全屏' : '进入全屏';
+    const label = on ? '退出全屏' : supported ? '进入全屏' : '全屏 / 安装说明';
     button.setAttribute('aria-label', label);
     button.title = label;
     const icon = button.querySelector('canvas');
     if (icon) inkIcon(icon, on ? 'compress' : 'expand');
   });
   const toggle = byId('settingFullscreen');
-  if (toggle) syncSwitch(toggle, on, '全屏显示');
+  if (toggle) syncSwitch(toggle, on, supported ? '全屏显示' : '全屏 / 独立窗口');
 }
 async function toggleFullscreen() {
   if (!fullscreenSupported()) {
-    banner('当前浏览器不支持全屏', 'iPhone 可「添加到主屏幕」后从桌面启动', 2.2);
+    showFullscreenHelp();
     return;
   }
+  const wasFullscreen = isFullscreen();
   try {
-    if (isFullscreen()) {
+    if (wasFullscreen) {
       if (document.exitFullscreen) await document.exitFullscreen();
       else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
     } else {
@@ -433,12 +453,27 @@ async function toggleFullscreen() {
       try { await screen.orientation?.lock?.('landscape'); } catch (e) { /* 桌面浏览器不支持锁定 */ }
     }
   } catch (e) {
-    banner('全屏被浏览器拒绝', '再点一次，或检查站点的全屏权限', 2.2);
+    showFullscreenHelp();
+    return;
   }
   syncFullscreen();
+  /* 部分内置浏览器会 resolve 但实际不进入全屏，此时给安装/换浏览器的说明。 */
+  if(!wasFullscreen && !isFullscreen()) showFullscreenHelp();
 }
 document.addEventListener('fullscreenchange', syncFullscreen);
 document.addEventListener('webkitfullscreenchange', syncFullscreen);
+window.addEventListener('beforeinstallprompt', event => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  const install = byId('fsInstall');
+  if(install) install.hidden = false;
+});
+window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null;
+  const install = byId('fsInstall');
+  if(install) install.hidden = true;
+  banner('已安装到桌面', '以后从桌面图标启动即可隐藏浏览器地址栏', 2.4);
+});
 
 function wireTerminal() {
   document.querySelectorAll('canvas[data-icon]').forEach(c => inkIcon(c,c.dataset.icon));
@@ -498,8 +533,32 @@ function wireTerminal() {
   });
   if(G.touch) byId('titleHint').textContent = '左侧拖动移动 · 右侧点按技能';
   if(!fullscreenSupported()) {
-    document.querySelectorAll('.fullscreen-toggle').forEach(button => { button.hidden = true; });
-    byId('settingFullscreen')?.closest('.setting-row')?.setAttribute('hidden','');
+    /* 不隐藏入口：内置浏览器通常禁用网页全屏，改为提供安装/换浏览器说明。 */
+    const row = byId('settingFullscreen')?.closest('.setting-row');
+    const label = row?.querySelector('strong');
+    if(label) label.textContent = '全屏 / 独立窗口';
+  }
+  byId('fsClose')?.addEventListener('click', () => byId('fullscreenDialog')?.close());
+  byId('settingInstallHelp')?.addEventListener('click', showFullscreenHelp);
+  byId('fsCopy')?.addEventListener('click', async () => {
+    const button = byId('fsCopy');
+    try {
+      await navigator.clipboard.writeText(location.href);
+      button.textContent = '已复制';
+      setTimeout(() => { button.textContent = '复制链接'; }, 1600);
+    } catch (e) {
+      banner('复制失败', '请长按浏览器地址栏复制链接', 2);
+    }
+  });
+  byId('fsInstall')?.addEventListener('click', async () => {
+    if(!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    try { await deferredInstallPrompt.userChoice; } catch (e) {}
+    deferredInstallPrompt = null;
+    byId('fsInstall').hidden = true;
+  });
+  if('serviceWorker' in navigator && location.protocol !== 'file:'){
+    navigator.serviceWorker.register('sw.js').catch(() => {});
   }
   syncFullscreen();
   updateQLabel();
